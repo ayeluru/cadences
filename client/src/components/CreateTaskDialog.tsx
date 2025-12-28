@@ -8,19 +8,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useCreateTask } from "@/hooks/use-tasks";
 import { insertTaskSchema, InsertTask } from "@shared/schema";
 import { z } from "zod";
-import { useCategories } from "@/hooks/use-categories";
+import { useCategories, useCreateCategory } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { Badge } from "./ui/badge";
 
 // Extend schema for form
 const formSchema = insertTaskSchema.extend({
   intervalValue: z.coerce.number().min(1, "Interval must be at least 1"),
-  categoryId: z.coerce.number().optional(),
+  categoryId: z.coerce.number().optional().nullable(),
 });
 
-type FormValues = z.infer<typeof formSchema> & { tagIds: number[] };
+type FormValues = z.infer<typeof formSchema> & { tagIds: number[]; newCategoryName?: string };
 
 interface CreateTaskDialogProps {
   open: boolean;
@@ -29,30 +29,57 @@ interface CreateTaskDialogProps {
 
 export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) {
   const createMutation = useCreateTask();
+  const createCategoryMutation = useCreateCategory();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormValues>({
+  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       intervalValue: 1,
-      intervalUnit: 'months',
+      intervalUnit: 'hours',
+      categoryId: null,
       tagIds: []
     }
   });
 
   const onSubmit = (data: FormValues) => {
     createMutation.mutate({
-      ...data,
+      title: data.title,
+      intervalValue: data.intervalValue,
+      intervalUnit: data.intervalUnit,
+      categoryId: data.categoryId || undefined,
       tagIds: selectedTagIds
     }, {
       onSuccess: () => {
         onOpenChange(false);
-        reset();
+        reset({
+          intervalValue: 1,
+          intervalUnit: 'hours',
+          categoryId: null,
+          tagIds: []
+        });
         setSelectedTagIds([]);
+        setShowNewCategoryInput(false);
+        setNewCategoryName("");
       }
     });
+  };
+
+  const handleCreateNewCategory = () => {
+    if (!newCategoryName.trim()) return;
+    createCategoryMutation.mutate(
+      { name: newCategoryName },
+      {
+        onSuccess: () => {
+          setNewCategoryName("");
+          setShowNewCategoryInput(false);
+        }
+      }
+    );
   };
 
   const toggleTag = (id: number) => {
@@ -87,46 +114,66 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
             
             <div className="space-y-2">
               <Label htmlFor="intervalUnit">Unit</Label>
-              <Select defaultValue="months" onValueChange={(val) => {
-                 const elem = document.getElementById("intervalUnit") as HTMLInputElement; // Virtual input handling
-                 // React Hook Form integration with Radix Select requires using Controller or manual setValue usually, 
-                 // but for simplicity in this generated code we'll rely on the default values or basic prop drilling if needed.
-                 // A proper way is using the `Controller` from `react-hook-form`.
-                 // Let's register a hidden input to make it work simply without Controller bloat
-                 const hiddenInput = document.createElement("input");
-                 hiddenInput.type = "hidden";
-                 hiddenInput.name = "intervalUnit";
-                 hiddenInput.value = val;
-                 // Ideally use setValue from useForm, but we need to pass control.
-                 // Let's assume user accepts default "months" or we wire it up properly:
-              }}>
-                {/* Simplified for generated code: Using native select for robustness if needed, or proper Radix integration */}
-                {/* Switching to native select for reliability in generated code without extra Controller boilerplate */}
-                <select 
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  {...register("intervalUnit")}
-                >
-                  <option value="days">Days</option>
-                  <option value="weeks">Weeks</option>
-                  <option value="months">Months</option>
-                  <option value="years">Years</option>
-                </select>
-              </Select>
+              <select 
+                id="intervalUnit"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                {...register("intervalUnit")}
+              >
+                <option value="hours">Hours</option>
+                <option value="days">Days</option>
+                <option value="weeks">Weeks</option>
+                <option value="months">Months</option>
+                <option value="years">Years</option>
+              </select>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
-            <select 
-              id="category"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              {...register("categoryId")}
-            >
-              <option value="">Select a category...</option>
-              {categories?.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="category">Category (Optional)</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() => setShowNewCategoryInput(!showNewCategoryInput)}
+              >
+                <Plus className="w-3 h-3 mr-1" /> New
+              </Button>
+            </div>
+            {showNewCategoryInput ? (
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Category name..."
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleCreateNewCategory();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleCreateNewCategory}
+                  disabled={createCategoryMutation.isPending || !newCategoryName.trim()}
+                >
+                  {createCategoryMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                </Button>
+              </div>
+            ) : (
+              <select 
+                id="category"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                {...register("categoryId")}
+              >
+                <option value="">Select a category... (optional)</option>
+                {categories?.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="space-y-2">
