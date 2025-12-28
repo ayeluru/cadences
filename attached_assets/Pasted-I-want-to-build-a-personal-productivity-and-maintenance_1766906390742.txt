@@ -1,0 +1,62 @@
+I want to build a personal productivity and maintenance tracking app. This is NOT a calendar or reminders app.
+
+Core concept:
+Each task has a cadence (for example every 1 day, 2 weeks, 3 months). I do not care about specific days of the week or dates. I only care about time since last completion.
+
+Behavior:
+	•	Each task stores a cadence interval and the last time it was completed.
+	•	When I mark a task as “done,” the last completed timestamp updates and the timer resets.
+	•	The app continuously computes:
+	•	next_due = last_done + interval
+	•	time remaining until due
+	•	overdue duration if past due
+	•	Tasks should be sortable by urgency, where urgency is based on how close they are to being overdue (or how overdue they are), with an optional priority weight.
+	•	Tasks that have never been done should still appear and be treated as very overdue.
+
+Organization:
+	•	Tasks can belong to multiple groups and subgroups.
+	•	Groups should be hierarchical (for example health → dental, house → bedroom).
+	•	Use a tag or hierarchical category model, not a rigid single folder.
+
+UI requirements:
+	•	Mobile friendly web app (PWA style).
+	•	Default view shows ALL tasks, grouped or sorted by urgency:
+	•	Overdue
+	•	Due soon
+	•	Later
+	•	Never done
+	•	Each task row shows:
+	•	Title
+	•	Tags
+	•	“Due in X” or “Overdue by Y”
+	•	A single “Done” button
+	•	No heavy scheduling UI, calendars, or date pickers.
+
+Stats:
+	•	Keep a completion history (append-only log).
+	•	Support stats like:
+	•	Completions per week/month
+	•	Average interval between completions vs target interval
+	•	Overdue rate
+	•	Breakdown by tag
+
+Architecture constraints:
+	•	Data must be durable and well structured.
+	•	Use PostgreSQL as the database.
+	•	Use Supabase for hosted Postgres and auth.
+	•	Use a proper relational schema:
+	•	tasks
+	•	completions (event log)
+	•	tags
+	•	task_tags (many-to-many)
+	•	Business logic for urgency and due calculations should live on the server or database, not duplicated in the UI.
+	•	Frontend should be a Next.js web app (Node.js runtime).
+	•	Design so that future clients (SMS, native app) can reuse the same backend logic.
+
+Out of scope (for now):
+	•	No strict calendar scheduling
+	•	No habit streak gamification
+	•	Reminders are optional and secondary
+
+Goal:
+Build a clean MVP that I can use daily, that prioritizes correct data modeling and long-term flexibility over flashy features
