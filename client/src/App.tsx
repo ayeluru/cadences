@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
+import HourlyTasks from "@/pages/HourlyTasks";
 import DailyTasks from "@/pages/DailyTasks";
 import WeeklyTasks from "@/pages/WeeklyTasks";
 import MonthlyTasks from "@/pages/MonthlyTasks";
@@ -42,6 +43,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={() => <PrivateRoute component={Dashboard} />} />
+      <Route path="/tasks/hourly" component={() => <PrivateRoute component={HourlyTasks} />} />
       <Route path="/tasks/daily" component={() => <PrivateRoute component={DailyTasks} />} />
       <Route path="/tasks/weekly" component={() => <PrivateRoute component={WeeklyTasks} />} />
       <Route path="/tasks/monthly" component={() => <PrivateRoute component={MonthlyTasks} />} />

@@ -13,6 +13,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { type: "divider" },
+    { href: "/tasks/hourly", label: "Hourly", icon: Clock },
     { href: "/tasks/daily", label: "Daily", icon: Clock },
     { href: "/tasks/weekly", label: "Weekly", icon: Clock },
     { href: "/tasks/monthly", label: "Monthly", icon: Clock },
