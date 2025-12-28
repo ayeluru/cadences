@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X } from "lucide-react";
+import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,9 +12,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { type: "divider" },
+    { href: "/tasks/daily", label: "Daily", icon: Clock },
+    { href: "/tasks/weekly", label: "Weekly", icon: Clock },
+    { href: "/tasks/monthly", label: "Monthly", icon: Clock },
+    { href: "/tasks/yearly", label: "Long-term", icon: Clock },
+    { type: "divider" },
     { href: "/stats", label: "Statistics", icon: PieChart },
     { href: "/settings", label: "Manage", icon: Settings },
-  ];
+  ] as any[];
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
@@ -28,7 +34,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
-          {navItems.map((item) => {
+          {navItems.map((item, idx) => {
+            if (item.type === "divider") {
+              return <div key={`divider-${idx}`} className="my-2 border-t border-border/30" />;
+            }
             const Icon = item.icon;
             const isActive = location === item.href;
             return (
@@ -84,7 +93,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             exit={{ opacity: 0, y: -20 }}
             className="fixed inset-0 top-16 z-30 bg-background/95 backdrop-blur-sm md:hidden p-4 flex flex-col gap-2"
           >
-            {navItems.map((item) => {
+            {navItems.map((item, idx) => {
+              if (item.type === "divider") {
+                return <div key={`divider-${idx}`} className="my-2 border-t border-border/30" />;
+              }
               const Icon = item.icon;
               const isActive = location === item.href;
               return (

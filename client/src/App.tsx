@@ -5,6 +5,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
+import DailyTasks from "@/pages/DailyTasks";
+import WeeklyTasks from "@/pages/WeeklyTasks";
+import MonthlyTasks from "@/pages/MonthlyTasks";
+import YearlyTasks from "@/pages/YearlyTasks";
 import Stats from "@/pages/Stats";
 import Settings from "@/pages/Settings";
 import AuthPage from "@/pages/AuthPage";
@@ -38,6 +42,10 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={() => <PrivateRoute component={Dashboard} />} />
+      <Route path="/tasks/daily" component={() => <PrivateRoute component={DailyTasks} />} />
+      <Route path="/tasks/weekly" component={() => <PrivateRoute component={WeeklyTasks} />} />
+      <Route path="/tasks/monthly" component={() => <PrivateRoute component={MonthlyTasks} />} />
+      <Route path="/tasks/yearly" component={() => <PrivateRoute component={YearlyTasks} />} />
       <Route path="/stats" component={() => <PrivateRoute component={Stats} />} />
       <Route path="/settings" component={() => <PrivateRoute component={Settings} />} />
       <Route path="/login" component={AuthPage} />
