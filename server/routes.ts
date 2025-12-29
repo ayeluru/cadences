@@ -287,6 +287,31 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Delete task with full cascade (removes all associated data)
+  app.delete("/api/tasks/:id/cascade", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const taskId = Number(req.params.id);
+      await storage.deleteTaskWithCascade(taskId, userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(403).json({ message: error.message });
+    }
+  });
+
+  // Archive task (stop recurring but keep history)
+  app.post("/api/tasks/:id/archive", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const taskId = Number(req.params.id);
+      const archived = await storage.archiveTask(taskId, userId);
+      const enriched = await enrichTask(archived, userId);
+      res.json(enriched);
+    } catch (error: any) {
+      res.status(403).json({ message: error.message });
+    }
+  });
+
   app.post(api.tasks.complete.path, requireAuth, async (req: any, res) => {
     const userId = req.user.claims.sub;
     const taskId = Number(req.params.id);

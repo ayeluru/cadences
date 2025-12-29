@@ -1,6 +1,6 @@
 import { TaskWithDetails, TaskMetric } from "@shared/schema";
 import { format, formatDistanceToNow, addDays, isPast } from "date-fns";
-import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History } from "lucide-react";
+import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History, Archive, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useCompleteTask, useDeleteTask } from "@/hooks/use-tasks";
+import { useCompleteTask, useDeleteTaskWithCascade, useArchiveTask } from "@/hooks/use-tasks";
 import { useState } from "react";
 import { EditTaskDialog } from "./EditTaskDialog";
 import { TaskHistoryDialog } from "./TaskHistoryDialog";
@@ -30,7 +30,8 @@ interface TaskCardProps {
 
 export function TaskCard({ task, showVariations = true, condensed = false, expanded = false, onToggleExpand }: TaskCardProps) {
   const completeMutation = useCompleteTask();
-  const deleteMutation = useDeleteTask();
+  const deleteCascadeMutation = useDeleteTaskWithCascade();
+  const archiveMutation = useArchiveTask();
   const [editOpen, setEditOpen] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -321,7 +322,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                   <MoreVertical className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => setEditOpen(true)} data-testid={`menu-edit-${task.id}`}>
                   <Edit2 className="w-4 h-4 mr-2" /> Edit
@@ -336,15 +337,25 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
+                  onClick={() => {
+                    if (confirm("End this task? It will no longer recur, but all history will be preserved.")) {
+                      archiveMutation.mutate(task.id);
+                    }
+                  }}
+                  data-testid={`menu-archive-${task.id}`}
+                >
+                  <Archive className="w-4 h-4 mr-2" /> End Task
+                </DropdownMenuItem>
+                <DropdownMenuItem 
                   className="text-destructive focus:text-destructive"
                   data-testid={`menu-delete-${task.id}`}
                   onClick={() => {
-                    if (confirm("Are you sure you want to delete this task?")) {
-                      deleteMutation.mutate(task.id);
+                    if (confirm("Permanently delete this task and ALL its history? This cannot be undone.")) {
+                      deleteCascadeMutation.mutate(task.id);
                     }
                   }}
                 >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Forever
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

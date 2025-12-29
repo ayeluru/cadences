@@ -109,6 +109,57 @@ export function useDeleteTask() {
   });
 }
 
+export function useDeleteTaskWithCascade() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/tasks/${id}/cascade`, { 
+        method: "DELETE", 
+        credentials: "include" 
+      });
+      if (!res.ok) throw new Error("Failed to delete task");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/completions"] });
+      toast({ title: "Task deleted", description: "Task and all its history have been permanently removed." });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useArchiveTask() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/tasks/${id}/archive`, { 
+        method: "POST", 
+        credentials: "include" 
+      });
+      if (!res.ok) throw new Error("Failed to archive task");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
+      toast({ title: "Task ended", description: "Task will no longer recur. History is preserved." });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
 export function useCompleteTask() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

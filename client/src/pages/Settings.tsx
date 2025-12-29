@@ -50,6 +50,8 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
       queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/completions"] });
       toast({ title: "Data cleared", description: "All your data has been removed." });
     },
     onError: (error: any) => {

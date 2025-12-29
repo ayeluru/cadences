@@ -33,6 +33,8 @@ export interface IStorage {
   createTask(userId: string, task: InsertTask, tagIds?: number[], metrics?: InsertTaskMetric[]): Promise<Task>;
   updateTask(id: number, updates: Partial<InsertTask>, tagIds?: number[], metrics?: InsertTaskMetric[]): Promise<Task>;
   deleteTask(id: number): Promise<void>;
+  deleteTaskWithCascade(id: number, userId: string): Promise<void>;
+  archiveTask(id: number, userId: string): Promise<Task>;
   
   // Task Metrics
   getTaskMetrics(taskId: number): Promise<TaskMetric[]>;
@@ -732,6 +734,67 @@ export class DatabaseStorage implements IStorage {
     // Soft delete or hard delete? Let's do soft delete via isArchived for safety, 
     // but the schema has isArchived. Let's use that.
     await db.update(tasks).set({ isArchived: true }).where(eq(tasks.id, id));
+  }
+
+  async deleteTaskWithCascade(id: number, userId: string): Promise<void> {
+    // Verify task belongs to user
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    if (!task || task.userId !== userId) {
+      throw new Error("Task not found or unauthorized");
+    }
+
+    // Get all task IDs to delete (including variations)
+    const variations = await db.select().from(tasks).where(eq(tasks.parentTaskId, id));
+    const allTaskIds = [id, ...variations.map(v => v.id)];
+
+    // Delete metric values for completions of these tasks
+    const taskCompletions = await db.select().from(completions).where(
+      inArray(completions.taskId, allTaskIds)
+    );
+    const completionIds = taskCompletions.map(c => c.id);
+    
+    if (completionIds.length > 0) {
+      await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
+    }
+
+    // Delete completions
+    await db.delete(completions).where(inArray(completions.taskId, allTaskIds));
+
+    // Delete task metrics
+    await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, allTaskIds));
+
+    // Delete task tags
+    await db.delete(taskTags).where(inArray(taskTags.taskId, allTaskIds));
+
+    // Delete streaks for these tasks
+    await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, allTaskIds));
+
+    // Delete variations first, then the parent task
+    if (variations.length > 0) {
+      await db.delete(tasks).where(inArray(tasks.id, variations.map(v => v.id)));
+    }
+    await db.delete(tasks).where(eq(tasks.id, id));
+  }
+
+  async archiveTask(id: number, userId: string): Promise<Task> {
+    // Verify task belongs to user
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    if (!task || task.userId !== userId) {
+      throw new Error("Task not found or unauthorized");
+    }
+
+    // Archive the task (keeps all historical data)
+    const [updated] = await db.update(tasks)
+      .set({ isArchived: true })
+      .where(eq(tasks.id, id))
+      .returning();
+
+    // Also archive any variations (with user scoping for security)
+    await db.update(tasks)
+      .set({ isArchived: true })
+      .where(and(eq(tasks.parentTaskId, id), eq(tasks.userId, userId)));
+
+    return updated;
   }
 
   // Routines
