@@ -88,7 +88,7 @@ export function useClearProfileData() {
     mutationFn: async (profileId: number) => {
       await apiRequest('DELETE', `/api/profiles/${profileId}/data`);
     },
-    onSuccess: (_data, profileId) => {
+    onSuccess: () => {
       // Invalidate all profile-scoped queries - use predicate to catch all variations
       queryClient.invalidateQueries({ 
         predicate: (query) => {
@@ -101,11 +101,44 @@ export function useClearProfileData() {
             key.startsWith('/api/streaks') ||
             key.startsWith('/api/calendar') ||
             key.startsWith('/api/completions') ||
-            key.startsWith('/api/metrics')
+            key.startsWith('/api/metrics') ||
+            key.startsWith('/api/stats')
           );
         }
       });
       toast({ title: "Profile data cleared", description: "All data in this profile has been removed." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+}
+
+export function useClearAllProfilesData() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async () => {
+      await apiRequest('DELETE', '/api/profiles/all/data');
+    },
+    onSuccess: () => {
+      // Invalidate all data queries across all profiles
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return typeof key === 'string' && (
+            key.startsWith('/api/tasks') ||
+            key.startsWith('/api/categories') ||
+            key.startsWith('/api/tags') ||
+            key.startsWith('/api/routines') ||
+            key.startsWith('/api/streaks') ||
+            key.startsWith('/api/calendar') ||
+            key.startsWith('/api/completions') ||
+            key.startsWith('/api/metrics') ||
+            key.startsWith('/api/stats')
+          );
+        }
+      });
+      toast({ title: "All data cleared", description: "All data across all profiles has been removed." });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });

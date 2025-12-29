@@ -774,6 +774,16 @@ export class DatabaseStorage implements IStorage {
     await db.delete(routines).where(and(eq(routines.profileId, profileId), eq(routines.userId, userId)));
   }
 
+  async deleteAllProfilesData(userId: string): Promise<void> {
+    // Get all profiles for this user
+    const userProfiles = await this.getProfiles(userId);
+    
+    // Clear data from each profile
+    for (const profile of userProfiles) {
+      await this.deleteProfileData(profile.id, userId);
+    }
+  }
+
   async getOrCreateDefaultProfile(userId: string): Promise<Profile> {
     // Check if user has any profiles
     const existingProfiles = await this.getProfiles(userId);
@@ -791,40 +801,50 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  // Seed demo profile with sample data
+  // Seed demo profile with comprehensive sample data demonstrating all features
   async seedDemoProfile(userId: string, profileId: number): Promise<{ success: boolean, message: string }> {
     const now = new Date();
     
-    // Create categories for demo profile
+    // Helper to create dates in the past with some time variation
+    const daysAgo = (days: number, hourOffset: number = 0) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - days);
+      d.setHours(8 + hourOffset + (days % 6), (days * 11) % 60, 0, 0);
+      return d;
+    };
+
+    // ===== CATEGORIES =====
     const [householdCat] = await db.insert(categories).values({ name: "Household", userId, profileId }).returning();
     const [healthCat] = await db.insert(categories).values({ name: "Health & Hygiene", userId, profileId }).returning();
     const [exerciseCat] = await db.insert(categories).values({ name: "Exercise", userId, profileId }).returning();
     const [carCat] = await db.insert(categories).values({ name: "Car Maintenance", userId, profileId }).returning();
     const [financeCat] = await db.insert(categories).values({ name: "Finance", userId, profileId }).returning();
+    const [petsCat] = await db.insert(categories).values({ name: "Pet Care", userId, profileId }).returning();
+    const [gardenCat] = await db.insert(categories).values({ name: "Garden & Outdoor", userId, profileId }).returning();
 
-    // Create tags for demo profile
+    // ===== TAGS =====
     const [urgentTag] = await db.insert(tags).values({ name: "Urgent", userId, profileId }).returning();
     const [quickTag] = await db.insert(tags).values({ name: "Quick", userId, profileId }).returning();
     const [outdoorsTag] = await db.insert(tags).values({ name: "Outdoors", userId, profileId }).returning();
+    const [weekendTag] = await db.insert(tags).values({ name: "Weekend", userId, profileId }).returning();
+    const [morningTag] = await db.insert(tags).values({ name: "Morning", userId, profileId }).returning();
+    const [nightTag] = await db.insert(tags).values({ name: "Night", userId, profileId }).returning();
 
-    // Create routines for demo profile
+    // ===== ROUTINES =====
     const [morningRoutine] = await db.insert(routines).values({ name: "Morning Routine", description: "Start the day right", userId, profileId }).returning();
+    const [eveningRoutine] = await db.insert(routines).values({ name: "Evening Routine", description: "Wind down for the night", userId, profileId }).returning();
     const [legDayRoutine] = await db.insert(routines).values({ name: "Leg Day", description: "Lower body workout", userId, profileId }).returning();
+    const [pushDayRoutine] = await db.insert(routines).values({ name: "Push Day", description: "Chest, shoulders, triceps", userId, profileId }).returning();
+    const [pullDayRoutine] = await db.insert(routines).values({ name: "Pull Day", description: "Back, biceps, rear delts", userId, profileId }).returning();
     const [weeklyChoresRoutine] = await db.insert(routines).values({ name: "Weekly Chores", description: "Keep the house clean", userId, profileId }).returning();
+    const [monthlyMaintenanceRoutine] = await db.insert(routines).values({ name: "Monthly Maintenance", description: "Monthly tasks", userId, profileId }).returning();
 
-    // Helper to create dates in the past
-    const daysAgo = (days: number) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() - days);
-      d.setHours(8 + (days % 12), (days * 7) % 60, 0, 0);
-      return d;
-    };
-
-    // Create sample tasks with completions
-    // Daily task: Brush Teeth
+    // ===== DAILY TASKS WITH STREAKS =====
+    
+    // 1. Brush Teeth - Perfect 30+ day streak (morning routine)
     const [brushTeeth] = await db.insert(tasks).values({
       title: "Brush Teeth",
-      description: "Morning and night",
+      description: "Morning and night dental hygiene",
       taskType: "interval",
       intervalValue: 1,
       intervalUnit: "days",
@@ -834,13 +854,93 @@ export class DatabaseStorage implements IStorage {
       userId,
       isArchived: false
     }).returning();
-    for (let i = 14; i >= 0; i--) {
+    await db.insert(taskTags).values([{ taskId: brushTeeth.id, tagId: quickTag.id }, { taskId: brushTeeth.id, tagId: morningTag.id }]);
+    for (let i = 35; i >= 0; i--) {
       await this.completeTaskWithStreak(brushTeeth.id, userId, brushTeeth, daysAgo(i));
     }
 
-    // Weekly task: Do Laundry
+    // 2. Take Vitamins - 15 day streak (morning routine)
+    const [takeVitamins] = await db.insert(tasks).values({
+      title: "Take Vitamins",
+      description: "Daily multivitamin and fish oil",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "days",
+      categoryId: healthCat.id,
+      routineId: morningRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: takeVitamins.id, tagId: quickTag.id }, { taskId: takeVitamins.id, tagId: morningTag.id }]);
+    for (let i = 15; i >= 0; i--) {
+      await this.completeTaskWithStreak(takeVitamins.id, userId, takeVitamins, daysAgo(i));
+    }
+
+    // 3. Meditate - Broken streak (last done 3 days ago, was 5 day streak before that)
+    const [meditate] = await db.insert(tasks).values({
+      title: "Meditate",
+      description: "10 minutes of mindfulness",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "days",
+      categoryId: healthCat.id,
+      routineId: eveningRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: meditate.id, tagId: nightTag.id }]);
+    for (let i = 8; i >= 3; i--) {
+      await this.completeTaskWithStreak(meditate.id, userId, meditate, daysAgo(i));
+    }
+
+    // 4. Feed Dog - Perfect streak with metrics (weight of food)
+    const [feedDog] = await db.insert(tasks).values({
+      title: "Feed Dog",
+      description: "Morning and evening feeding",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "days",
+      categoryId: petsCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    const [foodAmountMetric] = await db.insert(taskMetrics).values({ taskId: feedDog.id, name: "Food Amount", unit: "cups", dataType: "number" }).returning();
+    const [appetiteMetric] = await db.insert(taskMetrics).values({ taskId: feedDog.id, name: "Appetite", unit: "", dataType: "text" }).returning();
+    for (let i = 20; i >= 0; i--) {
+      await this.completeTaskWithStreak(feedDog.id, userId, feedDog, daysAgo(i));
+      const comp = await db.select().from(completions).where(eq(completions.taskId, feedDog.id)).orderBy(desc(completions.completedAt)).limit(1);
+      if (comp[0]) {
+        const appetites = ["Good", "Great", "Normal", "Hungry"];
+        await db.insert(metricValues).values([
+          { completionId: comp[0].id, metricId: foodAmountMetric.id, numericValue: 1.5 + (i % 3) * 0.25 },
+          { completionId: comp[0].id, metricId: appetiteMetric.id, textValue: appetites[i % 4] },
+        ]);
+      }
+    }
+
+    // 5. Skincare - Never done (due soon status)
+    const [skincare] = await db.insert(tasks).values({
+      title: "Skincare Routine",
+      description: "Cleanser, toner, moisturizer",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "days",
+      categoryId: healthCat.id,
+      routineId: eveningRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+
+    // ===== WEEKLY TASKS =====
+    
+    // 6. Do Laundry - Weekly with 5 week streak
     const [laundry] = await db.insert(tasks).values({
       title: "Do Laundry",
+      description: "Wash, dry, fold, and put away",
       taskType: "interval",
       intervalValue: 1,
       intervalUnit: "weeks",
@@ -850,60 +950,341 @@ export class DatabaseStorage implements IStorage {
       userId,
       isArchived: false
     }).returning();
-    for (let week = 4; week >= 0; week--) {
-      await this.completeTaskWithStreak(laundry.id, userId, laundry, daysAgo(week * 7));
+    await db.insert(taskTags).values([{ taskId: laundry.id, tagId: weekendTag.id }]);
+    for (let week = 5; week >= 0; week--) {
+      await this.completeTaskWithStreak(laundry.id, userId, laundry, daysAgo(week * 7 + 1));
     }
 
-    // Frequency task: Exercise 3x/week
+    // 7. Clean Bathroom - Overdue (last done 12 days ago, due every week)
+    const [cleanBathroom] = await db.insert(tasks).values({
+      title: "Clean Bathroom",
+      description: "Toilet, sink, shower, mirror",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "weeks",
+      categoryId: householdCat.id,
+      routineId: weeklyChoresRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: cleanBathroom.id, tagId: weekendTag.id }]);
+    await this.completeTaskWithStreak(cleanBathroom.id, userId, cleanBathroom, daysAgo(12));
+    await this.completeTaskWithStreak(cleanBathroom.id, userId, cleanBathroom, daysAgo(19));
+
+    // 8. Vacuum House - Due soon (last done 5 days ago, due every week)
+    const [vacuum] = await db.insert(tasks).values({
+      title: "Vacuum House",
+      description: "All rooms and hallways",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "weeks",
+      categoryId: householdCat.id,
+      routineId: weeklyChoresRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await this.completeTaskWithStreak(vacuum.id, userId, vacuum, daysAgo(5));
+    await this.completeTaskWithStreak(vacuum.id, userId, vacuum, daysAgo(12));
+
+    // 9. Walk Dog (Long) - Never done weekly task
+    const [walkDogLong] = await db.insert(tasks).values({
+      title: "Long Dog Walk",
+      description: "30+ minute walk in the park",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "weeks",
+      categoryId: petsCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: walkDogLong.id, tagId: outdoorsTag.id }, { taskId: walkDogLong.id, tagId: weekendTag.id }]);
+
+    // ===== FREQUENCY TASKS WITH VARIATIONS =====
+    
+    // 10. Exercise 4x/week - Parent frequency task with refractory period
     const [exercise] = await db.insert(tasks).values({
       title: "Exercise",
-      description: "Any workout counts",
+      description: "Any workout counts toward weekly goal",
       taskType: "frequency",
-      targetCount: 3,
+      targetCount: 4,
       targetPeriod: "week",
+      refractoryMinutes: 480, // 8 hours minimum between workouts
       categoryId: exerciseCat.id,
       profileId,
       userId,
       isArchived: false
     }).returning();
-    for (let i = 10; i >= 0; i--) {
-      if (i % 2 === 0 || i % 3 === 0) {
-        await this.completeTaskWithStreak(exercise.id, userId, exercise, daysAgo(i));
+    
+    // Exercise variations (linked to parent)
+    const [backSquat] = await db.insert(tasks).values({
+      title: "Back Squat",
+      description: "3x8 with progressive overload",
+      taskType: "interval",
+      intervalValue: 3,
+      intervalUnit: "days",
+      categoryId: exerciseCat.id,
+      routineId: legDayRoutine.id,
+      parentTaskId: exercise.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    const [squatWeightMetric] = await db.insert(taskMetrics).values({ taskId: backSquat.id, name: "Weight", unit: "lbs", dataType: "number" }).returning();
+    const [squatRepsMetric] = await db.insert(taskMetrics).values({ taskId: backSquat.id, name: "Reps", unit: "", dataType: "number" }).returning();
+    const [squatRPEMetric] = await db.insert(taskMetrics).values({ taskId: backSquat.id, name: "RPE", unit: "", dataType: "number" }).returning();
+    
+    // Squat completions with progressive overload metrics
+    for (let session = 8; session >= 0; session--) {
+      const baseWeight = 135 + (8 - session) * 5;
+      await this.completeTaskWithStreak(backSquat.id, userId, backSquat, daysAgo(session * 3 + 1, 2));
+      const comp = await db.select().from(completions).where(eq(completions.taskId, backSquat.id)).orderBy(desc(completions.completedAt)).limit(1);
+      if (comp[0]) {
+        await db.insert(metricValues).values([
+          { completionId: comp[0].id, metricId: squatWeightMetric.id, numericValue: baseWeight },
+          { completionId: comp[0].id, metricId: squatRepsMetric.id, numericValue: 8 - (session % 2) },
+          { completionId: comp[0].id, metricId: squatRPEMetric.id, numericValue: 7 + (session % 3) },
+        ]);
       }
     }
 
-    // Monthly task: Check Tire Pressure with metrics
+    const [benchPress] = await db.insert(tasks).values({
+      title: "Bench Press",
+      description: "3x5 strength focus",
+      taskType: "interval",
+      intervalValue: 4,
+      intervalUnit: "days",
+      categoryId: exerciseCat.id,
+      routineId: pushDayRoutine.id,
+      parentTaskId: exercise.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    const [benchWeightMetric] = await db.insert(taskMetrics).values({ taskId: benchPress.id, name: "Weight", unit: "lbs", dataType: "number" }).returning();
+    for (let session = 6; session >= 0; session--) {
+      await this.completeTaskWithStreak(benchPress.id, userId, benchPress, daysAgo(session * 4 + 2, 3));
+      const comp = await db.select().from(completions).where(eq(completions.taskId, benchPress.id)).orderBy(desc(completions.completedAt)).limit(1);
+      if (comp[0]) {
+        await db.insert(metricValues).values([
+          { completionId: comp[0].id, metricId: benchWeightMetric.id, numericValue: 95 + (6 - session) * 5 },
+        ]);
+      }
+    }
+
+    const [pullUps] = await db.insert(tasks).values({
+      title: "Pull-ups",
+      description: "3 sets to failure",
+      taskType: "interval",
+      intervalValue: 3,
+      intervalUnit: "days",
+      categoryId: exerciseCat.id,
+      routineId: pullDayRoutine.id,
+      parentTaskId: exercise.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    const [pullUpRepsMetric] = await db.insert(taskMetrics).values({ taskId: pullUps.id, name: "Total Reps", unit: "", dataType: "number" }).returning();
+    for (let session = 7; session >= 0; session--) {
+      await this.completeTaskWithStreak(pullUps.id, userId, pullUps, daysAgo(session * 3, 4));
+      const comp = await db.select().from(completions).where(eq(completions.taskId, pullUps.id)).orderBy(desc(completions.completedAt)).limit(1);
+      if (comp[0]) {
+        await db.insert(metricValues).values([
+          { completionId: comp[0].id, metricId: pullUpRepsMetric.id, numericValue: 18 + (7 - session) },
+        ]);
+      }
+    }
+
+    const [running] = await db.insert(tasks).values({
+      title: "Running",
+      description: "Cardio session",
+      taskType: "interval",
+      intervalValue: 2,
+      intervalUnit: "days",
+      categoryId: exerciseCat.id,
+      parentTaskId: exercise.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: running.id, tagId: outdoorsTag.id }]);
+    const [runDistanceMetric] = await db.insert(taskMetrics).values({ taskId: running.id, name: "Distance", unit: "miles", dataType: "number" }).returning();
+    const [runDurationMetric] = await db.insert(taskMetrics).values({ taskId: running.id, name: "Duration", unit: "min", dataType: "number" }).returning();
+    const [runPaceMetric] = await db.insert(taskMetrics).values({ taskId: running.id, name: "Pace", unit: "min/mi", dataType: "text" }).returning();
+    for (let session = 10; session >= 0; session--) {
+      await this.completeTaskWithStreak(running.id, userId, running, daysAgo(session * 2 + 1, 1));
+      const comp = await db.select().from(completions).where(eq(completions.taskId, running.id)).orderBy(desc(completions.completedAt)).limit(1);
+      if (comp[0]) {
+        const distance = 2.5 + (10 - session) * 0.2 + (session % 3) * 0.3;
+        const duration = distance * 9 + (session % 5);
+        await db.insert(metricValues).values([
+          { completionId: comp[0].id, metricId: runDistanceMetric.id, numericValue: Math.round(distance * 10) / 10 },
+          { completionId: comp[0].id, metricId: runDurationMetric.id, numericValue: Math.round(duration) },
+          { completionId: comp[0].id, metricId: runPaceMetric.id, textValue: `${Math.floor(duration/distance)}:${String(Math.round((duration/distance % 1) * 60)).padStart(2, '0')}` },
+        ]);
+      }
+    }
+
+    // ===== MONTHLY TASKS =====
+    
+    // 11. Check Tire Pressure - Monthly with metrics
     const [tirePressure] = await db.insert(tasks).values({
       title: "Check Tire Pressure",
+      description: "Ensure all tires are at correct PSI",
       taskType: "interval",
       intervalValue: 1,
       intervalUnit: "months",
+      categoryId: carCat.id,
+      routineId: monthlyMaintenanceRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: tirePressure.id, tagId: quickTag.id }]);
+    const [frontLeftMetric] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Front Left", unit: "psi", dataType: "number" }).returning();
+    const [frontRightMetric] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Front Right", unit: "psi", dataType: "number" }).returning();
+    const [rearLeftMetric] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Rear Left", unit: "psi", dataType: "number" }).returning();
+    const [rearRightMetric] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Rear Right", unit: "psi", dataType: "number" }).returning();
+    for (let month = 3; month >= 0; month--) {
+      await this.completeTaskWithStreak(tirePressure.id, userId, tirePressure, daysAgo(month * 30 + 2));
+      const comp = await db.select().from(completions).where(eq(completions.taskId, tirePressure.id)).orderBy(desc(completions.completedAt)).limit(1);
+      if (comp[0]) {
+        await db.insert(metricValues).values([
+          { completionId: comp[0].id, metricId: frontLeftMetric.id, numericValue: 32 + (month % 2) },
+          { completionId: comp[0].id, metricId: frontRightMetric.id, numericValue: 33 - (month % 2) },
+          { completionId: comp[0].id, metricId: rearLeftMetric.id, numericValue: 31 + month },
+          { completionId: comp[0].id, metricId: rearRightMetric.id, numericValue: 32 },
+        ]);
+      }
+    }
+
+    // 12. Review Budget - Monthly finance task
+    const [reviewBudget] = await db.insert(tasks).values({
+      title: "Review Monthly Budget",
+      description: "Check spending vs budget categories",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "months",
+      categoryId: financeCat.id,
+      routineId: monthlyMaintenanceRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await this.completeTaskWithStreak(reviewBudget.id, userId, reviewBudget, daysAgo(35));
+    await this.completeTaskWithStreak(reviewBudget.id, userId, reviewBudget, daysAgo(5));
+
+    // 13. Water Indoor Plants - Bi-weekly, overdue
+    const [waterPlants] = await db.insert(tasks).values({
+      title: "Water Indoor Plants",
+      description: "Check soil moisture before watering",
+      taskType: "interval",
+      intervalValue: 2,
+      intervalUnit: "weeks",
+      categoryId: gardenCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await this.completeTaskWithStreak(waterPlants.id, userId, waterPlants, daysAgo(18));
+
+    // ===== YEARLY TASKS =====
+    
+    // 14. Annual Car Inspection - Yearly task
+    const [carInspection] = await db.insert(tasks).values({
+      title: "Annual Car Inspection",
+      description: "State inspection and emissions test",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "years",
       categoryId: carCat.id,
       profileId,
       userId,
       isArchived: false
     }).returning();
+    await db.insert(taskTags).values([{ taskId: carInspection.id, tagId: urgentTag.id }]);
+    await this.completeTaskWithStreak(carInspection.id, userId, carInspection, daysAgo(320));
+
+    // 15. Replace Smoke Detector Batteries - Yearly, never done
+    const [smokeBatteries] = await db.insert(tasks).values({
+      title: "Replace Smoke Detector Batteries",
+      description: "Replace batteries in all smoke and CO detectors",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "years",
+      categoryId: householdCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: smokeBatteries.id, tagId: urgentTag.id }]);
+
+    // ===== FREQUENCY TASK WITH REFRACTORY =====
     
-    const [frontLeft] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Front Left", unit: "psi", dataType: "number" }).returning();
-    const [frontRight] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Front Right", unit: "psi", dataType: "number" }).returning();
-    const [rearLeft] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Rear Left", unit: "psi", dataType: "number" }).returning();
-    const [rearRight] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Rear Right", unit: "psi", dataType: "number" }).returning();
-    
-    // Add some completions with metrics
-    for (let month = 2; month >= 0; month--) {
-      const completion = await this.completeTaskWithStreak(tirePressure.id, userId, tirePressure, daysAgo(month * 30));
-      const comp = await db.select().from(completions).where(eq(completions.taskId, tirePressure.id)).orderBy(desc(completions.completedAt)).limit(1);
-      if (comp[0]) {
-        await db.insert(metricValues).values([
-          { completionId: comp[0].id, metricId: frontLeft.id, numericValue: 32 + (month % 2) },
-          { completionId: comp[0].id, metricId: frontRight.id, numericValue: 33 - (month % 2) },
-          { completionId: comp[0].id, metricId: rearLeft.id, numericValue: 31 + month },
-          { completionId: comp[0].id, metricId: rearRight.id, numericValue: 32 },
-        ]);
+    // 16. Drink Water - 8x per day with refractory (frequency task)
+    const [drinkWater] = await db.insert(tasks).values({
+      title: "Drink Water",
+      description: "Stay hydrated - 8 glasses per day",
+      taskType: "frequency",
+      targetCount: 8,
+      targetPeriod: "day",
+      refractoryMinutes: 60, // At least 1 hour between glasses
+      categoryId: healthCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: drinkWater.id, tagId: quickTag.id }]);
+
+    // 17. Read - 3x per week (frequency task)
+    const [read] = await db.insert(tasks).values({
+      title: "Read for 30 Minutes",
+      description: "Reading books or articles",
+      taskType: "frequency",
+      targetCount: 3,
+      targetPeriod: "week",
+      categoryId: healthCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: read.id, tagId: nightTag.id }]);
+    const [pagesReadMetric] = await db.insert(taskMetrics).values({ taskId: read.id, name: "Pages Read", unit: "", dataType: "number" }).returning();
+    const [bookTitleMetric] = await db.insert(taskMetrics).values({ taskId: read.id, name: "Book Title", unit: "", dataType: "text" }).returning();
+    const bookTitles = ["Atomic Habits", "Deep Work", "The Psychology of Money", "Thinking Fast and Slow"];
+    for (let i = 12; i >= 0; i--) {
+      if (i % 2 === 0 || i % 3 === 0) {
+        await this.completeTaskWithStreak(read.id, userId, read, daysAgo(i, 5));
+        const comp = await db.select().from(completions).where(eq(completions.taskId, read.id)).orderBy(desc(completions.completedAt)).limit(1);
+        if (comp[0]) {
+          await db.insert(metricValues).values([
+            { completionId: comp[0].id, metricId: pagesReadMetric.id, numericValue: 15 + (i * 3) % 25 },
+            { completionId: comp[0].id, metricId: bookTitleMetric.id, textValue: bookTitles[i % 4] },
+          ]);
+        }
       }
     }
 
-    return { success: true, message: "Demo profile seeded successfully" };
+    // 18. Call Family - 2x per month
+    const [callFamily] = await db.insert(tasks).values({
+      title: "Call Family",
+      description: "Check in with parents or siblings",
+      taskType: "frequency",
+      targetCount: 2,
+      targetPeriod: "month",
+      categoryId: healthCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await this.completeTaskWithStreak(callFamily.id, userId, callFamily, daysAgo(5));
+    await this.completeTaskWithStreak(callFamily.id, userId, callFamily, daysAgo(20));
+    await this.completeTaskWithStreak(callFamily.id, userId, callFamily, daysAgo(35));
+
+    return { success: true, message: "Demo profile seeded with comprehensive sample data" };
   }
 
   async getCategories(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Category[]> {
@@ -1196,7 +1577,35 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(completions.completedAt));
   }
 
-  async getAllCompletions(userId: string): Promise<Completion[]> {
+  async getAllCompletions(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Completion[]> {
+    if (profileId !== undefined && profileId !== null) {
+      // Filter by specific profile
+      const result = await db.select({
+        completion: completions,
+      })
+      .from(completions)
+      .innerJoin(tasks, eq(completions.taskId, tasks.id))
+      .where(and(eq(tasks.userId, userId), eq(tasks.profileId, profileId)))
+      .orderBy(desc(completions.completedAt));
+      return result.map(r => r.completion);
+    }
+    
+    // For aggregate view, optionally exclude demo profile data
+    if (excludeDemo) {
+      const demoProfiles = await db.select({ id: profiles.id }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.isDemo, true)));
+      const demoProfileIds = demoProfiles.map(p => p.id);
+      if (demoProfileIds.length > 0) {
+        const result = await db.select({
+          completion: completions,
+        })
+        .from(completions)
+        .innerJoin(tasks, eq(completions.taskId, tasks.id))
+        .where(and(eq(tasks.userId, userId), notInArray(tasks.profileId, demoProfileIds)))
+        .orderBy(desc(completions.completedAt));
+        return result.map(r => r.completion);
+      }
+    }
+    
     const result = await db.select({
       completion: completions,
     })
@@ -1315,7 +1724,34 @@ export class DatabaseStorage implements IStorage {
     return streak;
   }
 
-  async getAllStreaks(userId: string): Promise<TaskStreak[]> {
+  async getAllStreaks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<TaskStreak[]> {
+    if (profileId !== undefined && profileId !== null) {
+      // Filter by specific profile - join with tasks to get profileId
+      const result = await db.select({
+        streak: taskStreaks
+      })
+      .from(taskStreaks)
+      .innerJoin(tasks, eq(taskStreaks.taskId, tasks.id))
+      .where(and(eq(taskStreaks.userId, userId), eq(tasks.profileId, profileId)))
+      .orderBy(desc(taskStreaks.currentStreak));
+      return result.map(r => r.streak);
+    }
+    
+    if (excludeDemo) {
+      const demoProfiles = await db.select({ id: profiles.id }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.isDemo, true)));
+      const demoProfileIds = demoProfiles.map(p => p.id);
+      if (demoProfileIds.length > 0) {
+        const result = await db.select({
+          streak: taskStreaks
+        })
+        .from(taskStreaks)
+        .innerJoin(tasks, eq(taskStreaks.taskId, tasks.id))
+        .where(and(eq(taskStreaks.userId, userId), notInArray(tasks.profileId, demoProfileIds)))
+        .orderBy(desc(taskStreaks.currentStreak));
+        return result.map(r => r.streak);
+      }
+    }
+    
     return await db.select().from(taskStreaks)
       .where(eq(taskStreaks.userId, userId))
       .orderBy(desc(taskStreaks.currentStreak));

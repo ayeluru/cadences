@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { TaskWithDetails } from "@shared/schema";
+import { useProfileContext } from "@/contexts/ProfileContext";
 
 interface MetricHistory {
   metricId: number;
@@ -31,8 +32,15 @@ const CHART_COLORS = [
 ];
 
 export default function MetricsPage() {
+  const { currentProfile } = useProfileContext();
+  const queryParams = currentProfile?.id ? `?profileId=${currentProfile.id}` : '';
   const { data: tasks, isLoading: tasksLoading } = useQuery<TaskWithDetails[]>({
-    queryKey: ["/api/tasks"],
+    queryKey: ["/api/tasks", currentProfile?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/tasks${queryParams}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch tasks");
+      return res.json();
+    },
   });
 
   const allMetrics = tasks?.flatMap(task => 

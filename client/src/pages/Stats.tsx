@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { useProfileContext } from "@/contexts/ProfileContext";
 
 interface StreakData {
   id: number;
@@ -20,9 +21,16 @@ interface StreakData {
 }
 
 export default function Stats() {
-  const { data: stats, isLoading } = useStats();
+  const { currentProfile } = useProfileContext();
+  const { data: stats, isLoading } = useStats(currentProfile?.id);
   const { data: streaks = [], isLoading: streaksLoading } = useQuery<StreakData[]>({
-    queryKey: ['/api/streaks'],
+    queryKey: ['/api/streaks', currentProfile?.id],
+    queryFn: async () => {
+      const queryParams = currentProfile?.id ? `?profileId=${currentProfile.id}` : '';
+      const res = await fetch(`/api/streaks${queryParams}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch streaks");
+      return res.json();
+    },
   });
 
   if (isLoading) {

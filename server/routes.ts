@@ -432,6 +432,17 @@ export async function registerRoutes(
     }
   });
 
+  // Clear all data from ALL profiles (keeps the profiles themselves)
+  app.delete("/api/profiles/all/data", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      await storage.deleteAllProfilesData(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Routines
   app.get("/api/routines", requireAuth, async (req: any, res) => {
     const profileId = req.query.profileId ? Number(req.query.profileId) : undefined;
@@ -681,7 +692,9 @@ export async function registerRoutes(
   // Streaks endpoint
   app.get("/api/streaks", requireAuth, async (req: any, res) => {
     const userId = req.user.claims.sub;
-    const allStreaks = await storage.getAllStreaks(userId);
+    const profileId = req.query.profileId ? Number(req.query.profileId) : undefined;
+    const excludeDemo = profileId === undefined;
+    const allStreaks = await storage.getAllStreaks(userId, profileId, excludeDemo);
     
     // Enrich with task names
     const enrichedStreaks = await Promise.all(allStreaks.map(async (streak) => {
@@ -697,8 +710,10 @@ export async function registerRoutes(
 
   app.get(api.stats.get.path, requireAuth, async (req: any, res) => {
     const userId = req.user.claims.sub;
-    const completions = await storage.getAllCompletions(userId);
-    const tasks = await storage.getTasks(userId);
+    const profileId = req.query.profileId ? Number(req.query.profileId) : undefined;
+    const excludeDemo = profileId === undefined;
+    const completions = await storage.getAllCompletions(userId, profileId, excludeDemo);
+    const tasks = await storage.getTasks(userId, profileId, excludeDemo);
     const enrichedTasks = await Promise.all(tasks.map(t => enrichTask(t, userId)));
     
     // Calculate stats

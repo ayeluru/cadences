@@ -1,20 +1,16 @@
 import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useRoutines, useCreateRoutine, useDeleteRoutine } from "@/hooks/use-routines";
-import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData } from "@/hooks/use-profiles";
+import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Tag as TagIcon, Folder, Trash2, Database, RefreshCw, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
-import { Loader2 } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,32 +37,12 @@ export default function Settings() {
   const deleteProfileMutation = useDeleteProfile();
   const createDemoMutation = useCreateDemoProfile();
   const clearProfileDataMutation = useClearProfileData();
-  const { toast } = useToast();
+  const clearAllProfilesDataMutation = useClearAllProfilesData();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newRoutineName, setNewRoutineName] = useState("");
   const [newProfileName, setNewProfileName] = useState("");
-
-  const clearDataMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("DELETE", "/api/clear-data");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/completions"] });
-      toast({ title: "Data cleared", description: "All your data has been removed." });
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
 
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
@@ -414,41 +390,93 @@ export default function Settings() {
           <CardTitle className="flex items-center gap-2">
             <Database className="w-5 h-5 text-primary" /> Data Management
           </CardTitle>
-          <CardDescription>Manage your account data.</CardDescription>
+          <CardDescription>Manage your data. Choose to clear data for just the current profile or all profiles.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" data-testid="button-clear-data">
-                <Trash2 className="w-4 h-4 mr-2" />
-                Clear All Data
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-destructive" />
-                  Clear all data?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete all your tasks, completions, streaks, categories, tags, and routines across all profiles. This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => clearDataMutation.mutate()}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  data-testid="button-confirm-clear"
+        <CardContent className="space-y-6">
+          {/* Clear Current Profile Data */}
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Current Profile</h4>
+            <p className="text-xs text-muted-foreground">
+              Clear all data from the currently selected profile ({currentProfile?.name || "none"}).
+            </p>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                  disabled={!currentProfile}
+                  data-testid="button-clear-profile-data"
                 >
-                  {clearDataMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : null}
-                  Yes, delete everything
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  <Eraser className="w-4 h-4 mr-2" />
+                  Clear "{currentProfile?.name}" Data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-destructive" />
+                    Clear profile data?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete all tasks, completions, streaks, categories, tags, and routines in the <strong>"{currentProfile?.name}"</strong> profile only. The profile itself will remain. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => currentProfile && clearProfileDataMutation.mutate(currentProfile.id)}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    data-testid="button-confirm-clear-profile"
+                  >
+                    {clearProfileDataMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Clear Profile Data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+
+          {/* Clear All Profiles Data */}
+          <div className="space-y-2 pt-4 border-t">
+            <h4 className="text-sm font-medium text-destructive">All Profiles</h4>
+            <p className="text-xs text-muted-foreground">
+              Clear all data from all profiles. This is a destructive action.
+            </p>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" data-testid="button-clear-all-data">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear All Profiles Data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-destructive" />
+                    Clear ALL profiles data?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete <strong>ALL</strong> your tasks, completions, streaks, categories, tags, and routines across <strong>every profile</strong>. Your profiles will remain but will be empty. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => clearAllProfilesDataMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    data-testid="button-confirm-clear-all"
+                  >
+                    {clearAllProfilesDataMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Yes, delete all data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </CardContent>
       </Card>
 
