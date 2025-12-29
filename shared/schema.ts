@@ -6,17 +6,29 @@ import { users } from "./models/auth";
 
 export * from "./models/auth";
 
+// Profiles - allow users to organize tasks into different contexts (Work, Personal, Exercise, Demo)
+export const profiles = pgTable("profiles", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(), // URL-friendly identifier
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  isDemo: boolean("is_demo").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   parentId: integer("parent_id"),
   userId: varchar("user_id").references(() => users.id).notNull(),
+  profileId: integer("profile_id").references(() => profiles.id),
 });
 
 export const tags = pgTable("tags", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
+  profileId: integer("profile_id").references(() => profiles.id),
 });
 
 // Routines - group of exercises/tasks done together
@@ -25,6 +37,7 @@ export const routines = pgTable("routines", {
   name: text("name").notNull(),
   description: text("description"),
   userId: varchar("user_id").references(() => users.id).notNull(),
+  profileId: integer("profile_id").references(() => profiles.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -49,6 +62,9 @@ export const tasks = pgTable("tasks", {
   
   // Routine this task belongs to (optional)
   routineId: integer("routine_id"),
+  
+  // Profile this task belongs to
+  profileId: integer("profile_id").references(() => profiles.id),
   
   // Refractory period - minimum time between completions counting toward frequency target (in minutes)
   // For frequency tasks, prevents gaming by doing all reps back-to-back
@@ -95,15 +111,25 @@ export const metricValues = pgTable("metric_values", {
 });
 
 // Relations
-export const usersRelations = relations(users, ({ many }) => ({
+export const profilesRelations = relations(profiles, ({ one, many }) => ({
+  user: one(users, { fields: [profiles.userId], references: [users.id] }),
   tasks: many(tasks),
   categories: many(categories),
   tags: many(tags),
   routines: many(routines),
 }));
 
+export const usersRelations = relations(users, ({ many }) => ({
+  tasks: many(tasks),
+  categories: many(categories),
+  tags: many(tags),
+  routines: many(routines),
+  profiles: many(profiles),
+}));
+
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
   user: one(users, { fields: [categories.userId], references: [users.id] }),
+  profile: one(profiles, { fields: [categories.profileId], references: [profiles.id] }),
   parent: one(categories, { fields: [categories.parentId], references: [categories.id], relationName: "subcategories" }),
   subcategories: many(categories, { relationName: "subcategories" }),
   tasks: many(tasks),
@@ -111,11 +137,13 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 
 export const routinesRelations = relations(routines, ({ one, many }) => ({
   user: one(users, { fields: [routines.userId], references: [users.id] }),
+  profile: one(profiles, { fields: [routines.profileId], references: [profiles.id] }),
   tasks: many(tasks),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
   user: one(users, { fields: [tasks.userId], references: [users.id] }),
+  profile: one(profiles, { fields: [tasks.profileId], references: [profiles.id] }),
   category: one(categories, { fields: [tasks.categoryId], references: [categories.id] }),
   routine: one(routines, { fields: [tasks.routineId], references: [routines.id] }),
   parentTask: one(tasks, { fields: [tasks.parentTaskId], references: [tasks.id], relationName: "variations" }),
@@ -127,6 +155,7 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
 
 export const tagsRelations = relations(tags, ({ one, many }) => ({
   user: one(users, { fields: [tags.userId], references: [users.id] }),
+  profile: one(profiles, { fields: [tags.profileId], references: [profiles.id] }),
   tasks: many(taskTags),
 }));
 
@@ -151,6 +180,7 @@ export const metricValuesRelations = relations(metricValues, ({ one }) => ({
 }));
 
 // Schemas
+export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, createdAt: true });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, userId: true });
 export const insertTagSchema = createInsertSchema(tags).omit({ id: true, userId: true });
 export const insertRoutineSchema = createInsertSchema(routines).omit({ id: true, userId: true, createdAt: true });
@@ -160,6 +190,7 @@ export const insertCompletionSchema = createInsertSchema(completions).omit({ id:
 export const insertMetricValueSchema = createInsertSchema(metricValues).omit({ id: true });
 
 // Types
+export type Profile = typeof profiles.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
 export type Routine = typeof routines.$inferSelect;
@@ -170,6 +201,7 @@ export type Completion = typeof completions.$inferSelect;
 export type MetricValue = typeof metricValues.$inferSelect;
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type InsertProfile = z.infer<typeof insertProfileSchema>;
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type InsertTag = z.infer<typeof insertTagSchema>;
 export type InsertRoutine = z.infer<typeof insertRoutineSchema>;

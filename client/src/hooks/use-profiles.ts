@@ -1,0 +1,83 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Profile } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+export function useProfiles() {
+  return useQuery<Profile[]>({
+    queryKey: ['/api/profiles'],
+  });
+}
+
+export function useDefaultProfile() {
+  return useQuery<Profile>({
+    queryKey: ['/api/profiles/default'],
+  });
+}
+
+export function useCreateProfile() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (data: { name: string; slug?: string; isDemo?: boolean }) => {
+      const res = await apiRequest('POST', '/api/profiles', data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/profiles'] });
+      toast({ title: "Profile created", description: "New profile has been created." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+}
+
+export function useUpdateProfile() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; name?: string; slug?: string }) => {
+      const res = await apiRequest('PATCH', `/api/profiles/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/profiles'] });
+      toast({ title: "Profile updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+}
+
+export function useDeleteProfile() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest('DELETE', `/api/profiles/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/profiles'] });
+      toast({ title: "Profile deleted", description: "Profile and all its data have been removed." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+}
+
+export function useCreateDemoProfile() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/profiles/demo');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/profiles'] });
+      toast({ title: "Demo profile created", description: "Sample data is ready to explore." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+}

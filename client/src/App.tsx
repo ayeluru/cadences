@@ -17,6 +17,7 @@ import MetricsPage from "@/pages/Metrics";
 import AuthPage from "@/pages/AuthPage";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/use-auth";
+import { ProfileProvider } from "@/contexts/ProfileContext";
 import { Loader2 } from "lucide-react";
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
@@ -35,9 +36,11 @@ function PrivateRoute({ component: Component }: { component: React.ComponentType
   }
 
   return (
-    <AppLayout>
-      <Component />
-    </AppLayout>
+    <ProfileProvider>
+      <AppLayout>
+        <Component />
+      </AppLayout>
+    </ProfileProvider>
   );
 }
 

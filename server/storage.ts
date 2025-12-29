@@ -1,9 +1,9 @@
 import { 
-  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues, taskStreaks,
+  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues, taskStreaks, profiles,
   type User, type Category, type Tag, type Task, type TaskTag, type Completion,
-  type Routine, type TaskMetric, type MetricValue, type TaskStreak,
+  type Routine, type TaskMetric, type MetricValue, type TaskStreak, type Profile,
   type InsertCategory, type InsertTag, type InsertTask, type InsertRoutine,
-  type InsertTaskMetric, type InsertMetricValue
+  type InsertTaskMetric, type InsertMetricValue, type InsertProfile
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
@@ -11,6 +11,14 @@ import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
+  
+  // Profiles
+  getProfiles(userId: string): Promise<Profile[]>;
+  getProfile(id: number, userId: string): Promise<Profile | undefined>;
+  createProfile(userId: string, profile: InsertProfile): Promise<Profile>;
+  updateProfile(id: number, userId: string, updates: Partial<InsertProfile>): Promise<Profile>;
+  deleteProfile(id: number, userId: string): Promise<void>;
+  getOrCreateDefaultProfile(userId: string): Promise<Profile>;
   
   // Categories
   getCategories(userId: string): Promise<Category[]>;
@@ -661,6 +669,206 @@ export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
+  }
+
+  // Profile methods
+  async getProfiles(userId: string): Promise<Profile[]> {
+    return await db.select().from(profiles).where(eq(profiles.userId, userId));
+  }
+
+  async getProfile(id: number, userId: string): Promise<Profile | undefined> {
+    const [profile] = await db.select().from(profiles)
+      .where(and(eq(profiles.id, id), eq(profiles.userId, userId)));
+    return profile;
+  }
+
+  async createProfile(userId: string, profile: InsertProfile): Promise<Profile> {
+    const [newProfile] = await db.insert(profiles)
+      .values({ ...profile, userId })
+      .returning();
+    return newProfile;
+  }
+
+  async updateProfile(id: number, userId: string, updates: Partial<InsertProfile>): Promise<Profile> {
+    const [profile] = await db.select().from(profiles)
+      .where(and(eq(profiles.id, id), eq(profiles.userId, userId)));
+    if (!profile) {
+      throw new Error("Profile not found or unauthorized");
+    }
+    const [updated] = await db.update(profiles)
+      .set(updates)
+      .where(eq(profiles.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteProfile(id: number, userId: string): Promise<void> {
+    const [profile] = await db.select().from(profiles)
+      .where(and(eq(profiles.id, id), eq(profiles.userId, userId)));
+    if (!profile) {
+      throw new Error("Profile not found or unauthorized");
+    }
+    
+    // Get all tasks in this profile
+    const profileTasks = await db.select().from(tasks)
+      .where(and(eq(tasks.profileId, id), eq(tasks.userId, userId)));
+    const taskIds = profileTasks.map(t => t.id);
+    
+    if (taskIds.length > 0) {
+      // Delete completions and their metric values
+      const taskCompletions = await db.select().from(completions)
+        .where(inArray(completions.taskId, taskIds));
+      const completionIds = taskCompletions.map(c => c.id);
+      
+      if (completionIds.length > 0) {
+        await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
+      }
+      await db.delete(completions).where(inArray(completions.taskId, taskIds));
+      await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
+      await db.delete(taskTags).where(inArray(taskTags.taskId, taskIds));
+      await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
+      await db.delete(tasks).where(inArray(tasks.id, taskIds));
+    }
+    
+    // Delete categories, tags, and routines in this profile
+    await db.delete(categories).where(and(eq(categories.profileId, id), eq(categories.userId, userId)));
+    await db.delete(tags).where(and(eq(tags.profileId, id), eq(tags.userId, userId)));
+    await db.delete(routines).where(and(eq(routines.profileId, id), eq(routines.userId, userId)));
+    
+    // Delete the profile itself
+    await db.delete(profiles).where(eq(profiles.id, id));
+  }
+
+  async getOrCreateDefaultProfile(userId: string): Promise<Profile> {
+    // Check if user has any profiles
+    const existingProfiles = await this.getProfiles(userId);
+    if (existingProfiles.length > 0) {
+      // Return the first non-demo profile, or the first one if all are demo
+      const nonDemoProfile = existingProfiles.find(p => !p.isDemo);
+      return nonDemoProfile || existingProfiles[0];
+    }
+    
+    // Create default profile
+    return await this.createProfile(userId, {
+      name: "Personal",
+      slug: "personal",
+      isDemo: false
+    });
+  }
+
+  // Seed demo profile with sample data
+  async seedDemoProfile(userId: string, profileId: number): Promise<{ success: boolean, message: string }> {
+    const now = new Date();
+    
+    // Create categories for demo profile
+    const [householdCat] = await db.insert(categories).values({ name: "Household", userId, profileId }).returning();
+    const [healthCat] = await db.insert(categories).values({ name: "Health & Hygiene", userId, profileId }).returning();
+    const [exerciseCat] = await db.insert(categories).values({ name: "Exercise", userId, profileId }).returning();
+    const [carCat] = await db.insert(categories).values({ name: "Car Maintenance", userId, profileId }).returning();
+    const [financeCat] = await db.insert(categories).values({ name: "Finance", userId, profileId }).returning();
+
+    // Create tags for demo profile
+    const [urgentTag] = await db.insert(tags).values({ name: "Urgent", userId, profileId }).returning();
+    const [quickTag] = await db.insert(tags).values({ name: "Quick", userId, profileId }).returning();
+    const [outdoorsTag] = await db.insert(tags).values({ name: "Outdoors", userId, profileId }).returning();
+
+    // Create routines for demo profile
+    const [morningRoutine] = await db.insert(routines).values({ name: "Morning Routine", description: "Start the day right", userId, profileId }).returning();
+    const [legDayRoutine] = await db.insert(routines).values({ name: "Leg Day", description: "Lower body workout", userId, profileId }).returning();
+    const [weeklyChoresRoutine] = await db.insert(routines).values({ name: "Weekly Chores", description: "Keep the house clean", userId, profileId }).returning();
+
+    // Helper to create dates in the past
+    const daysAgo = (days: number) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - days);
+      d.setHours(8 + (days % 12), (days * 7) % 60, 0, 0);
+      return d;
+    };
+
+    // Create sample tasks with completions
+    // Daily task: Brush Teeth
+    const [brushTeeth] = await db.insert(tasks).values({
+      title: "Brush Teeth",
+      description: "Morning and night",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "days",
+      categoryId: healthCat.id,
+      routineId: morningRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    for (let i = 14; i >= 0; i--) {
+      await this.completeTaskWithStreak(brushTeeth.id, userId, brushTeeth, daysAgo(i));
+    }
+
+    // Weekly task: Do Laundry
+    const [laundry] = await db.insert(tasks).values({
+      title: "Do Laundry",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "weeks",
+      categoryId: householdCat.id,
+      routineId: weeklyChoresRoutine.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    for (let week = 4; week >= 0; week--) {
+      await this.completeTaskWithStreak(laundry.id, userId, laundry, daysAgo(week * 7));
+    }
+
+    // Frequency task: Exercise 3x/week
+    const [exercise] = await db.insert(tasks).values({
+      title: "Exercise",
+      description: "Any workout counts",
+      taskType: "frequency",
+      targetCount: 3,
+      targetPeriod: "week",
+      categoryId: exerciseCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    for (let i = 10; i >= 0; i--) {
+      if (i % 2 === 0 || i % 3 === 0) {
+        await this.completeTaskWithStreak(exercise.id, userId, exercise, daysAgo(i));
+      }
+    }
+
+    // Monthly task: Check Tire Pressure with metrics
+    const [tirePressure] = await db.insert(tasks).values({
+      title: "Check Tire Pressure",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "months",
+      categoryId: carCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    
+    const [frontLeft] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Front Left", unit: "psi", dataType: "number" }).returning();
+    const [frontRight] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Front Right", unit: "psi", dataType: "number" }).returning();
+    const [rearLeft] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Rear Left", unit: "psi", dataType: "number" }).returning();
+    const [rearRight] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Rear Right", unit: "psi", dataType: "number" }).returning();
+    
+    // Add some completions with metrics
+    for (let month = 2; month >= 0; month--) {
+      const completion = await this.completeTaskWithStreak(tirePressure.id, userId, tirePressure, daysAgo(month * 30));
+      const comp = await db.select().from(completions).where(eq(completions.taskId, tirePressure.id)).orderBy(desc(completions.completedAt)).limit(1);
+      if (comp[0]) {
+        await db.insert(metricValues).values([
+          { completionId: comp[0].id, metricId: frontLeft.id, numericValue: 32 + (month % 2) },
+          { completionId: comp[0].id, metricId: frontRight.id, numericValue: 33 - (month % 2) },
+          { completionId: comp[0].id, metricId: rearLeft.id, numericValue: 31 + month },
+          { completionId: comp[0].id, metricId: rearRight.id, numericValue: 32 },
+        ]);
+      }
+    }
+
+    return { success: true, message: "Demo profile seeded successfully" };
   }
 
   async getCategories(userId: string): Promise<Category[]> {

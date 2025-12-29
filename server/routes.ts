@@ -363,6 +363,56 @@ export async function registerRoutes(
     res.status(201).json(tag);
   });
 
+  // Profiles
+  app.get("/api/profiles", requireAuth, async (req: any, res) => {
+    const profilesList = await storage.getProfiles(req.user.claims.sub);
+    res.json(profilesList);
+  });
+
+  app.get("/api/profiles/default", requireAuth, async (req: any, res) => {
+    const profile = await storage.getOrCreateDefaultProfile(req.user.claims.sub);
+    res.json(profile);
+  });
+
+  app.post("/api/profiles", requireAuth, async (req: any, res) => {
+    const { name, slug, isDemo } = req.body;
+    const profile = await storage.createProfile(req.user.claims.sub, { 
+      name, 
+      slug: slug || name.toLowerCase().replace(/\s+/g, '-'),
+      isDemo: isDemo || false 
+    });
+    res.status(201).json(profile);
+  });
+
+  app.patch("/api/profiles/:id", requireAuth, async (req: any, res) => {
+    try {
+      const profileId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      const profile = await storage.updateProfile(profileId, userId, req.body);
+      res.json(profile);
+    } catch (error: any) {
+      res.status(404).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/profiles/:id", requireAuth, async (req: any, res) => {
+    try {
+      const profileId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      // Don't allow deleting the last profile
+      const allProfiles = await storage.getProfiles(userId);
+      if (allProfiles.length <= 1) {
+        return res.status(400).json({ error: "Cannot delete the last profile" });
+      }
+      
+      await storage.deleteProfile(profileId, userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(404).json({ error: error.message });
+    }
+  });
+
   // Routines
   app.get("/api/routines", requireAuth, async (req: any, res) => {
     const routinesList = await storage.getRoutines(req.user.claims.sub);
@@ -661,6 +711,42 @@ export async function registerRoutes(
     try {
       const result = await storage.seedUserData(userId);
       res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Create demo profile with sample data
+  app.post("/api/profiles/demo", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    try {
+      // Check if demo profile already exists
+      const existingProfiles = await storage.getProfiles(userId);
+      const demoProfile = existingProfiles.find(p => p.isDemo);
+      
+      if (demoProfile) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Demo profile already exists. Delete it first to create a new one.",
+          profile: demoProfile
+        });
+      }
+      
+      // Create demo profile
+      const profile = await storage.createProfile(userId, {
+        name: "Demo",
+        slug: "demo",
+        isDemo: true
+      });
+      
+      // Seed the demo profile with sample data
+      const result = await storage.seedDemoProfile(userId, profile.id);
+      
+      res.status(201).json({ 
+        success: true, 
+        message: "Demo profile created with sample data",
+        profile 
+      });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }

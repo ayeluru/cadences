@@ -4,6 +4,7 @@ import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, C
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -34,6 +35,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             Cadences
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Track your recurring tasks.</p>
+          <div className="mt-3">
+            <ProfileSwitcher />
+          </div>
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">

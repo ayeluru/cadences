@@ -11,6 +11,7 @@ The application supports two task types:
 Tasks can be organized with categories and tags, grouped into routines, and track custom metrics (like weight, reps, duration) with each completion.
 
 ### Key Features
+- **Profiles**: Organize tasks into separate contexts (Work, Personal, Exercise, Demo) with independent data
 - **Dynamic Urgency Calculation**: "Due soon" threshold is 20% of task cadence, clamped between 1-14 days
 - **Refractory Period**: For frequency tasks, prevents gaming by requiring minimum time between completions
 - **Enhanced Calendar**: Shows completions, missed tasks, and future due dates with toggleable views
@@ -58,11 +59,12 @@ The server uses a storage abstraction layer (`server/storage.ts`) that implement
 Key database tables:
 - `users` - User accounts (managed by Replit Auth)
 - `sessions` - Session storage for authentication
-- `tasks` - Task definitions with interval/frequency settings and refractoryMinutes
+- `profiles` - User profiles for organizing tasks into contexts (Work, Personal, etc.)
+- `tasks` - Task definitions with interval/frequency settings and refractoryMinutes (scoped by profileId)
 - `completions` - Append-only log of task completions
-- `categories` - Hierarchical task organization
-- `tags` - Flexible task labeling
-- `routines` - Groups of related tasks
+- `categories` - Hierarchical task organization (scoped by profileId)
+- `tags` - Flexible task labeling (scoped by profileId)
+- `routines` - Groups of related tasks (scoped by profileId)
 - `task_metrics` - Custom metrics per task
 - `metric_values` - Recorded metric values per completion
 
@@ -82,6 +84,11 @@ Key database tables:
 - Implemented collapsible task summaries in calendar day details
 - Created dedicated Metrics page with trend charts for all tracked metrics
 - Updated User Guide with dynamic urgency info and routine creation steps
+- Implemented Profiles system: users can create multiple profiles (Work, Personal, Exercise, etc.)
+- Added ProfileContext for state management with localStorage persistence
+- Created ProfileSwitcher component in sidebar header for quick profile switching
+- Added Profiles management section in Settings page with create/delete functionality
+- Demo profile feature allows users to try the app with sample data
 
 ## External Dependencies
 
