@@ -21,6 +21,7 @@ const formSchema = insertTaskSchema.partial().extend({
   intervalValue: z.coerce.number().min(1, "Interval must be at least 1").optional(),
   categoryId: z.coerce.number().optional().nullable(),
   parentTaskId: z.coerce.number().optional().nullable(),
+  refractoryMinutes: z.coerce.number().min(0).optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -62,6 +63,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       intervalUnit: task.intervalUnit as any,
       categoryId: task.categoryId ?? undefined,
       parentTaskId: task.parentTaskId ?? undefined,
+      refractoryMinutes: task.refractoryMinutes ?? undefined,
     }
   });
 
@@ -73,6 +75,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         intervalUnit: task.intervalUnit as any,
         categoryId: task.categoryId ?? undefined,
         parentTaskId: task.parentTaskId ?? undefined,
+        refractoryMinutes: task.refractoryMinutes ?? undefined,
       });
       setSelectedTagIds(task.tags?.map(t => t.id) || []);
       setNewMetrics([]);
@@ -98,6 +101,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         id: task.id,
         ...data,
         parentTaskId: data.parentTaskId || null,
+        refractoryMinutes: data.refractoryMinutes || null,
         tagIds: selectedTagIds
       }, {
         onSuccess: () => {
@@ -163,26 +167,48 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
               <Input id="edit-title" data-testid="input-edit-title" {...register("title")} />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-intervalValue">Frequency Value</Label>
-                <Input type="number" id="edit-intervalValue" data-testid="input-edit-interval" min="1" {...register("intervalValue")} />
+            {task.taskType === 'interval' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-intervalValue">Frequency Value</Label>
+                  <Input type="number" id="edit-intervalValue" data-testid="input-edit-interval" min="1" {...register("intervalValue")} />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="edit-intervalUnit">Unit</Label>
+                  <select 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    data-testid="select-edit-unit"
+                    {...register("intervalUnit")}
+                  >
+                    <option value="days">Days</option>
+                    <option value="weeks">Weeks</option>
+                    <option value="months">Months</option>
+                    <option value="years">Years</option>
+                  </select>
+                </div>
               </div>
-              
+            )}
+
+            {task.taskType === 'frequency' && (
               <div className="space-y-2">
-                <Label htmlFor="edit-intervalUnit">Unit</Label>
-                <select 
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  data-testid="select-edit-unit"
-                  {...register("intervalUnit")}
-                >
-                  <option value="days">Days</option>
-                  <option value="weeks">Weeks</option>
-                  <option value="months">Months</option>
-                  <option value="years">Years</option>
-                </select>
+                <Label htmlFor="edit-refractoryMinutes">Minimum time between completions</Label>
+                <div className="flex gap-2 items-center">
+                  <Input 
+                    type="number" 
+                    id="edit-refractoryMinutes" 
+                    data-testid="input-edit-refractory"
+                    min="0" 
+                    placeholder="60"
+                    {...register("refractoryMinutes")} 
+                  />
+                  <span className="text-sm text-muted-foreground shrink-0">minutes</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Prevents gaming by requiring time between completions to count toward the target.
+                </p>
               </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="edit-category">Category</Label>

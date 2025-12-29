@@ -20,7 +20,7 @@ export default function UserGuide() {
           User Guide
         </h1>
         <p className="text-muted-foreground">
-          Everything you need to know about using Maintain to track your recurring tasks.
+          Everything you need to know about using Cadences to track your recurring tasks.
         </p>
       </div>
 
@@ -72,6 +72,12 @@ export default function UserGuide() {
                   <p className="text-xs">
                     Examples: Exercise 3x/week, Call parents 2x/month
                   </p>
+                  <div className="bg-muted/50 rounded-lg p-2 mt-2">
+                    <p className="text-xs">
+                      <strong>Refractory Period:</strong> For frequency tasks, you can set a minimum time between completions to prevent gaming. 
+                      E.g., if you set 60 minutes, doing squats 3 times in 3 minutes only counts as 1 completion toward your weekly goal.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -89,8 +95,18 @@ export default function UserGuide() {
           </AccordionTrigger>
           <AccordionContent className="pt-2 pb-4 space-y-4">
             <p className="text-muted-foreground">
-              Tasks are automatically sorted by urgency based on when they were last completed and their interval.
+              Tasks are automatically sorted by urgency based on when they were last completed and their interval. 
+              The "due soon" threshold is dynamic - it's 20% of the task's cadence, clamped between 1 and 14 days.
             </p>
+            <Card className="bg-muted/50 mb-4">
+              <CardContent className="pt-4">
+                <p className="text-sm">
+                  <strong>Dynamic threshold examples:</strong> A daily task shows "due soon" when less than 1 day remains. 
+                  A monthly task (30 days) shows "due soon" when less than 6 days remain. 
+                  A yearly task shows "due soon" 14 days before it's due.
+                </p>
+              </CardContent>
+            </Card>
             <div className="grid gap-3">
               <div className="flex items-center gap-3 p-3 rounded-lg border-l-4 border-l-red-500 bg-red-50/50 dark:bg-red-900/10">
                 <AlertCircle className="w-5 h-5 text-red-500" />
@@ -287,8 +303,23 @@ export default function UserGuide() {
                   </CardTitle>
                   <CardDescription>Bundle related tasks together</CardDescription>
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
+                <CardContent className="text-sm text-muted-foreground space-y-3">
                   <p>Create routines like "Morning Routine" or "Weekly Reset" to group tasks that you typically do together.</p>
+                  <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                    <p className="font-medium text-foreground">How to create a routine:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-xs">
+                      <li>Go to <strong>Manage</strong> in the sidebar</li>
+                      <li>Scroll to the <strong>Routines</strong> section</li>
+                      <li>Click <strong>Create Routine</strong></li>
+                      <li>Give it a name like "Morning Routine"</li>
+                      <li>Then edit any task and assign it to the routine</li>
+                    </ol>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">Morning Routine</Badge>
+                    <Badge variant="outline">Weekly Reset</Badge>
+                    <Badge variant="outline">Gym Day</Badge>
+                  </div>
                 </CardContent>
               </Card>
             </div>

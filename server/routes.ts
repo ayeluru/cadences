@@ -5,7 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { authStorage } from "./replit_integrations/auth/storage";
-import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, eachDayOfInterval, format } from "date-fns";
+import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, eachDayOfInterval, format } from "date-fns";
 
 // Get period boundaries for frequency-based tasks
 function getPeriodBounds(period: string): { start: Date, end: Date } {
@@ -471,6 +471,96 @@ export async function registerRoutes(
     
     const calendarData = await storage.getCompletionsForCalendar(userId, startDate, endDate);
     res.json(calendarData);
+  });
+
+  // Enhanced calendar API with completions, missed tasks, and future due dates
+  app.get("/api/calendar/enhanced", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const startStr = req.query.start as string;
+    const endStr = req.query.end as string;
+    
+    if (!startStr || !endStr) {
+      return res.status(400).json({ message: "Start and end dates required" });
+    }
+    
+    const startDate = parseISO(startStr);
+    const endDate = parseISO(endStr);
+    const today = new Date();
+    
+    // Get all completions in range
+    const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate);
+    
+    // Get all tasks to calculate missed and future due
+    const allTasks = await storage.getTasks(userId);
+    const enrichedTasks = await Promise.all(allTasks.map(t => enrichTask(t, userId)));
+    
+    // Build day-by-day data
+    const days = eachDayOfInterval({ start: startDate, end: endDate });
+    const calendarMap = new Map<string, {
+      date: string;
+      completions: Array<{ id: number; title: string; completedAt: string; taskId: number }>;
+      missed: Array<{ id: number; title: string; dueDate: string }>;
+      dueSoon: Array<{ id: number; title: string; dueDate: string }>;
+    }>();
+    
+    // Initialize all days
+    days.forEach(day => {
+      const dateStr = format(day, "yyyy-MM-dd");
+      calendarMap.set(dateStr, {
+        date: dateStr,
+        completions: [],
+        missed: [],
+        dueSoon: [],
+      });
+    });
+    
+    // Add completions
+    completionsData.forEach((dayData: any) => {
+      const existing = calendarMap.get(dayData.date);
+      if (existing) {
+        existing.completions = dayData.tasks.map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          completedAt: t.completedAt,
+          taskId: t.taskId || t.id,
+        }));
+      }
+    });
+    
+    // Calculate missed tasks (overdue before today) and upcoming due dates
+    for (const task of enrichedTasks) {
+      if (task.isArchived || task.parentTaskId) continue; // Skip archived and variations
+      
+      const nextDueDate = new Date(task.nextDue);
+      const nextDueDateStr = format(nextDueDate, "yyyy-MM-dd");
+      
+      // If task is overdue and due date is in range and before today
+      if (task.status === 'overdue' && isBefore(nextDueDate, today) && !isSameDay(nextDueDate, today)) {
+        const entry = calendarMap.get(nextDueDateStr);
+        if (entry) {
+          entry.missed.push({
+            id: task.id,
+            title: task.title,
+            dueDate: task.nextDue,
+          });
+        }
+      }
+      
+      // Future due dates - show tasks scheduled for future days (or today if not yet complete)
+      // Only show tasks that aren't completed for the current period
+      if ((isAfter(nextDueDate, today) || isSameDay(nextDueDate, today)) && task.status !== 'later') {
+        const entry = calendarMap.get(nextDueDateStr);
+        if (entry) {
+          entry.dueSoon.push({
+            id: task.id,
+            title: task.title,
+            dueDate: task.nextDue,
+          });
+        }
+      }
+    }
+    
+    res.json(Array.from(calendarMap.values()));
   });
 
   // Delete a completion

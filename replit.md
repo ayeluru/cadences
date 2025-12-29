@@ -1,14 +1,22 @@
-# Maintain - Personal Productivity & Maintenance Tracking App
+# Cadences - Personal Productivity & Maintenance Tracking App
 
 ## Overview
 
-Maintain is a personal productivity and maintenance tracking application designed to help users track recurring tasks based on cadence intervals rather than specific calendar dates. The core concept focuses on time since last completion, where each task has an interval (e.g., every 1 day, 2 weeks, 3 months) and the app continuously computes urgency based on how close tasks are to being overdue.
+Cadences is a personal productivity and maintenance tracking application designed to help users track recurring tasks based on cadence intervals rather than specific calendar dates. The core concept focuses on time since last completion, where each task has an interval (e.g., every 1 day, 2 weeks, 3 months) and the app continuously computes urgency based on how close tasks are to being overdue.
 
 The application supports two task types:
 - **Interval-based tasks**: Complete every X days/weeks/months/years
-- **Frequency-based tasks**: Complete X times per week/month
+- **Frequency-based tasks**: Complete X times per week/month (with optional refractory period)
 
 Tasks can be organized with categories and tags, grouped into routines, and track custom metrics (like weight, reps, duration) with each completion.
+
+### Key Features
+- **Dynamic Urgency Calculation**: "Due soon" threshold is 20% of task cadence, clamped between 1-14 days
+- **Refractory Period**: For frequency tasks, prevents gaming by requiring minimum time between completions
+- **Enhanced Calendar**: Shows completions, missed tasks, and future due dates with toggleable views
+- **Metrics Tracking**: Custom metrics per task with trend charts and history
+- **Streaks**: Visual streak tracking with grace period of 1.5x the interval
+- **Task Variations**: Link tasks to frequency-based goals (e.g., "Back Squat" counts toward "Exercise 3x/week")
 
 ## User Preferences
 
@@ -22,13 +30,15 @@ Preferred communication style: Simple, everyday language.
 - **State Management**: TanStack React Query for server state
 - **Styling**: Tailwind CSS with shadcn/ui component library
 - **Animations**: Framer Motion for smooth transitions
+- **Charts**: Recharts for metric trend visualization
 - **Build Tool**: Vite with custom plugins for Replit integration
 
 The frontend follows a mobile-first design with:
-- Bottom navigation on mobile screens
-- Sidebar navigation on desktop
+- Sidebar navigation on desktop, hamburger menu on mobile
 - Task cards showing urgency status (overdue, due soon, later, never done)
 - Views filtered by cadence magnitude (daily, weekly, monthly, yearly)
+- Calendar view with completion heatmap and day details
+- Dedicated Metrics page for trend analysis
 
 ### Backend Architecture
 - **Runtime**: Node.js with Express
@@ -48,7 +58,7 @@ The server uses a storage abstraction layer (`server/storage.ts`) that implement
 Key database tables:
 - `users` - User accounts (managed by Replit Auth)
 - `sessions` - Session storage for authentication
-- `tasks` - Task definitions with interval/frequency settings
+- `tasks` - Task definitions with interval/frequency settings and refractoryMinutes
 - `completions` - Append-only log of task completions
 - `categories` - Hierarchical task organization
 - `tags` - Flexible task labeling
@@ -60,6 +70,18 @@ Key database tables:
 - **Provider**: Replit Auth (OpenID Connect)
 - **Session Management**: express-session with connect-pg-simple for PostgreSQL session storage
 - **Implementation**: Located in `server/replit_integrations/auth/`
+
+## Recent Changes
+
+### December 29, 2025
+- Renamed application from "Maintain" to "Cadences"
+- Implemented percentage-based urgency calculation (20% of cadence, clamped 1-14 days)
+- Added refractoryMinutes field for frequency tasks to prevent gaming
+- Created enhanced calendar API with completions, missed tasks, and future due dates
+- Added calendar UI toggles (completed/missed/upcoming) with condensed mode
+- Implemented collapsible task summaries in calendar day details
+- Created dedicated Metrics page with trend charts for all tracked metrics
+- Updated User Guide with dynamic urgency info and routine creation steps
 
 ## External Dependencies
 

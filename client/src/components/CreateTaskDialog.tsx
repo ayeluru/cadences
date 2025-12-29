@@ -19,6 +19,7 @@ const formSchema = insertTaskSchema.extend({
   targetCount: z.coerce.number().min(1).optional().nullable(),
   categoryId: z.coerce.number().optional().nullable(),
   parentTaskId: z.coerce.number().optional().nullable(),
+  refractoryMinutes: z.coerce.number().min(0).optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema> & { tagIds: number[] };
@@ -63,6 +64,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       targetCount: null,
       targetPeriod: 'week',
       parentTaskId: null,
+      refractoryMinutes: null,
     }
   });
 
@@ -82,6 +84,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     } else {
       taskData.targetCount = data.targetCount;
       taskData.targetPeriod = data.targetPeriod;
+      taskData.refractoryMinutes = data.refractoryMinutes || null;
     }
 
     createMutation.mutate(taskData, {
@@ -106,6 +109,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
           targetCount: null,
           targetPeriod: 'week',
           parentTaskId: null,
+          refractoryMinutes: null,
         });
         setSelectedTagIds([]);
         setShowNewCategoryInput(false);
@@ -261,6 +265,25 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                   </select>
                 </div>
               </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="refractoryMinutes">Minimum time between completions (optional)</Label>
+                <div className="flex gap-2 items-center">
+                  <Input 
+                    type="number" 
+                    id="refractoryMinutes" 
+                    data-testid="input-refractory-minutes"
+                    min="0" 
+                    placeholder="60"
+                    {...register("refractoryMinutes")} 
+                  />
+                  <span className="text-sm text-muted-foreground shrink-0">minutes</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Prevents gaming by requiring time between completions. E.g., 60 minutes means doing 3 squats in 3 minutes only counts as 1 completion.
+                </p>
+              </div>
+              
               <p className="text-xs text-muted-foreground">
                 Create variations of this task to track different ways to fulfill this goal.
               </p>
