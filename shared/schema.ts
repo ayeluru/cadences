@@ -50,6 +50,10 @@ export const tasks = pgTable("tasks", {
   // Routine this task belongs to (optional)
   routineId: integer("routine_id"),
   
+  // Refractory period - minimum time between completions counting toward frequency target (in minutes)
+  // For frequency tasks, prevents gaming by doing all reps back-to-back
+  refractoryMinutes: integer("refractory_minutes"),
+  
   lastCompletedAt: timestamp("last_completed_at"),
   categoryId: integer("category_id").references(() => categories.id),
   userId: varchar("user_id").references(() => users.id).notNull(),

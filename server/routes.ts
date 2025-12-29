@@ -5,16 +5,66 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { authStorage } from "./replit_integrations/auth/storage";
-import { addDays, addWeeks, addMonths, addYears, differenceInDays, isBefore, isAfter, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, eachDayOfInterval, format } from "date-fns";
 
 // Get period boundaries for frequency-based tasks
 function getPeriodBounds(period: string): { start: Date, end: Date } {
   const now = new Date();
   if (period === 'week') {
     return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfWeek(now, { weekStartsOn: 0 }) };
-  } else {
+  } else if (period === 'month') {
     return { start: startOfMonth(now), end: endOfMonth(now) };
+  } else {
+    return { start: startOfYear(now), end: endOfYear(now) };
   }
+}
+
+// Calculate cadence duration in days
+function getCadenceDays(task: any): number {
+  if (task.taskType === 'frequency' && task.targetPeriod) {
+    // For frequency tasks, cadence = period / target
+    const periodDays = task.targetPeriod === 'week' ? 7 : task.targetPeriod === 'month' ? 30 : 365;
+    return periodDays / (task.targetCount || 1);
+  } else if (task.intervalValue && task.intervalUnit) {
+    // For interval tasks
+    switch (task.intervalUnit) {
+      case 'days': return task.intervalValue;
+      case 'weeks': return task.intervalValue * 7;
+      case 'months': return task.intervalValue * 30;
+      case 'years': return task.intervalValue * 365;
+      default: return task.intervalValue;
+    }
+  }
+  return 1; // Default to 1 day
+}
+
+// Calculate "due soon" threshold as 20% of cadence, clamped between 1 and 14 days
+function getDueSoonThreshold(cadenceDays: number): number {
+  const threshold = cadenceDays * 0.2;
+  return Math.max(1, Math.min(14, Math.ceil(threshold)));
+}
+
+// Filter completions respecting refractory period
+function filterCompletionsWithRefractory(completions: any[], refractoryMinutes: number | null): any[] {
+  if (!refractoryMinutes || refractoryMinutes <= 0) return completions;
+  
+  // Sort by date ascending
+  const sorted = [...completions].sort((a, b) => 
+    new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime()
+  );
+  
+  const filtered: any[] = [];
+  let lastValid: Date | null = null;
+  
+  for (const completion of sorted) {
+    const completedAt = new Date(completion.completedAt);
+    if (!lastValid || differenceInMinutes(completedAt, lastValid) >= refractoryMinutes) {
+      filtered.push(completion);
+      lastValid = completedAt;
+    }
+  }
+  
+  return filtered;
 }
 
 // Helper to calculate task details
@@ -35,20 +85,22 @@ async function enrichTask(task: any, userId: string) {
     const { start, end } = getPeriodBounds(task.targetPeriod);
     
     // Get completions for this task (and its variations) in the current period
-    const taskCompletions = await storage.getCompletionsInPeriod(task.id, start, end);
-    let totalCompletions = taskCompletions.length;
+    let allCompletions = await storage.getCompletionsInPeriod(task.id, start, end);
     
     // Also count completions from variations
     for (const variation of variations) {
       const varCompletions = await storage.getCompletionsInPeriod(variation.id, start, end);
-      totalCompletions += varCompletions.length;
+      allCompletions = [...allCompletions, ...varCompletions];
     }
     
-    completionsThisPeriod = totalCompletions;
-    targetProgress = Math.min(100, (totalCompletions / task.targetCount) * 100);
+    // Apply refractory period filter if set
+    const validCompletions = filterCompletionsWithRefractory(allCompletions, task.refractoryMinutes);
+    
+    completionsThisPeriod = validCompletions.length;
+    targetProgress = Math.min(100, (completionsThisPeriod / task.targetCount) * 100);
     
     // Due when we haven't hit target
-    if (totalCompletions >= task.targetCount) {
+    if (completionsThisPeriod >= task.targetCount) {
       nextDue = end; // Not due until next period
     } else {
       nextDue = new Date(); // Due now
@@ -73,6 +125,10 @@ async function enrichTask(task: any, userId: string) {
   const now = new Date();
   const daysUntilDue = differenceInDays(nextDue, now);
   
+  // Calculate dynamic "due soon" threshold based on cadence (20% of cadence, clamped 1-14 days)
+  const cadenceDays = getCadenceDays(task);
+  const dueSoonThreshold = getDueSoonThreshold(cadenceDays);
+  
   let status: 'overdue' | 'due_soon' | 'later' | 'never_done' = 'later';
   if (!task.lastCompletedAt && task.taskType !== 'frequency') {
     status = 'never_done';
@@ -87,7 +143,7 @@ async function enrichTask(task: any, userId: string) {
     }
   } else if (isBefore(nextDue, now)) {
     status = 'overdue';
-  } else if (daysUntilDue <= 3) {
+  } else if (daysUntilDue <= dueSoonThreshold) {
     status = 'due_soon';
   }
 

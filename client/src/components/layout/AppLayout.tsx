@@ -30,9 +30,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <aside className="hidden md:flex w-64 flex-col border-r bg-card/50 backdrop-blur-xl sticky top-0 h-screen">
         <div className="p-6 border-b border-border/50">
           <h1 className="text-2xl font-display font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            Maintain
+            Cadences
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Keep track of everything.</p>
+          <p className="text-sm text-muted-foreground mt-1">Track your recurring tasks.</p>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
@@ -80,7 +80,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Header */}
       <header className="md:hidden sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b flex items-center justify-between p-4">
-        <h1 className="text-xl font-display font-bold text-foreground">Maintain</h1>
+        <h1 className="text-xl font-display font-bold text-foreground">Cadences</h1>
         <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
           {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </Button>
