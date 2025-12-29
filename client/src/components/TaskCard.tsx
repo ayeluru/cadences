@@ -205,7 +205,7 @@ export function TaskCard({ task, showVariations = true }: TaskCardProps) {
               </Button>
             )}
 
-            {!isFrequencyTask && (
+            {(!isFrequencyTask || !hasVariations) && (
               <Button 
                 onClick={handleComplete}
                 disabled={completeMutation.isPending}
@@ -231,7 +231,7 @@ export function TaskCard({ task, showVariations = true }: TaskCardProps) {
                 <DropdownMenuItem onClick={() => setEditOpen(true)} data-testid={`menu-edit-${task.id}`}>
                   <Edit2 className="w-4 h-4 mr-2" /> Edit
                 </DropdownMenuItem>
-                {!isFrequencyTask && (
+                {(!isFrequencyTask || !hasVariations) && (
                   <DropdownMenuItem onClick={handleComplete} data-testid={`menu-complete-${task.id}`}>
                     <CalendarCheck className="w-4 h-4 mr-2" /> Mark Done
                   </DropdownMenuItem>
