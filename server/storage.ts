@@ -1,9 +1,9 @@
 import { 
-  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues, taskStreaks, profiles,
+  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues, taskStreaks, profiles, routineTaskLinks,
   type User, type Category, type Tag, type Task, type TaskTag, type Completion,
-  type Routine, type TaskMetric, type MetricValue, type TaskStreak, type Profile,
+  type Routine, type TaskMetric, type MetricValue, type TaskStreak, type Profile, type RoutineTaskLink,
   type InsertCategory, type InsertTag, type InsertTask, type InsertRoutine,
-  type InsertTaskMetric, type InsertMetricValue, type InsertProfile
+  type InsertTaskMetric, type InsertMetricValue, type InsertProfile, type InsertRoutineTaskLink
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gte, inArray, notInArray } from "drizzle-orm";
@@ -34,8 +34,17 @@ export interface IStorage {
   getRoutines(userId: string, profileId?: number | null): Promise<Routine[]>;
   getRoutine(id: number, userId: string): Promise<Routine | undefined>;
   createRoutine(userId: string, routine: InsertRoutine): Promise<Routine>;
+  updateRoutine(id: number, userId: string, updates: Partial<InsertRoutine>): Promise<Routine>;
   deleteRoutine(id: number, userId: string): Promise<void>;
   getTasksByRoutine(routineId: number, userId: string): Promise<Task[]>;
+  completeFixedRoutine(routineId: number, userId: string, notes?: string): Promise<{ routine: Routine, completedTasks: Task[] }>;
+  
+  // Routine Task Links (for dynamic routines)
+  getRoutineTaskLinks(routineId: number): Promise<RoutineTaskLink[]>;
+  addTaskToRoutine(routineId: number, taskId: number, orderIndex?: number): Promise<RoutineTaskLink>;
+  removeTaskFromRoutine(routineId: number, taskId: number): Promise<void>;
+  getLinkedTasksForRoutine(routineId: number, userId: string): Promise<Task[]>;
+  getRoutinesForTask(taskId: number): Promise<Routine[]>;
   
   // Tasks (profileId: null = all profiles, number = specific profile)
   getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]>;
@@ -1495,9 +1504,77 @@ export class DatabaseStorage implements IStorage {
     if (!routine || routine.userId !== userId) {
       throw new Error("Routine not found or unauthorized");
     }
-    // Clear routineId from tasks
+    // Clear routineId from tasks (for fixed routines)
     await db.update(tasks).set({ routineId: null }).where(eq(tasks.routineId, id));
+    // Delete task links (for dynamic routines)
+    await db.delete(routineTaskLinks).where(eq(routineTaskLinks.routineId, id));
     await db.delete(routines).where(eq(routines.id, id));
+  }
+
+  async updateRoutine(id: number, userId: string, updates: Partial<InsertRoutine>): Promise<Routine> {
+    const [routine] = await db.select().from(routines).where(eq(routines.id, id));
+    if (!routine || routine.userId !== userId) {
+      throw new Error("Routine not found or unauthorized");
+    }
+    const [updated] = await db.update(routines).set(updates).where(eq(routines.id, id)).returning();
+    return updated;
+  }
+
+  async completeFixedRoutine(routineId: number, userId: string, notes?: string): Promise<{ routine: Routine, completedTasks: Task[] }> {
+    const routine = await this.getRoutine(routineId, userId);
+    if (!routine) throw new Error("Routine not found");
+    if (routine.routineType !== 'fixed') throw new Error("Only fixed routines can be completed as a whole");
+
+    const now = new Date();
+    const routineTasks = await this.getTasksByRoutine(routineId, userId);
+    const completedTasks: Task[] = [];
+
+    for (const task of routineTasks) {
+      const result = await this.completeTask(task.id, now, notes, undefined, userId);
+      completedTasks.push(result.task);
+    }
+
+    const [updatedRoutine] = await db.update(routines)
+      .set({ lastCompletedAt: now })
+      .where(eq(routines.id, routineId))
+      .returning();
+
+    return { routine: updatedRoutine, completedTasks };
+  }
+
+  // Routine Task Links (for dynamic routines)
+  async getRoutineTaskLinks(routineId: number): Promise<RoutineTaskLink[]> {
+    return await db.select().from(routineTaskLinks)
+      .where(eq(routineTaskLinks.routineId, routineId))
+      .orderBy(routineTaskLinks.orderIndex);
+  }
+
+  async addTaskToRoutine(routineId: number, taskId: number, orderIndex?: number): Promise<RoutineTaskLink> {
+    const actualOrderIndex = orderIndex ?? 0;
+    const [link] = await db.insert(routineTaskLinks)
+      .values({ routineId, taskId, orderIndex: actualOrderIndex })
+      .returning();
+    return link;
+  }
+
+  async removeTaskFromRoutine(routineId: number, taskId: number): Promise<void> {
+    await db.delete(routineTaskLinks)
+      .where(and(eq(routineTaskLinks.routineId, routineId), eq(routineTaskLinks.taskId, taskId)));
+  }
+
+  async getLinkedTasksForRoutine(routineId: number, userId: string): Promise<Task[]> {
+    const links = await this.getRoutineTaskLinks(routineId);
+    if (links.length === 0) return [];
+    const taskIds = links.map(l => l.taskId);
+    return await db.select().from(tasks)
+      .where(and(inArray(tasks.id, taskIds), eq(tasks.userId, userId), eq(tasks.isArchived, false)));
+  }
+
+  async getRoutinesForTask(taskId: number): Promise<Routine[]> {
+    const links = await db.select().from(routineTaskLinks).where(eq(routineTaskLinks.taskId, taskId));
+    if (links.length === 0) return [];
+    const routineIds = links.map(l => l.routineId);
+    return await db.select().from(routines).where(inArray(routines.id, routineIds));
   }
 
   // Task Variations

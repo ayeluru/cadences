@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { useRoutines, useRoutineTasks, useCompleteRoutine, useDeleteRoutine } from "@/hooks/use-routines";
+import { useRoutines, useRoutineTasks, useLinkedTasks, useCompleteRoutine, useDeleteRoutine } from "@/hooks/use-routines";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Play, Trash2, Loader2, Clock, CheckCircle2, Target } from "lucide-react";
+import { ChevronDown, ChevronRight, Play, Trash2, Loader2, Clock, CheckCircle2, Target, Plus, Link2, CalendarClock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, differenceInDays } from "date-fns";
 import type { Routine, TaskWithDetails } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
+import { CreateRoutineDialog } from "@/components/CreateRoutineDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,8 +39,13 @@ function getStatusBadge(task: TaskWithDetails) {
   return <Badge variant={config.variant} className="text-xs">{config.label}</Badge>;
 }
 
-function RoutineTasksList({ routineId }: { routineId: number }) {
-  const { data: tasks, isLoading } = useRoutineTasks(routineId);
+function RoutineTasksList({ routineId, routineType }: { routineId: number; routineType: string }) {
+  const isDynamic = routineType === 'dynamic';
+  const { data: fixedTasks, isLoading: fixedLoading } = useRoutineTasks(isDynamic ? undefined : routineId);
+  const { data: linkedTasks, isLoading: linkedLoading } = useLinkedTasks(isDynamic ? routineId : undefined);
+  
+  const tasks = isDynamic ? linkedTasks : fixedTasks;
+  const isLoading = isDynamic ? linkedLoading : fixedLoading;
   
   if (isLoading) {
     return (
@@ -54,7 +60,9 @@ function RoutineTasksList({ routineId }: { routineId: number }) {
   if (!tasks || tasks.length === 0) {
     return (
       <p className="text-sm text-muted-foreground pl-4 pt-2 italic">
-        No tasks in this routine. Add tasks from the task creation dialog.
+        {routineType === 'dynamic' 
+          ? "No tasks linked. Edit this routine to add tasks."
+          : "No tasks in this routine. Edit to add tasks."}
       </p>
     );
   }
@@ -69,6 +77,11 @@ function RoutineTasksList({ routineId }: { routineId: number }) {
         >
           <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
           <span className="flex-1 text-sm">{task.title}</span>
+          {routineType === 'dynamic' && task.intervalValue && (
+            <span className="text-xs text-muted-foreground">
+              Every {task.intervalValue} {task.intervalUnit}
+            </span>
+          )}
           {getStatusBadge(task)}
         </div>
       ))}
@@ -78,10 +91,13 @@ function RoutineTasksList({ routineId }: { routineId: number }) {
 
 function RoutineCard({ routine }: { routine: Routine }) {
   const [isOpen, setIsOpen] = useState(false);
-  const { data: tasks } = useRoutineTasks(routine.id);
+  const isDynamic = routine.routineType === 'dynamic';
+  const { data: fixedTasks } = useRoutineTasks(isDynamic ? undefined : routine.id);
+  const { data: linkedTasks } = useLinkedTasks(isDynamic ? routine.id : undefined);
   const completeRoutineMutation = useCompleteRoutine();
   const deleteRoutineMutation = useDeleteRoutine();
   
+  const tasks = isDynamic ? linkedTasks : fixedTasks;
   const taskCount = tasks?.length || 0;
   const overdueCount = tasks?.filter(t => t.status === "overdue").length || 0;
   const dueSoonCount = tasks?.filter(t => t.status === "due_soon").length || 0;
@@ -94,6 +110,7 @@ function RoutineCard({ routine }: { routine: Routine }) {
   }).length || 0;
   
   const completionPercentage = taskCount > 0 ? Math.round((completedTodayCount / taskCount) * 100) : 0;
+  const isFixed = !isDynamic;
   
   return (
     <Card data-testid={`routine-card-${routine.id}`}>
@@ -165,6 +182,12 @@ function RoutineCard({ routine }: { routine: Routine }) {
           </div>
           
           <div className="flex flex-wrap gap-2 pt-2">
+            {isFixed && routine.intervalValue && (
+              <Badge variant="secondary" className="gap-1">
+                <Clock className="w-3 h-3" />
+                Every {routine.intervalValue} {routine.intervalUnit}
+              </Badge>
+            )}
             <Badge variant="outline" className="gap-1">
               <Target className="w-3 h-3" />
               {taskCount} {taskCount === 1 ? "task" : "tasks"}
@@ -198,7 +221,7 @@ function RoutineCard({ routine }: { routine: Routine }) {
                 transition={{ duration: 0.2 }}
               >
                 <CardContent className="pt-0 pb-4">
-                  <RoutineTasksList routineId={routine.id} />
+                  <RoutineTasksList routineId={routine.id} routineType={routine.routineType || 'fixed'} />
                 </CardContent>
               </motion.div>
             </CollapsibleContent>
@@ -211,6 +234,11 @@ function RoutineCard({ routine }: { routine: Routine }) {
 
 export default function Routines() {
   const { data: routines, isLoading } = useRoutines();
+  const [createFixedOpen, setCreateFixedOpen] = useState(false);
+  const [createDynamicOpen, setCreateDynamicOpen] = useState(false);
+  
+  const fixedRoutines = routines?.filter(r => r.routineType === 'fixed') || [];
+  const dynamicRoutines = routines?.filter(r => r.routineType === 'dynamic') || [];
   
   if (isLoading) {
     return (
@@ -230,9 +258,21 @@ export default function Routines() {
   
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold font-display tracking-tight">Routines</h2>
-        <p className="text-muted-foreground mt-1">Group related tasks together and complete them as a set.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-bold font-display tracking-tight">Routines</h2>
+          <p className="text-muted-foreground mt-1">Group related tasks together and complete them as a set.</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={() => setCreateFixedOpen(true)} data-testid="button-create-fixed-routine">
+            <CalendarClock className="w-4 h-4 mr-2" />
+            Fixed Routine
+          </Button>
+          <Button variant="outline" onClick={() => setCreateDynamicOpen(true)} data-testid="button-create-dynamic-routine">
+            <Link2 className="w-4 h-4 mr-2" />
+            Dynamic Routine
+          </Button>
+        </div>
       </div>
       
       {(!routines || routines.length === 0) ? (
@@ -242,19 +282,59 @@ export default function Routines() {
           </div>
           <h3 className="font-medium mb-2">No routines yet</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Create routines in Settings to group related tasks together.
+            Create a Fixed Routine (with its own schedule) or a Dynamic Routine (to group existing tasks).
           </p>
-          <Button variant="outline" asChild>
-            <a href="/settings">Go to Settings</a>
-          </Button>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {routines.map((routine) => (
-            <RoutineCard key={routine.id} routine={routine} />
-          ))}
+        <div className="space-y-8">
+          {fixedRoutines.length > 0 && (
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <CalendarClock className="w-5 h-5 text-muted-foreground" />
+                <h3 className="text-lg font-semibold">Fixed Routines</h3>
+                <Badge variant="secondary">{fixedRoutines.length}</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground -mt-2">
+                Tasks with a shared schedule - complete all together.
+              </p>
+              <div className="space-y-4">
+                {fixedRoutines.map((routine) => (
+                  <RoutineCard key={routine.id} routine={routine} />
+                ))}
+              </div>
+            </section>
+          )}
+          
+          {dynamicRoutines.length > 0 && (
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Link2 className="w-5 h-5 text-muted-foreground" />
+                <h3 className="text-lg font-semibold">Dynamic Routines</h3>
+                <Badge variant="secondary">{dynamicRoutines.length}</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground -mt-2">
+                Groups of tasks with their own schedules - see what's due.
+              </p>
+              <div className="space-y-4">
+                {dynamicRoutines.map((routine) => (
+                  <RoutineCard key={routine.id} routine={routine} />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
+      
+      <CreateRoutineDialog 
+        open={createFixedOpen} 
+        onOpenChange={setCreateFixedOpen} 
+        routineType="fixed" 
+      />
+      <CreateRoutineDialog 
+        open={createDynamicOpen} 
+        onOpenChange={setCreateDynamicOpen} 
+        routineType="dynamic" 
+      />
     </div>
   );
 }

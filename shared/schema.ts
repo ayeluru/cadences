@@ -32,9 +32,9 @@ export const tags = pgTable("tags", {
 });
 
 // Routines - group of exercises/tasks done together
-// Composition mode determines how urgency is calculated:
-// - 'unified': Routine has its own cadence; completing routine marks all tasks done
-// - 'independent': Each task keeps its own cadence; routine groups tasks visually only
+// Routine type determines behavior:
+// - 'fixed': Routine has its own cadence; tasks have no individual cadence and are done together
+// - 'dynamic': Groups existing tasks that have their own cadences; shows which are due
 export const routines = pgTable("routines", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -42,26 +42,35 @@ export const routines = pgTable("routines", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   profileId: integer("profile_id").references(() => profiles.id),
   
-  // Composition mode
-  compositionMode: text("composition_mode").default('independent').notNull(), // 'unified' | 'independent'
+  // Routine type: 'fixed' (unified cadence) or 'dynamic' (aggregates existing tasks)
+  routineType: text("routine_type").default('fixed').notNull(), // 'fixed' | 'dynamic'
   
-  // For unified mode: routine-level cadence (interval-based)
+  // For fixed routines: routine-level cadence (interval-based)
   intervalValue: integer("interval_value"), // e.g., 3
   intervalUnit: text("interval_unit"), // 'days', 'weeks', 'months', 'years'
   
-  // Tracking for unified mode
+  // Tracking for fixed routines
   lastCompletedAt: timestamp("last_completed_at"),
   
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Routine occurrences - track when a unified routine was completed
+// Routine occurrences - track when a fixed routine was completed
 export const routineOccurrences = pgTable("routine_occurrences", {
   id: serial("id").primaryKey(),
   routineId: integer("routine_id").references(() => routines.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   completedAt: timestamp("completed_at").defaultNow().notNull(),
   notes: text("notes"),
+});
+
+// Routine task links - for dynamic routines, links existing tasks without changing their routineId
+// A task can belong to multiple dynamic routines
+export const routineTaskLinks = pgTable("routine_task_links", {
+  id: serial("id").primaryKey(),
+  routineId: integer("routine_id").references(() => routines.id).notNull(),
+  taskId: integer("task_id").references(() => tasks.id).notNull(),
+  orderIndex: integer("order_index").default(0).notNull(),
 });
 
 export const tasks = pgTable("tasks", {
@@ -173,11 +182,17 @@ export const routinesRelations = relations(routines, ({ one, many }) => ({
   profile: one(profiles, { fields: [routines.profileId], references: [profiles.id] }),
   tasks: many(tasks),
   occurrences: many(routineOccurrences),
+  taskLinks: many(routineTaskLinks),
 }));
 
 export const routineOccurrencesRelations = relations(routineOccurrences, ({ one }) => ({
   routine: one(routines, { fields: [routineOccurrences.routineId], references: [routines.id] }),
   user: one(users, { fields: [routineOccurrences.userId], references: [users.id] }),
+}));
+
+export const routineTaskLinksRelations = relations(routineTaskLinks, ({ one }) => ({
+  routine: one(routines, { fields: [routineTaskLinks.routineId], references: [routines.id] }),
+  task: one(tasks, { fields: [routineTaskLinks.taskId], references: [tasks.id] }),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -224,6 +239,7 @@ export const insertCategorySchema = createInsertSchema(categories).omit({ id: tr
 export const insertTagSchema = createInsertSchema(tags).omit({ id: true, userId: true });
 export const insertRoutineSchema = createInsertSchema(routines).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true });
 export const insertRoutineOccurrenceSchema = createInsertSchema(routineOccurrences).omit({ id: true, userId: true, completedAt: true });
+export const insertRoutineTaskLinkSchema = createInsertSchema(routineTaskLinks).omit({ id: true });
 export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true });
 export const insertTaskMetricSchema = createInsertSchema(taskMetrics).omit({ id: true });
 export const insertCompletionSchema = createInsertSchema(completions).omit({ id: true, completedAt: true });
@@ -235,6 +251,7 @@ export type Category = typeof categories.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
 export type Routine = typeof routines.$inferSelect;
 export type RoutineOccurrence = typeof routineOccurrences.$inferSelect;
+export type RoutineTaskLink = typeof routineTaskLinks.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type TaskTag = typeof taskTags.$inferSelect;
 export type TaskMetric = typeof taskMetrics.$inferSelect;
@@ -247,6 +264,7 @@ export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type InsertTag = z.infer<typeof insertTagSchema>;
 export type InsertRoutine = z.infer<typeof insertRoutineSchema>;
 export type InsertRoutineOccurrence = z.infer<typeof insertRoutineOccurrenceSchema>;
+export type InsertRoutineTaskLink = z.infer<typeof insertRoutineTaskLinkSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
 

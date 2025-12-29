@@ -606,6 +606,79 @@ export async function registerRoutes(
     }
   });
 
+  // Update a routine
+  app.put("/api/routines/:id", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      const updated = await storage.updateRoutine(routineId, userId, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(403).json({ message: error.message });
+    }
+  });
+
+  // Add a task link to a dynamic routine
+  app.post("/api/routines/:id/links", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      const { taskId, orderIndex } = req.body;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      if (routine.routineType !== 'dynamic') {
+        return res.status(400).json({ message: "Can only add links to dynamic routines" });
+      }
+      
+      const link = await storage.addTaskToRoutine(routineId, taskId, orderIndex);
+      res.status(201).json(link);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Remove a task link from a dynamic routine
+  app.delete("/api/routines/:id/links/:taskId", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const taskId = Number(req.params.taskId);
+      const userId = req.user.claims.sub;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      await storage.removeTaskFromRoutine(routineId, taskId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get linked tasks for a dynamic routine
+  app.get("/api/routines/:id/linked-tasks", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const linkedTasks = await storage.getLinkedTasksForRoutine(routineId, userId);
+      const enrichedTasks = await Promise.all(linkedTasks.map((t: Task) => enrichTask(t, userId)));
+      
+      res.json(enrichedTasks);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Complete all tasks in a routine
   app.post("/api/routines/:id/complete-all", requireAuth, async (req: any, res) => {
     try {

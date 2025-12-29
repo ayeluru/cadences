@@ -98,3 +98,51 @@ export function useCompleteRoutine() {
     },
   });
 }
+
+export function useAddTaskToRoutine() {
+  const { toast } = useToast();
+  
+  return useMutation({
+    mutationFn: async ({ routineId, taskId, orderIndex }: { routineId: number; taskId: number; orderIndex?: number }) => {
+      const res = await apiRequest("POST", `/api/routines/${routineId}/links`, { taskId, orderIndex });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useRemoveTaskFromRoutine() {
+  const { toast } = useToast();
+  
+  return useMutation({
+    mutationFn: async ({ routineId, taskId }: { routineId: number; taskId: number }) => {
+      const res = await apiRequest("DELETE", `/api/routines/${routineId}/links/${taskId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useLinkedTasks(routineId: number | undefined) {
+  return useQuery<TaskWithDetails[]>({
+    queryKey: ["/api/routines", routineId, "linked-tasks"],
+    queryFn: async () => {
+      const res = await fetch(`/api/routines/${routineId}/linked-tasks`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch linked tasks");
+      return res.json();
+    },
+    enabled: !!routineId,
+  });
+}
