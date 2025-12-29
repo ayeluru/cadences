@@ -1,24 +1,30 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, CalendarDays, HelpCircle, Activity } from "lucide-react";
+import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout, isLoggingOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [cadencesOpen, setCadencesOpen] = useState(true);
+
+  const cadenceItems = [
+    { href: "/tasks/daily", label: "Daily", icon: Clock },
+    { href: "/tasks/weekly", label: "Weekly", icon: Clock },
+    { href: "/tasks/monthly", label: "Monthly", icon: Clock },
+    { href: "/tasks/yearly", label: "Long-term", icon: Clock },
+  ];
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/calendar", label: "Calendar", icon: CalendarDays },
     { type: "divider" },
-    { href: "/tasks/daily", label: "Daily", icon: Clock },
-    { href: "/tasks/weekly", label: "Weekly", icon: Clock },
-    { href: "/tasks/monthly", label: "Monthly", icon: Clock },
-    { href: "/tasks/yearly", label: "Long-term", icon: Clock },
+    { type: "cadences-section" },
     { type: "divider" },
     { href: "/stats", label: "Statistics", icon: PieChart },
     { href: "/metrics", label: "Metrics", icon: Activity },
@@ -44,6 +50,34 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {navItems.map((item, idx) => {
             if (item.type === "divider") {
               return <div key={`divider-${idx}`} className="my-2 border-t border-border/30" />;
+            }
+            if (item.type === "cadences-section") {
+              return (
+                <Collapsible key="cadences" open={cadencesOpen} onOpenChange={setCadencesOpen}>
+                  <CollapsibleTrigger className="flex items-center gap-3 px-4 py-2 w-full text-left text-muted-foreground hover:text-foreground transition-colors rounded-xl hover:bg-muted">
+                    <Timer className="w-5 h-5" />
+                    <span className="flex-1 font-medium">Cadences</span>
+                    {cadencesOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pl-4 space-y-1 mt-1">
+                    {cadenceItems.map((cadence) => {
+                      const CadenceIcon = cadence.icon;
+                      const isActive = location === cadence.href;
+                      return (
+                        <Link key={cadence.href} href={cadence.href} className={`
+                          flex items-center gap-3 px-4 py-2 rounded-xl transition-all duration-200 group
+                          ${isActive 
+                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 font-medium" 
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"}
+                        `}>
+                          <CadenceIcon className={`w-4 h-4 ${isActive ? "" : "group-hover:scale-110 transition-transform"}`} />
+                          {cadence.label}
+                        </Link>
+                      );
+                    })}
+                  </CollapsibleContent>
+                </Collapsible>
+              );
             }
             const Icon = item.icon;
             const isActive = location === item.href;
@@ -106,6 +140,34 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {navItems.map((item, idx) => {
               if (item.type === "divider") {
                 return <div key={`divider-${idx}`} className="my-2 border-t border-border/30" />;
+              }
+              if (item.type === "cadences-section") {
+                return (
+                  <Collapsible key="cadences-mobile" open={cadencesOpen} onOpenChange={setCadencesOpen}>
+                    <CollapsibleTrigger className="flex items-center gap-3 px-4 py-4 w-full text-left text-muted-foreground hover:text-foreground transition-colors rounded-xl hover:bg-muted text-lg font-medium">
+                      <Timer className="w-6 h-6" />
+                      <span className="flex-1">Cadences</span>
+                      {cadencesOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pl-6 space-y-1 mt-1">
+                      {cadenceItems.map((cadence) => {
+                        const CadenceIcon = cadence.icon;
+                        const isActive = location === cadence.href;
+                        return (
+                          <Link key={cadence.href} href={cadence.href} onClick={() => setMobileMenuOpen(false)} className={`
+                            flex items-center gap-3 px-4 py-3 rounded-xl text-base font-medium transition-colors
+                            ${isActive 
+                              ? "bg-primary text-primary-foreground" 
+                              : "text-muted-foreground hover:bg-muted"}
+                          `}>
+                            <CadenceIcon className="w-5 h-5" />
+                            {cadence.label}
+                          </Link>
+                        );
+                      })}
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
               }
               const Icon = item.icon;
               const isActive = location === item.href;

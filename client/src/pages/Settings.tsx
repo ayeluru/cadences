@@ -234,7 +234,8 @@ export default function Settings() {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                  {profiles.length > 1 && (
+                  {/* Only show delete if this is a demo profile OR there's more than 1 non-demo profile */}
+                  {(profile.isDemo || profiles.filter(p => !p.isDemo).length > 1) && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <button

@@ -8,7 +8,7 @@ import { useCreateTask, useTasks } from "@/hooks/use-tasks";
 import { insertTaskSchema, InsertTask, TaskWithDetails } from "@shared/schema";
 import { z } from "zod";
 import { useCategories, useCreateCategory } from "@/hooks/use-categories";
-import { useTags } from "@/hooks/use-tags";
+import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useRoutines } from "@/hooks/use-routines";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
@@ -55,6 +55,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const { toast } = useToast();
   const createMutation = useCreateTask();
   const createCategoryMutation = useCreateCategory();
+  const createTagMutation = useCreateTag();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const { data: routines } = useRoutines();
@@ -64,6 +65,8 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [showNewTagInput, setShowNewTagInput] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
   const [taskType, setTaskType] = useState<'interval' | 'frequency' | 'scheduled'>('interval');
   const [metrics, setMetrics] = useState<MetricDef[]>([]);
   const [newMetricName, setNewMetricName] = useState("");
@@ -196,6 +199,22 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         onSuccess: () => {
           setNewCategoryName("");
           setShowNewCategoryInput(false);
+        }
+      }
+    );
+  };
+
+  const handleCreateNewTag = () => {
+    if (!newTagName.trim()) return;
+    createTagMutation.mutate(
+      { name: newTagName, profileId: selectedProfileId },
+      {
+        onSuccess: (newTag: any) => {
+          setNewTagName("");
+          setShowNewTagInput(false);
+          if (newTag?.id) {
+            setSelectedTagIds(prev => [...prev, newTag.id]);
+          }
         }
       }
     );
@@ -521,7 +540,43 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
           </div>
 
           <div className="space-y-2">
-            <Label>Tags</Label>
+            <div className="flex items-center justify-between">
+              <Label>Tags</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() => setShowNewTagInput(!showNewTagInput)}
+              >
+                <Plus className="w-3 h-3 mr-1" /> New
+              </Button>
+            </div>
+            {showNewTagInput && (
+              <div className="flex gap-2">
+                <Input
+                  data-testid="input-new-tag"
+                  placeholder="Tag name..."
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateNewTag();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  data-testid="button-add-tag"
+                  onClick={handleCreateNewTag}
+                  disabled={createTagMutation.isPending || !newTagName.trim()}
+                >
+                  {createTagMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                </Button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 pt-2">
               {tags?.map(tag => (
                 <Badge
@@ -534,7 +589,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                   {tag.name}
                 </Badge>
               ))}
-              {tags?.length === 0 && <span className="text-sm text-muted-foreground">No tags available. Create some in Settings.</span>}
+              {tags?.length === 0 && !showNewTagInput && <span className="text-sm text-muted-foreground">No tags yet. Click "New" to create one.</span>}
             </div>
           </div>
 
