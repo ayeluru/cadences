@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer } from "lucide-react";
+import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,6 +23,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/calendar", label: "Calendar", icon: CalendarDays },
+    { href: "/routines", label: "Routines", icon: Repeat },
     { type: "divider" },
     { type: "cadences-section" },
     { type: "divider" },

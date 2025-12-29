@@ -32,13 +32,36 @@ export const tags = pgTable("tags", {
 });
 
 // Routines - group of exercises/tasks done together
+// Composition mode determines how urgency is calculated:
+// - 'unified': Routine has its own cadence; completing routine marks all tasks done
+// - 'independent': Each task keeps its own cadence; routine groups tasks visually only
 export const routines = pgTable("routines", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
   userId: varchar("user_id").references(() => users.id).notNull(),
   profileId: integer("profile_id").references(() => profiles.id),
+  
+  // Composition mode
+  compositionMode: text("composition_mode").default('independent').notNull(), // 'unified' | 'independent'
+  
+  // For unified mode: routine-level cadence (interval-based)
+  intervalValue: integer("interval_value"), // e.g., 3
+  intervalUnit: text("interval_unit"), // 'days', 'weeks', 'months', 'years'
+  
+  // Tracking for unified mode
+  lastCompletedAt: timestamp("last_completed_at"),
+  
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Routine occurrences - track when a unified routine was completed
+export const routineOccurrences = pgTable("routine_occurrences", {
+  id: serial("id").primaryKey(),
+  routineId: integer("routine_id").references(() => routines.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  notes: text("notes"),
 });
 
 export const tasks = pgTable("tasks", {
@@ -149,6 +172,12 @@ export const routinesRelations = relations(routines, ({ one, many }) => ({
   user: one(users, { fields: [routines.userId], references: [users.id] }),
   profile: one(profiles, { fields: [routines.profileId], references: [profiles.id] }),
   tasks: many(tasks),
+  occurrences: many(routineOccurrences),
+}));
+
+export const routineOccurrencesRelations = relations(routineOccurrences, ({ one }) => ({
+  routine: one(routines, { fields: [routineOccurrences.routineId], references: [routines.id] }),
+  user: one(users, { fields: [routineOccurrences.userId], references: [users.id] }),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -193,7 +222,8 @@ export const metricValuesRelations = relations(metricValues, ({ one }) => ({
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, createdAt: true });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, userId: true });
 export const insertTagSchema = createInsertSchema(tags).omit({ id: true, userId: true });
-export const insertRoutineSchema = createInsertSchema(routines).omit({ id: true, userId: true, createdAt: true });
+export const insertRoutineSchema = createInsertSchema(routines).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true });
+export const insertRoutineOccurrenceSchema = createInsertSchema(routineOccurrences).omit({ id: true, userId: true, completedAt: true });
 export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true });
 export const insertTaskMetricSchema = createInsertSchema(taskMetrics).omit({ id: true });
 export const insertCompletionSchema = createInsertSchema(completions).omit({ id: true, completedAt: true });
@@ -204,6 +234,7 @@ export type Profile = typeof profiles.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
 export type Routine = typeof routines.$inferSelect;
+export type RoutineOccurrence = typeof routineOccurrences.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type TaskTag = typeof taskTags.$inferSelect;
 export type TaskMetric = typeof taskMetrics.$inferSelect;
@@ -215,6 +246,7 @@ export type InsertProfile = z.infer<typeof insertProfileSchema>;
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type InsertTag = z.infer<typeof insertTagSchema>;
 export type InsertRoutine = z.infer<typeof insertRoutineSchema>;
+export type InsertRoutineOccurrence = z.infer<typeof insertRoutineOccurrenceSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
 

@@ -95,6 +95,12 @@ Key database tables:
 - Added tag filter chips to task list pages for filtering tasks by tag
 - Routines now have "Complete All" button to mark all routine tasks as done at once
 - Added API endpoints: GET /api/routines/:id/tasks, POST /api/routines/:id/complete-all
+- Routines redesign: added compositionMode field (unified vs independent), cadence fields, and routine_occurrences table
+- Created dedicated Routines page with collapsible routine cards showing stats (task count, overdue, completion %)
+- Updated Dashboard to visually group tasks by routine with container boxes
+- Restructured sidebar with collapsible "Cadences" section containing Daily/Weekly/Monthly/Long-term views
+- Added inline tag creation in CreateTaskDialog (create tags without leaving the dialog)
+- Minimum profile validation: prevents deleting the last non-demo profile
 
 ## External Dependencies
 
