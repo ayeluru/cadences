@@ -23,7 +23,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/stats", label: "Statistics", icon: PieChart },
     { href: "/metrics", label: "Metrics", icon: Activity },
     { href: "/guide", label: "User Guide", icon: HelpCircle },
-    { href: "/settings", label: "Manage", icon: Settings },
+    { href: "/settings", label: "Settings", icon: Settings },
   ] as any[];
 
   return (
@@ -84,11 +84,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile Header */}
-      <header className="md:hidden sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b flex items-center justify-between p-4">
+      <header className="md:hidden sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b flex items-center justify-between gap-2 p-4">
         <h1 className="text-xl font-display font-bold text-foreground">Cadences</h1>
-        <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-          {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </Button>
+        <div className="flex items-center gap-2">
+          <ProfileSwitcher />
+          <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} data-testid="button-mobile-menu">
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </Button>
+        </div>
       </header>
 
       {/* Mobile Menu Overlay */}

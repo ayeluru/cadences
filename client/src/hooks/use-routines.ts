@@ -2,10 +2,22 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Routine, InsertRoutine } from "@shared/schema";
+import { useProfileContext } from "@/contexts/ProfileContext";
 
 export function useRoutines() {
+  const { currentProfile, isAggregatedView } = useProfileContext();
+  const profileId = isAggregatedView ? undefined : currentProfile?.id;
+
   return useQuery<Routine[]>({
-    queryKey: ["/api/routines"],
+    queryKey: ["/api/routines", isAggregatedView ? "all" : profileId],
+    queryFn: async () => {
+      const url = new URL("/api/routines", window.location.origin);
+      if (profileId) url.searchParams.append("profileId", profileId.toString());
+      const res = await fetch(url.toString(), { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch routines");
+      return res.json();
+    },
+    enabled: isAggregatedView || !!profileId,
   });
 }
 

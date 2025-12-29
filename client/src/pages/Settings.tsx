@@ -1,14 +1,14 @@
 import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useRoutines, useCreateRoutine, useDeleteRoutine } from "@/hooks/use-routines";
-import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile } from "@/hooks/use-profiles";
+import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Tag as TagIcon, Folder, Trash2, Database, RefreshCw, AlertTriangle, Repeat, Users, Sparkles, Check } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, Database, RefreshCw, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser } from "lucide-react";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
 import { Loader2 } from "lucide-react";
@@ -40,6 +40,7 @@ export default function Settings() {
   const createProfileMutation = useCreateProfile();
   const deleteProfileMutation = useDeleteProfile();
   const createDemoMutation = useCreateDemoProfile();
+  const clearProfileDataMutation = useClearProfileData();
   const { toast } = useToast();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
@@ -130,7 +131,7 @@ export default function Settings() {
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
       <div>
-        <h2 className="text-3xl font-bold font-display tracking-tight">Manage</h2>
+        <h2 className="text-3xl font-bold font-display tracking-tight">Settings</h2>
         <p className="text-muted-foreground mt-1">Configure your organization preferences.</p>
       </div>
 
@@ -203,6 +204,42 @@ export default function Settings() {
                   {profile.isDemo && (
                     <Badge variant="secondary" className="text-xs">Demo</Badge>
                   )}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-1"
+                        title="Clear profile data"
+                        data-testid={`button-clear-profile-${profile.id}`}
+                      >
+                        <Eraser className="w-3 h-3" />
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                          <AlertTriangle className="w-5 h-5 text-destructive" />
+                          Clear data in "{profile.name}"?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will delete all tasks, completions, categories, tags, and routines in this profile. The profile itself will be kept. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => clearProfileDataMutation.mutate(profile.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          data-testid="button-confirm-clear-profile"
+                        >
+                          {clearProfileDataMutation.isPending && clearProfileDataMutation.variables === profile.id ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : null}
+                          Clear Data
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                   {!profile.isDemo && profiles.length > 1 && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>

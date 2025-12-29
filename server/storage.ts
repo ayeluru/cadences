@@ -18,24 +18,25 @@ export interface IStorage {
   createProfile(userId: string, profile: InsertProfile): Promise<Profile>;
   updateProfile(id: number, userId: string, updates: Partial<InsertProfile>): Promise<Profile>;
   deleteProfile(id: number, userId: string): Promise<void>;
+  deleteProfileData(profileId: number, userId: string): Promise<void>;
   getOrCreateDefaultProfile(userId: string): Promise<Profile>;
   
-  // Categories
-  getCategories(userId: string): Promise<Category[]>;
+  // Categories (profileId: null = all profiles, number = specific profile)
+  getCategories(userId: string, profileId?: number | null): Promise<Category[]>;
   createCategory(userId: string, category: InsertCategory): Promise<Category>;
   deleteCategory(id: number, userId: string): Promise<void>;
   
-  // Tags
-  getTags(userId: string): Promise<Tag[]>;
+  // Tags (profileId: null = all profiles, number = specific profile)
+  getTags(userId: string, profileId?: number | null): Promise<Tag[]>;
   createTag(userId: string, tag: InsertTag): Promise<Tag>;
   
-  // Routines
-  getRoutines(userId: string): Promise<Routine[]>;
+  // Routines (profileId: null = all profiles, number = specific profile)
+  getRoutines(userId: string, profileId?: number | null): Promise<Routine[]>;
   createRoutine(userId: string, routine: InsertRoutine): Promise<Routine>;
   deleteRoutine(id: number, userId: string): Promise<void>;
   
-  // Tasks
-  getTasks(userId: string): Promise<Task[]>;
+  // Tasks (profileId: null = all profiles, number = specific profile)
+  getTasks(userId: string, profileId?: number | null): Promise<Task[]>;
   getTask(id: number): Promise<Task | undefined>;
   getTaskVariations(parentId: number): Promise<Task[]>;
   createTask(userId: string, task: InsertTask, tagIds?: number[], metrics?: InsertTaskMetric[]): Promise<Task>;
@@ -739,6 +740,40 @@ export class DatabaseStorage implements IStorage {
     await db.delete(profiles).where(eq(profiles.id, id));
   }
 
+  async deleteProfileData(profileId: number, userId: string): Promise<void> {
+    const [profile] = await db.select().from(profiles)
+      .where(and(eq(profiles.id, profileId), eq(profiles.userId, userId)));
+    if (!profile) {
+      throw new Error("Profile not found or unauthorized");
+    }
+    
+    // Get all tasks in this profile
+    const profileTasks = await db.select().from(tasks)
+      .where(and(eq(tasks.profileId, profileId), eq(tasks.userId, userId)));
+    const taskIds = profileTasks.map(t => t.id);
+    
+    if (taskIds.length > 0) {
+      // Delete completions and their metric values
+      const taskCompletions = await db.select().from(completions)
+        .where(inArray(completions.taskId, taskIds));
+      const completionIds = taskCompletions.map(c => c.id);
+      
+      if (completionIds.length > 0) {
+        await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
+      }
+      await db.delete(completions).where(inArray(completions.taskId, taskIds));
+      await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
+      await db.delete(taskTags).where(inArray(taskTags.taskId, taskIds));
+      await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
+      await db.delete(tasks).where(inArray(tasks.id, taskIds));
+    }
+    
+    // Delete categories, tags, and routines in this profile (but keep the profile itself)
+    await db.delete(categories).where(and(eq(categories.profileId, profileId), eq(categories.userId, userId)));
+    await db.delete(tags).where(and(eq(tags.profileId, profileId), eq(tags.userId, userId)));
+    await db.delete(routines).where(and(eq(routines.profileId, profileId), eq(routines.userId, userId)));
+  }
+
   async getOrCreateDefaultProfile(userId: string): Promise<Profile> {
     // Check if user has any profiles
     const existingProfiles = await this.getProfiles(userId);
@@ -871,7 +906,10 @@ export class DatabaseStorage implements IStorage {
     return { success: true, message: "Demo profile seeded successfully" };
   }
 
-  async getCategories(userId: string): Promise<Category[]> {
+  async getCategories(userId: string, profileId?: number | null): Promise<Category[]> {
+    if (profileId !== undefined && profileId !== null) {
+      return await db.select().from(categories).where(and(eq(categories.userId, userId), eq(categories.profileId, profileId)));
+    }
     return await db.select().from(categories).where(eq(categories.userId, userId));
   }
 
@@ -892,7 +930,10 @@ export class DatabaseStorage implements IStorage {
     await db.delete(categories).where(eq(categories.id, id));
   }
 
-  async getTags(userId: string): Promise<Tag[]> {
+  async getTags(userId: string, profileId?: number | null): Promise<Tag[]> {
+    if (profileId !== undefined && profileId !== null) {
+      return await db.select().from(tags).where(and(eq(tags.userId, userId), eq(tags.profileId, profileId)));
+    }
     return await db.select().from(tags).where(eq(tags.userId, userId));
   }
 
@@ -901,7 +942,10 @@ export class DatabaseStorage implements IStorage {
     return newTag;
   }
 
-  async getTasks(userId: string): Promise<Task[]> {
+  async getTasks(userId: string, profileId?: number | null): Promise<Task[]> {
+    if (profileId !== undefined && profileId !== null) {
+      return await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.profileId, profileId), eq(tasks.isArchived, false)));
+    }
     return await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.isArchived, false)));
   }
 
@@ -1006,7 +1050,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Routines
-  async getRoutines(userId: string): Promise<Routine[]> {
+  async getRoutines(userId: string, profileId?: number | null): Promise<Routine[]> {
+    if (profileId !== undefined && profileId !== null) {
+      return await db.select().from(routines).where(and(eq(routines.userId, userId), eq(routines.profileId, profileId)));
+    }
     return await db.select().from(routines).where(eq(routines.userId, userId));
   }
 

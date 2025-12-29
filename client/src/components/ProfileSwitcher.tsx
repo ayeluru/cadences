@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, Plus, Sparkles } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Sparkles, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,10 +14,10 @@ import { useCreateDemoProfile } from "@/hooks/use-profiles";
 import { cn } from "@/lib/utils";
 
 export function ProfileSwitcher() {
-  const { currentProfile, setCurrentProfile, profiles, isLoading } = useProfileContext();
+  const { currentProfile, setCurrentProfile, profiles, isLoading, isAggregatedView, setAggregatedView } = useProfileContext();
   const createDemoMutation = useCreateDemoProfile();
 
-  if (isLoading || !currentProfile) {
+  if (isLoading) {
     return (
       <Button variant="outline" size="sm" disabled>
         Loading...
@@ -26,20 +26,38 @@ export function ProfileSwitcher() {
   }
 
   const hasDemoProfile = profiles.some(p => p.isDemo);
+  const displayName = isAggregatedView ? "All Profiles" : (currentProfile?.name || "Select Profile");
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2" data-testid="button-profile-switcher">
-          {currentProfile.isDemo && (
+          {isAggregatedView ? (
+            <Layers className="h-4 w-4" />
+          ) : currentProfile?.isDemo ? (
             <Badge variant="secondary" className="text-xs">Demo</Badge>
-          )}
-          <span className="max-w-[100px] truncate">{currentProfile.name}</span>
+          ) : null}
+          <span className="max-w-[100px] truncate">{displayName}</span>
           <ChevronsUpDown className="h-4 w-4 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Switch Profile</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => setAggregatedView(true)}
+          className="gap-2"
+          data-testid="menu-item-all-profiles"
+        >
+          <Check
+            className={cn(
+              "h-4 w-4",
+              isAggregatedView ? "opacity-100" : "opacity-0"
+            )}
+          />
+          <Layers className="h-4 w-4" />
+          <span className="flex-1">All Profiles</span>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {profiles.map((profile) => (
           <DropdownMenuItem
@@ -51,7 +69,7 @@ export function ProfileSwitcher() {
             <Check
               className={cn(
                 "h-4 w-4",
-                currentProfile.id === profile.id ? "opacity-100" : "opacity-0"
+                !isAggregatedView && currentProfile?.id === profile.id ? "opacity-100" : "opacity-0"
               )}
             />
             <span className="flex-1">{profile.name}</span>

@@ -2,15 +2,22 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { InsertTag } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { useProfileContext } from "@/contexts/ProfileContext";
 
 export function useTags() {
+  const { currentProfile, isAggregatedView } = useProfileContext();
+  const profileId = isAggregatedView ? undefined : currentProfile?.id;
+
   return useQuery({
-    queryKey: [api.tags.list.path],
+    queryKey: [api.tags.list.path, isAggregatedView ? "all" : profileId],
     queryFn: async () => {
-      const res = await fetch(api.tags.list.path, { credentials: "include" });
+      const url = new URL(api.tags.list.path, window.location.origin);
+      if (profileId) url.searchParams.append("profileId", profileId.toString());
+      const res = await fetch(url.toString(), { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch tags");
       return api.tags.list.responses[200].parse(await res.json());
     },
+    enabled: isAggregatedView || !!profileId,
   });
 }
 

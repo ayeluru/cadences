@@ -2,14 +2,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { InsertTask } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { useProfileContext } from "@/contexts/ProfileContext";
 
 export function useTasks(filters?: { search?: string; categoryId?: number; tagId?: number }) {
+  const { currentProfile, isAggregatedView } = useProfileContext();
+  const profileId = isAggregatedView ? undefined : currentProfile?.id;
+
   return useQuery({
-    queryKey: [api.tasks.list.path, filters],
+    queryKey: [api.tasks.list.path, isAggregatedView ? "all" : profileId, filters],
     queryFn: async () => {
-      // Build query string manually or use a helper if available for generic objects
-      // buildUrl only handles path params, so we append query params here
       const url = new URL(api.tasks.list.path, window.location.origin);
+      if (profileId) url.searchParams.append("profileId", profileId.toString());
       if (filters?.search) url.searchParams.append("search", filters.search);
       if (filters?.categoryId) url.searchParams.append("categoryId", filters.categoryId.toString());
       if (filters?.tagId) url.searchParams.append("tagId", filters.tagId.toString());
@@ -18,6 +21,7 @@ export function useTasks(filters?: { search?: string; categoryId?: number; tagId
       if (!res.ok) throw new Error("Failed to fetch tasks");
       return api.tasks.list.responses[200].parse(await res.json());
     },
+    enabled: isAggregatedView || !!profileId,
   });
 }
 

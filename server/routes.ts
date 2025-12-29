@@ -204,7 +204,8 @@ export async function registerRoutes(
   // API Routes
   app.get(api.tasks.list.path, requireAuth, async (req: any, res) => {
     const userId = req.user.claims.sub; // Replit Auth user ID
-    let tasks = await storage.getTasks(userId);
+    const profileId = req.query.profileId ? Number(req.query.profileId) : undefined;
+    let tasks = await storage.getTasks(userId, profileId);
     
     // Enrich
     const enrichedTasks = await Promise.all(tasks.map(t => enrichTask(t, userId)));
@@ -333,7 +334,8 @@ export async function registerRoutes(
   });
 
   app.get(api.categories.list.path, requireAuth, async (req: any, res) => {
-    const categories = await storage.getCategories(req.user.claims.sub);
+    const profileId = req.query.profileId ? Number(req.query.profileId) : undefined;
+    const categories = await storage.getCategories(req.user.claims.sub, profileId);
     res.json(categories);
   });
 
@@ -354,7 +356,8 @@ export async function registerRoutes(
   });
 
   app.get(api.tags.list.path, requireAuth, async (req: any, res) => {
-    const tags = await storage.getTags(req.user.claims.sub);
+    const profileId = req.query.profileId ? Number(req.query.profileId) : undefined;
+    const tags = await storage.getTags(req.user.claims.sub, profileId);
     res.json(tags);
   });
 
@@ -413,9 +416,22 @@ export async function registerRoutes(
     }
   });
 
+  // Clear all data from a profile (keeps the profile itself)
+  app.delete("/api/profiles/:id/data", requireAuth, async (req: any, res) => {
+    try {
+      const profileId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      await storage.deleteProfileData(profileId, userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(404).json({ error: error.message });
+    }
+  });
+
   // Routines
   app.get("/api/routines", requireAuth, async (req: any, res) => {
-    const routinesList = await storage.getRoutines(req.user.claims.sub);
+    const profileId = req.query.profileId ? Number(req.query.profileId) : undefined;
+    const routinesList = await storage.getRoutines(req.user.claims.sub, profileId);
     res.json(routinesList);
   });
 

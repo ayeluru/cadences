@@ -2,15 +2,22 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { InsertCategory } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { useProfileContext } from "@/contexts/ProfileContext";
 
 export function useCategories() {
+  const { currentProfile, isAggregatedView } = useProfileContext();
+  const profileId = isAggregatedView ? undefined : currentProfile?.id;
+
   return useQuery({
-    queryKey: [api.categories.list.path],
+    queryKey: [api.categories.list.path, isAggregatedView ? "all" : profileId],
     queryFn: async () => {
-      const res = await fetch(api.categories.list.path, { credentials: "include" });
+      const url = new URL(api.categories.list.path, window.location.origin);
+      if (profileId) url.searchParams.append("profileId", profileId.toString());
+      const res = await fetch(url.toString(), { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch categories");
       return api.categories.list.responses[200].parse(await res.json());
     },
+    enabled: isAggregatedView || !!profileId,
   });
 }
 
