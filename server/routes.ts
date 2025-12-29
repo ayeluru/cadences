@@ -777,6 +777,40 @@ export async function registerRoutes(
     }
   });
 
+  // Regenerate demo data for an existing demo profile
+  app.post("/api/profiles/:id/demo-seed", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const profileId = Number(req.params.id);
+    
+    try {
+      // Verify profile exists and belongs to user
+      const profiles = await storage.getProfiles(userId);
+      const profile = profiles.find(p => p.id === profileId);
+      
+      if (!profile) {
+        return res.status(404).json({ success: false, message: "Profile not found" });
+      }
+      
+      if (!profile.isDemo) {
+        return res.status(400).json({ success: false, message: "Can only regenerate data for demo profiles" });
+      }
+      
+      // Clear existing demo profile data first
+      await storage.deleteProfileData(profileId, userId);
+      
+      // Reseed the demo profile with fresh sample data
+      await storage.seedDemoProfile(userId, profileId);
+      
+      res.json({ 
+        success: true, 
+        message: "Demo data regenerated successfully",
+        profile 
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   // Clear all user data endpoint (for resetting before seeding)
   app.delete("/api/clear-data", requireAuth, async (req: any, res) => {
     const userId = req.user.claims.sub;

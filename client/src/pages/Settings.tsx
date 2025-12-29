@@ -1,14 +1,14 @@
 import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useRoutines, useCreateRoutine, useDeleteRoutine } from "@/hooks/use-routines";
-import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData } from "@/hooks/use-profiles";
+import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser, Loader2 } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
 import {
@@ -38,6 +38,7 @@ export default function Settings() {
   const createDemoMutation = useCreateDemoProfile();
   const clearProfileDataMutation = useClearProfileData();
   const clearAllProfilesDataMutation = useClearAllProfilesData();
+  const regenerateDemoMutation = useRegenerateDemoProfile();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
@@ -393,6 +394,29 @@ export default function Settings() {
           <CardDescription>Manage your data. Choose to clear data for just the current profile or all profiles.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Regenerate Demo Data - only for demo profiles */}
+          {currentProfile?.isDemo && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">Demo Profile</h4>
+              <p className="text-xs text-muted-foreground">
+                Regenerate fresh sample data in the demo profile.
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={() => regenerateDemoMutation.mutate(currentProfile.id)}
+                disabled={regenerateDemoMutation.isPending}
+                data-testid="button-regenerate-demo"
+              >
+                {regenerateDemoMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                )}
+                Regenerate Demo Data
+              </Button>
+            </div>
+          )}
+
           {/* Clear Current Profile Data */}
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Current Profile</h4>

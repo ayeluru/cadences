@@ -82,6 +82,38 @@ export function useCreateDemoProfile() {
   });
 }
 
+export function useRegenerateDemoProfile() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (profileId: number) => {
+      const res = await apiRequest('POST', `/api/profiles/${profileId}/demo-seed`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return typeof key === 'string' && (
+            key.startsWith('/api/tasks') ||
+            key.startsWith('/api/categories') ||
+            key.startsWith('/api/tags') ||
+            key.startsWith('/api/routines') ||
+            key.startsWith('/api/streaks') ||
+            key.startsWith('/api/calendar') ||
+            key.startsWith('/api/completions') ||
+            key.startsWith('/api/metrics') ||
+            key.startsWith('/api/stats')
+          );
+        }
+      });
+      toast({ title: "Demo data regenerated", description: "Fresh sample data is ready to explore." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+}
+
 export function useClearProfileData() {
   const { toast } = useToast();
   return useMutation({
