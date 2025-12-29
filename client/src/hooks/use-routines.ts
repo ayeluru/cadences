@@ -23,10 +23,14 @@ export function useRoutines() {
 
 export function useCreateRoutine() {
   const { toast } = useToast();
+  const { currentProfile } = useProfileContext();
   
   return useMutation({
-    mutationFn: async (data: InsertRoutine) => {
-      const res = await apiRequest("POST", "/api/routines", data);
+    mutationFn: async (data: Omit<InsertRoutine, 'profileId'> & { profileId?: number | null }) => {
+      const profileId = data.profileId ?? currentProfile?.id;
+      if (!profileId) throw new Error("No profile selected");
+      
+      const res = await apiRequest("POST", "/api/routines", { ...data, profileId });
       return res.json();
     },
     onSuccess: () => {

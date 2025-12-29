@@ -42,13 +42,17 @@ export function useTask(id: number) {
 export function useCreateTask() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { currentProfile } = useProfileContext();
 
   return useMutation({
-    mutationFn: async (data: InsertTask & { tagIds?: number[] }) => {
+    mutationFn: async (data: Omit<InsertTask, 'profileId'> & { tagIds?: number[]; profileId?: number | null }) => {
+      const profileId = data.profileId ?? currentProfile?.id;
+      if (!profileId) throw new Error("No profile selected");
+      
       const res = await fetch(api.tasks.create.path, {
         method: api.tasks.create.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, profileId }),
         credentials: "include",
       });
       if (!res.ok) {

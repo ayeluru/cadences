@@ -10,7 +10,9 @@ import { z } from "zod";
 import { useCategories, useCreateCategory } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { useRoutines } from "@/hooks/use-routines";
-import { useState } from "react";
+import { useProfiles } from "@/hooks/use-profiles";
+import { useProfileContext } from "@/contexts/ProfileContext";
+import { useState, useEffect } from "react";
 import { Loader2, Plus, Trash2, Clock, Calendar } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -57,6 +59,8 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const { data: tags } = useTags();
   const { data: routines } = useRoutines();
   const { data: allTasks } = useTasks();
+  const { data: profiles } = useProfiles();
+  const { currentProfile, isAggregatedView } = useProfileContext();
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -64,10 +68,18 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const [metrics, setMetrics] = useState<MetricDef[]>([]);
   const [newMetricName, setNewMetricName] = useState("");
   const [newMetricUnit, setNewMetricUnit] = useState("");
+  const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>(currentProfile?.id);
   // Scheduled task state
   const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
   const [scheduledTime, setScheduledTime] = useState("");
   const [scheduledDaysOfMonth, setScheduledDaysOfMonth] = useState("");
+  
+  // Reset selected profile when dialog opens or current profile changes
+  useEffect(() => {
+    if (open) {
+      setSelectedProfileId(currentProfile?.id);
+    }
+  }, [open, currentProfile?.id]);
 
   const parentTasks = allTasks?.filter((t: TaskWithDetails) => 
     t.taskType === 'frequency' && !t.parentTaskId
@@ -90,6 +102,11 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   });
 
   const onSubmit = async (data: FormValues) => {
+    if (!selectedProfileId) {
+      toast({ title: "Error", description: "Please select a profile", variant: "destructive" });
+      return;
+    }
+    
     const taskData: any = {
       title: data.title,
       description: data.description,
@@ -98,6 +115,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       routineId: data.routineId || undefined,
       tagIds: selectedTagIds,
       parentTaskId: data.parentTaskId || undefined,
+      profileId: selectedProfileId,
     };
 
     if (taskType === 'interval') {
@@ -231,6 +249,31 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               {...register("description")} 
             />
           </div>
+
+          {/* Show profile selector in aggregated view OR when multiple non-demo profiles exist */}
+          {profiles && (isAggregatedView || profiles.filter(p => !p.isDemo).length > 1) && (
+            <div className="space-y-2">
+              <Label htmlFor="profile">Profile {isAggregatedView && <span className="text-destructive">*</span>}</Label>
+              <select 
+                id="profile"
+                data-testid="select-task-profile"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={selectedProfileId || ""}
+                onChange={(e) => setSelectedProfileId(e.target.value ? Number(e.target.value) : undefined)}
+              >
+                {isAggregatedView && <option value="">Select a profile...</option>}
+                {profiles.filter(p => !p.isDemo).map(profile => (
+                  <option key={profile.id} value={profile.id}>{profile.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {isAggregatedView 
+                  ? "You're viewing all profiles. Please select which profile this task belongs to."
+                  : "Choose which profile this task belongs to."
+                }
+              </p>
+            </div>
+          )}
 
           <Tabs value={taskType} onValueChange={(v) => setTaskType(v as 'interval' | 'frequency' | 'scheduled')}>
             <TabsList className="grid w-full grid-cols-3">

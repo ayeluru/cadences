@@ -24,13 +24,17 @@ export function useTags() {
 export function useCreateTag() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { currentProfile } = useProfileContext();
 
   return useMutation({
-    mutationFn: async (data: InsertTag) => {
+    mutationFn: async (data: Omit<InsertTag, 'profileId'> & { profileId?: number | null }) => {
+      const profileId = data.profileId ?? currentProfile?.id;
+      if (!profileId) throw new Error("No profile selected");
+      
       const res = await fetch(api.tags.create.path, {
         method: api.tags.create.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, profileId }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to create tag");
@@ -39,6 +43,9 @@ export function useCreateTag() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.tags.list.path] });
       toast({ title: "Tag created" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 }
