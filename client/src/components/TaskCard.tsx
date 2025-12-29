@@ -15,17 +15,20 @@ import {
 import { useCompleteTask, useDeleteTask } from "@/hooks/use-tasks";
 import { useState } from "react";
 import { EditTaskDialog } from "./EditTaskDialog";
-import { CompleteTaskDialog } from "./CompleteTaskDialog";
 import { TaskHistoryDialog } from "./TaskHistoryDialog";
+import { CompleteTaskDialog } from "./CompleteTaskDialog";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface TaskCardProps {
   task: TaskWithDetails;
   showVariations?: boolean;
+  condensed?: boolean;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
-export function TaskCard({ task, showVariations = true }: TaskCardProps) {
+export function TaskCard({ task, showVariations = true, condensed = false, expanded = false, onToggleExpand }: TaskCardProps) {
   const completeMutation = useCompleteTask();
   const deleteMutation = useDeleteTask();
   const [editOpen, setEditOpen] = useState(false);
@@ -95,6 +98,96 @@ export function TaskCard({ task, showVariations = true }: TaskCardProps) {
       completeMutation.mutate({ id: task.id });
     }
   };
+
+  if (condensed) {
+    return (
+      <>
+        <div
+          className={cn(
+            "group relative bg-card transition-all duration-200 rounded-lg border px-3 py-2 cursor-pointer",
+            getStatusColor(task.status),
+            isVariation && "ml-6 border-l-2 border-l-primary/30"
+          )}
+          onClick={onToggleExpand}
+          data-testid={`task-card-${task.id}`}
+        >
+          <div className="flex items-center gap-3">
+            {getStatusIcon(task.status)}
+            <span className="font-medium text-sm flex-1 truncate">{task.title}</span>
+            <span className="text-xs text-muted-foreground shrink-0">{getStatusText()}</span>
+            {task.streak && task.streak.currentStreak > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 h-5 shrink-0">
+                <Flame className="w-3 h-3 mr-0.5" />
+                {task.streak.currentStreak}
+              </Badge>
+            )}
+            <ChevronDown className={cn(
+              "w-4 h-4 text-muted-foreground transition-transform shrink-0",
+              expanded && "rotate-180"
+            )} />
+          </div>
+          
+          <AnimatePresence>
+            {expanded && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-3 pt-3 border-t space-y-3"
+              >
+                {task.description && (
+                  <p className="text-sm text-muted-foreground">{task.description}</p>
+                )}
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>{getScheduleText()}</span>
+                  {task.lastCompletedAt && (
+                    <span>Last: {format(new Date(task.lastCompletedAt), "MMM d, yyyy")}</span>
+                  )}
+                  {task.streak && (
+                    <span>Best streak: {task.streak.longestStreak}</span>
+                  )}
+                </div>
+                {isFrequencyTask && task.targetCount && (
+                  <div className="max-w-xs">
+                    <Progress value={task.targetProgress || 0} className="h-2" />
+                    <span className="text-xs text-muted-foreground">{task.completionsThisPeriod || 0}/{task.targetCount} this {task.targetPeriod}</span>
+                  </div>
+                )}
+                <div className="flex gap-2 pt-2">
+                  {(!isFrequencyTask || !hasVariations) && (
+                    <Button size="sm" onClick={(e) => { e.stopPropagation(); handleComplete(); }}>
+                      <CheckCircle2 className="w-4 h-4 mr-1" /> Done
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditOpen(true); }}>
+                    <Edit2 className="w-4 h-4 mr-1" /> Edit
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setHistoryOpen(true); }}>
+                    <History className="w-4 h-4 mr-1" /> History
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+        
+        <EditTaskDialog open={editOpen} onOpenChange={setEditOpen} task={task} />
+        <TaskHistoryDialog 
+          open={historyOpen} 
+          onOpenChange={setHistoryOpen} 
+          taskId={task.id}
+          taskTitle={task.title}
+        />
+        {hasMetrics && (
+          <CompleteTaskDialog 
+            open={completeDialogOpen} 
+            onOpenChange={setCompleteDialogOpen} 
+            task={task} 
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <>

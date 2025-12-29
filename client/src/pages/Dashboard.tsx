@@ -1,7 +1,7 @@
 import { useTasks } from "@/hooks/use-tasks";
 import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
-import { Plus, SlidersHorizontal } from "lucide-react";
+import { Plus, SlidersHorizontal, LayoutGrid, List } from "lucide-react";
 import { useState } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { TaskWithDetails } from "@shared/schema";
@@ -17,6 +17,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCategories } from "@/hooks/use-categories";
 import { motion } from "framer-motion";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export default function Dashboard() {
   const { user, isLoading: authLoading } = useAuth();
@@ -24,6 +29,8 @@ export default function Dashboard() {
   const { data: tasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory });
   const { data: categories } = useCategories();
   const [createOpen, setCreateOpen] = useState(false);
+  const [condensedView, setCondensedView] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
   if (authLoading || tasksLoading) {
     return (
@@ -88,7 +95,23 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCondensedView(!condensedView)}
+                data-testid="toggle-view-mode"
+              >
+                {condensedView ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {condensedView ? "Expanded view" : "Condensed view"}
+            </TooltipContent>
+          </Tooltip>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="gap-2">
@@ -149,9 +172,15 @@ export default function Dashboard() {
                     {section.count}
                   </span>
                 </h3>
-                <div className="grid gap-4">
+                <div className={condensedView ? "space-y-1" : "grid gap-4"}>
                   {groupedTasks[section.id].map(task => (
-                    <TaskCard key={task.id} task={task} />
+                    <TaskCard 
+                      key={task.id} 
+                      task={task} 
+                      condensed={condensedView}
+                      expanded={expandedTaskId === task.id}
+                      onToggleExpand={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                    />
                   ))}
                 </div>
               </motion.section>

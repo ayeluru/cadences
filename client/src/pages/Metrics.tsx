@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, subMonths } from "date-fns";
-import { Loader2, TrendingUp, TrendingDown, Minus, Activity } from "lucide-react";
+import { format } from "date-fns";
+import { Loader2, TrendingUp, TrendingDown, Minus, Activity, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { TaskWithDetails } from "@shared/schema";
 
@@ -19,12 +21,20 @@ interface MetricHistory {
   }>;
 }
 
+const CHART_COLORS = [
+  "hsl(var(--primary))",
+  "hsl(142, 76%, 36%)",
+  "hsl(38, 92%, 50%)",
+  "hsl(280, 65%, 60%)",
+  "hsl(200, 90%, 50%)",
+  "hsl(350, 80%, 55%)",
+];
+
 export default function MetricsPage() {
   const { data: tasks, isLoading: tasksLoading } = useQuery<TaskWithDetails[]>({
     queryKey: ["/api/tasks"],
   });
 
-  // Gather all metrics from all tasks
   const allMetrics = tasks?.flatMap(task => 
     (task.metrics || []).map(metric => ({
       ...metric,
@@ -33,7 +43,6 @@ export default function MetricsPage() {
     }))
   ) || [];
 
-  // Fetch history for each metric
   const { data: metricsHistory, isLoading: historyLoading } = useQuery<MetricHistory[]>({
     queryKey: ["/api/metrics/all-history"],
     queryFn: async () => {
@@ -61,14 +70,31 @@ export default function MetricsPage() {
 
   const isLoading = tasksLoading || historyLoading;
 
-  // Calculate trend for a metric
+  const [hiddenMetrics, setHiddenMetrics] = useState<Record<number, number[]>>({});
+
+  const toggleMetricVisibility = (taskId: number, metricId: number) => {
+    setHiddenMetrics(prev => {
+      const hidden = prev[taskId] || [];
+      if (hidden.includes(metricId)) {
+        return { ...prev, [taskId]: hidden.filter(id => id !== metricId) };
+      } else {
+        return { ...prev, [taskId]: [...hidden, metricId] };
+      }
+    });
+  };
+
+  const isMetricVisible = (taskId: number, metricId: number) => {
+    const hidden = hiddenMetrics[taskId] || [];
+    return !hidden.includes(metricId);
+  };
+
   const calculateTrend = (values: Array<{ value: string }>) => {
     if (!values || values.length < 2) return null;
     
     const numericValues = values
       .map(v => parseFloat(v.value))
       .filter(v => !isNaN(v))
-      .slice(0, 10); // Last 10 values
+      .slice(0, 10);
     
     if (numericValues.length < 2) return null;
     
@@ -86,22 +112,34 @@ export default function MetricsPage() {
     };
   };
 
-  // Prepare chart data for a metric
-  const prepareChartData = (metric: MetricHistory) => {
-    return metric.values
-      .map(v => ({
-        date: format(new Date(v.completedAt), "MMM d"),
-        value: parseFloat(v.value) || 0,
-        fullDate: format(new Date(v.completedAt), "MMM d, yyyy h:mm a"),
-      }))
-      .reverse()
-      .slice(-20); // Last 20 data points
-  };
-
   const TrendIcon = ({ direction }: { direction: string }) => {
     if (direction === "up") return <TrendingUp className="w-4 h-4 text-green-500" />;
     if (direction === "down") return <TrendingDown className="w-4 h-4 text-red-500" />;
     return <Minus className="w-4 h-4 text-muted-foreground" />;
+  };
+
+  const taskIds = Array.from(new Set(metricsHistory?.map(m => m.taskId) || []));
+  
+  const getTaskMetrics = (taskId: number) => {
+    return metricsHistory?.filter(m => m.taskId === taskId) || [];
+  };
+
+  const prepareUnifiedChartData = (taskMetrics: MetricHistory[]) => {
+    const allDates = new Map<string, Record<string, string | number>>();
+    
+    taskMetrics.forEach((metric) => {
+      metric.values.forEach(v => {
+        const dateKey = format(new Date(v.completedAt), "MMM d");
+        const existing = allDates.get(dateKey) || {};
+        existing[`metric_${metric.metricId}`] = parseFloat(v.value) || 0;
+        existing.fullDate = format(new Date(v.completedAt), "MMM d, yyyy");
+        allDates.set(dateKey, existing);
+      });
+    });
+    
+    return Array.from(allDates.entries())
+      .map(([date, values]) => ({ date, ...values }))
+      .slice(-30);
   };
 
   return (
@@ -111,7 +149,7 @@ export default function MetricsPage() {
           Metrics
         </h1>
         <p className="text-muted-foreground">
-          Track trends across all your custom metrics.
+          Track trends across all your custom metrics. Toggle individual metrics on/off per task.
         </p>
       </div>
 
@@ -131,7 +169,6 @@ export default function MetricsPage() {
         </Card>
       ) : (
         <div className="grid gap-6">
-          {/* Overview Cards */}
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="pb-2">
@@ -142,7 +179,7 @@ export default function MetricsPage() {
               <CardContent>
                 <div className="text-3xl font-bold">{metricsHistory.length}</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Across {new Set(metricsHistory.map(m => m.taskId)).size} tasks
+                  Across {taskIds.length} tasks
                 </p>
               </CardContent>
             </Card>
@@ -183,88 +220,114 @@ export default function MetricsPage() {
             </Card>
           </div>
 
-          {/* Individual Metric Charts */}
-          {metricsHistory.map((metric) => {
-            const trend = calculateTrend(metric.values);
-            const chartData = prepareChartData(metric);
-            const latestValue = metric.values[0]?.value;
+          {taskIds.map((taskId) => {
+            const taskMetrics = getTaskMetrics(taskId);
+            if (taskMetrics.length === 0) return null;
             
-            if (chartData.length === 0) return null;
+            const taskTitle = taskMetrics[0].taskTitle;
+            const chartData = prepareUnifiedChartData(taskMetrics);
+            const visibleTaskMetrics = taskMetrics.filter(m => isMetricVisible(taskId, m.metricId));
             
             return (
-              <Card key={metric.metricId} data-testid={`metric-card-${metric.metricId}`}>
+              <Card key={taskId} data-testid={`task-metrics-${taskId}`}>
                 <CardHeader>
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
                     <div>
-                      <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
-                        {metric.metricName}
-                        {metric.unit && (
-                          <Badge variant="secondary" className="text-xs font-normal">
-                            {metric.unit}
-                          </Badge>
-                        )}
-                      </CardTitle>
+                      <CardTitle className="text-lg">{taskTitle}</CardTitle>
                       <CardDescription className="mt-1">
-                        {metric.taskTitle}
+                        {taskMetrics.length} metric{taskMetrics.length !== 1 ? "s" : ""} tracked
                       </CardDescription>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-2xl font-bold">
-                        {latestValue}
-                        {metric.unit && <span className="text-sm font-normal text-muted-foreground ml-1">{metric.unit}</span>}
-                      </div>
-                      {trend && (
-                        <div className="flex items-center justify-end gap-1 mt-1">
-                          <TrendIcon direction={trend.direction} />
-                          <span className={`text-xs ${
-                            trend.direction === "up" ? "text-green-500" : 
-                            trend.direction === "down" ? "text-red-500" : 
-                            "text-muted-foreground"
-                          }`}>
-                            {trend.percentChange}%
-                          </span>
-                        </div>
-                      )}
+                    <div className="flex flex-wrap gap-2">
+                      {taskMetrics.map((metric, idx) => {
+                        const isVisible = isMetricVisible(taskId, metric.metricId);
+                        const trend = calculateTrend(metric.values);
+                        const latestValue = metric.values[0]?.value;
+                        
+                        return (
+                          <Button
+                            key={metric.metricId}
+                            variant={isVisible ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => toggleMetricVisibility(taskId, metric.metricId)}
+                            className="gap-2"
+                            data-testid={`toggle-metric-${metric.metricId}`}
+                          >
+                            {isVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            <span>{metric.metricName}</span>
+                            {latestValue && (
+                              <Badge 
+                                variant="secondary" 
+                                className="ml-1 text-[10px]"
+                                style={{ 
+                                  borderLeft: `3px solid ${CHART_COLORS[idx % CHART_COLORS.length]}` 
+                                }}
+                              >
+                                {latestValue}{metric.unit ? ` ${metric.unit}` : ""}
+                              </Badge>
+                            )}
+                            {trend && <TrendIcon direction={trend.direction} />}
+                          </Button>
+                        );
+                      })}
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                        <XAxis 
-                          dataKey="date" 
-                          tick={{ fontSize: 11 }} 
-                          className="text-muted-foreground"
-                          interval="preserveStartEnd"
-                        />
-                        <YAxis 
-                          tick={{ fontSize: 11 }} 
-                          className="text-muted-foreground"
-                          width={40}
-                        />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: "hsl(var(--card))", 
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: "8px",
-                          }}
-                          labelFormatter={(_, payload) => payload[0]?.payload?.fullDate || ""}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="hsl(var(--primary))" 
-                          strokeWidth={2}
-                          dot={{ fill: "hsl(var(--primary))", strokeWidth: 0, r: 3 }}
-                          activeDot={{ r: 5, fill: "hsl(var(--primary))" }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {visibleTaskMetrics.length === 0 ? (
+                    <div className="h-48 flex items-center justify-center text-muted-foreground">
+                      <p>Select at least one metric to display the chart</p>
+                    </div>
+                  ) : chartData.length === 0 ? (
+                    <div className="h-48 flex items-center justify-center text-muted-foreground">
+                      <p>No data points recorded yet</p>
+                    </div>
+                  ) : (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                          <XAxis 
+                            dataKey="date" 
+                            tick={{ fontSize: 11 }} 
+                            className="text-muted-foreground"
+                            interval="preserveStartEnd"
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 11 }} 
+                            className="text-muted-foreground"
+                            width={50}
+                          />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: "hsl(var(--card))", 
+                              border: "1px solid hsl(var(--border))",
+                              borderRadius: "8px",
+                            }}
+                          />
+                          <Legend />
+                          {visibleTaskMetrics.map((metric, idx) => {
+                            const originalIdx = taskMetrics.findIndex(m => m.metricId === metric.metricId);
+                            return (
+                              <Line 
+                                key={metric.metricId}
+                                type="monotone" 
+                                dataKey={`metric_${metric.metricId}`}
+                                name={`${metric.metricName}${metric.unit ? ` (${metric.unit})` : ""}`}
+                                stroke={CHART_COLORS[originalIdx % CHART_COLORS.length]}
+                                strokeWidth={2}
+                                dot={{ fill: CHART_COLORS[originalIdx % CHART_COLORS.length], strokeWidth: 0, r: 3 }}
+                                activeDot={{ r: 5 }}
+                                connectNulls
+                              />
+                            );
+                          })}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground mt-2 text-center">
-                    {metric.values.length} data point{metric.values.length !== 1 ? "s" : ""} recorded
+                    {taskMetrics.reduce((sum, m) => sum + m.values.length, 0)} total data points
                   </p>
                 </CardContent>
               </Card>

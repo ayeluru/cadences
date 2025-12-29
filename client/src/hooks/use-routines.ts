@@ -1,0 +1,47 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Routine, InsertRoutine } from "@shared/schema";
+
+export function useRoutines() {
+  return useQuery<Routine[]>({
+    queryKey: ["/api/routines"],
+  });
+}
+
+export function useCreateRoutine() {
+  const { toast } = useToast();
+  
+  return useMutation({
+    mutationFn: async (data: InsertRoutine) => {
+      const res = await apiRequest("POST", "/api/routines", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
+      toast({ title: "Routine created", description: "Your new routine has been created." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useDeleteRoutine() {
+  const { toast } = useToast();
+  
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/routines/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: "Routine deleted", description: "The routine has been removed." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+}

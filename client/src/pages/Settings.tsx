@@ -1,11 +1,12 @@
 import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
+import { useRoutines, useCreateRoutine, useDeleteRoutine } from "@/hooks/use-routines";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Tag as TagIcon, Folder, Trash2, Database, RefreshCw, AlertTriangle } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, Database, RefreshCw, AlertTriangle, Repeat } from "lucide-react";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
 import { Loader2 } from "lucide-react";
@@ -27,12 +28,16 @@ import {
 export default function Settings() {
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: tags, isLoading: tagsLoading } = useTags();
+  const { data: routines, isLoading: routinesLoading } = useRoutines();
   const createTagMutation = useCreateTag();
+  const createRoutineMutation = useCreateRoutine();
   const deleteCategoryMutation = useDeleteCategory();
+  const deleteRoutineMutation = useDeleteRoutine();
   const { toast } = useToast();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
+  const [newRoutineName, setNewRoutineName] = useState("");
 
   const clearDataMutation = useMutation({
     mutationFn: async () => {
@@ -75,6 +80,14 @@ export default function Settings() {
     if (!newTagName.trim()) return;
     createTagMutation.mutate({ name: newTagName }, {
       onSuccess: () => setNewTagName("")
+    });
+  };
+
+  const handleAddRoutine = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRoutineName.trim()) return;
+    createRoutineMutation.mutate({ name: newRoutineName }, {
+      onSuccess: () => setNewRoutineName("")
     });
   };
 
@@ -161,6 +174,62 @@ export default function Settings() {
                 <Badge key={tag.id} variant="secondary" className="px-3 py-1 text-sm font-normal">
                   {tag.name}
                 </Badge>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Routines */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Repeat className="w-5 h-5 text-primary" /> Routines
+          </CardTitle>
+          <CardDescription>Group related tasks that you typically do together.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <form onSubmit={handleAddRoutine} className="flex gap-3 max-w-md">
+            <div className="flex-1">
+              <Label htmlFor="routine-name" className="sr-only">New Routine Name</Label>
+              <Input 
+                id="routine-name" 
+                placeholder="New routine name (e.g., Morning Routine)..." 
+                value={newRoutineName}
+                onChange={(e) => setNewRoutineName(e.target.value)}
+                data-testid="input-routine-name"
+              />
+            </div>
+            <Button type="submit" disabled={createRoutineMutation.isPending || !newRoutineName.trim()} data-testid="button-create-routine">
+              {createRoutineMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              <span className="ml-2 hidden sm:inline">Create</span>
+            </Button>
+          </form>
+
+          <div className="flex flex-wrap gap-2">
+            {routinesLoading ? (
+               <span className="text-muted-foreground text-sm">Loading...</span>
+            ) : routines?.length === 0 ? (
+              <span className="text-muted-foreground text-sm italic">No routines created yet. Create one to group related tasks.</span>
+            ) : (
+              routines?.map(routine => (
+                <div key={routine.id} className="bg-secondary text-secondary-foreground px-3 py-1.5 rounded-lg text-sm font-medium border border-border/50 flex items-center gap-2 group">
+                  <Repeat className="w-3 h-3 text-muted-foreground" />
+                  <span>{routine.name}</span>
+                  <button
+                    onClick={() => deleteRoutineMutation.mutate(routine.id)}
+                    disabled={deleteRoutineMutation.isPending}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 ml-1"
+                    title="Delete routine"
+                    data-testid={`button-delete-routine-${routine.id}`}
+                  >
+                    {deleteRoutineMutation.isPending && deleteRoutineMutation.variables === routine.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
               ))
             )}
           </div>

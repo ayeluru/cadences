@@ -24,9 +24,9 @@ export default function CalendarView() {
   
   // Toggle states for visibility
   const [showCompletions, setShowCompletions] = useState(true);
-  const [showMissed, setShowMissed] = useState(true);
-  const [showFutureDue, setShowFutureDue] = useState(true);
-  const [condensedMode, setCondensedMode] = useState(false);
+  const [showMissed, setShowMissed] = useState(false);
+  const [showFutureDue, setShowFutureDue] = useState(false);
+  const [heatMapSource, setHeatMapSource] = useState<"completions" | "missed" | "upcoming">("completions");
   
   // Collapsible states for day details
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -63,18 +63,59 @@ export default function CalendarView() {
   const getDayIndicators = (dayData: EnhancedCalendarDay | undefined) => {
     if (!dayData) return { completions: 0, missed: 0, dueSoon: 0 };
     return {
-      completions: showCompletions ? dayData.completions.length : 0,
-      missed: showMissed ? dayData.missed.length : 0,
-      dueSoon: showFutureDue ? dayData.dueSoon.length : 0,
+      completions: dayData.completions.length,
+      missed: dayData.missed.length,
+      dueSoon: dayData.dueSoon.length,
     };
+  };
+
+  const getHeatMapValue = (dayData: EnhancedCalendarDay | undefined) => {
+    if (!dayData) return 0;
+    switch (heatMapSource) {
+      case "completions": return dayData.completions.length;
+      case "missed": return dayData.missed.length;
+      case "upcoming": return dayData.dueSoon.length;
+      default: return 0;
+    }
+  };
+
+  const getHeatMapColors = () => {
+    switch (heatMapSource) {
+      case "completions":
+        return {
+          l1: "bg-green-100 dark:bg-green-900/30",
+          l2: "bg-green-200 dark:bg-green-800/50",
+          l3: "bg-green-300 dark:bg-green-700/60",
+          l4: "bg-green-400 dark:bg-green-600/70",
+          l5: "bg-green-500 dark:bg-green-500/80",
+        };
+      case "missed":
+        return {
+          l1: "bg-red-100 dark:bg-red-900/30",
+          l2: "bg-red-200 dark:bg-red-800/50",
+          l3: "bg-red-300 dark:bg-red-700/60",
+          l4: "bg-red-400 dark:bg-red-600/70",
+          l5: "bg-red-500 dark:bg-red-500/80",
+        };
+      case "upcoming":
+        return {
+          l1: "bg-amber-100 dark:bg-amber-900/30",
+          l2: "bg-amber-200 dark:bg-amber-800/50",
+          l3: "bg-amber-300 dark:bg-amber-700/60",
+          l4: "bg-amber-400 dark:bg-amber-600/70",
+          l5: "bg-amber-500 dark:bg-amber-500/80",
+        };
+    }
   };
 
   const getDensityColor = (count: number) => {
     if (count === 0) return "";
-    if (count <= 2) return "bg-green-100 dark:bg-green-900/30";
-    if (count <= 5) return "bg-green-200 dark:bg-green-800/40";
-    if (count <= 10) return "bg-green-300 dark:bg-green-700/50";
-    return "bg-green-400 dark:bg-green-600/60";
+    const colors = getHeatMapColors();
+    if (count === 1) return colors.l1;
+    if (count === 2) return colors.l2;
+    if (count <= 4) return colors.l3;
+    if (count <= 6) return colors.l4;
+    return colors.l5;
   };
 
   const toggleSection = (section: string) => {
@@ -93,53 +134,80 @@ export default function CalendarView() {
       </div>
 
       <Card className="p-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="show-completions"
-              checked={showCompletions}
-              onCheckedChange={setShowCompletions}
-              data-testid="toggle-completions"
-            />
-            <Label htmlFor="show-completions" className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-              Completed
-            </Label>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-muted-foreground">Heat map shows:</span>
+            <div className="flex gap-1">
+              <Button
+                variant={heatMapSource === "completions" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setHeatMapSource("completions")}
+                className="gap-1.5"
+                data-testid="heatmap-completions"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Completed
+              </Button>
+              <Button
+                variant={heatMapSource === "missed" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setHeatMapSource("missed")}
+                className="gap-1.5"
+                data-testid="heatmap-missed"
+              >
+                <AlertCircle className="w-3.5 h-3.5" />
+                Missed
+              </Button>
+              <Button
+                variant={heatMapSource === "upcoming" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setHeatMapSource("upcoming")}
+                className="gap-1.5"
+                data-testid="heatmap-upcoming"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                Upcoming
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="show-missed"
-              checked={showMissed}
-              onCheckedChange={setShowMissed}
-              data-testid="toggle-missed"
-            />
-            <Label htmlFor="show-missed" className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <AlertCircle className="w-4 h-4 text-destructive" />
-              Missed
-            </Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="show-future"
-              checked={showFutureDue}
-              onCheckedChange={setShowFutureDue}
-              data-testid="toggle-future"
-            />
-            <Label htmlFor="show-future" className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <Clock className="w-4 h-4 text-amber-500" />
-              Upcoming
-            </Label>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Switch
-              id="condensed-mode"
-              checked={condensedMode}
-              onCheckedChange={setCondensedMode}
-              data-testid="toggle-condensed"
-            />
-            <Label htmlFor="condensed-mode" className="text-sm cursor-pointer">
-              Condensed
-            </Label>
+          <div className="flex flex-wrap items-center gap-4 border-t pt-3">
+            <span className="text-sm font-medium text-muted-foreground">Show in details:</span>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-completions"
+                checked={showCompletions}
+                onCheckedChange={setShowCompletions}
+                data-testid="toggle-completions"
+              />
+              <Label htmlFor="show-completions" className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                Completed
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-missed"
+                checked={showMissed}
+                onCheckedChange={setShowMissed}
+                data-testid="toggle-missed"
+              />
+              <Label htmlFor="show-missed" className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <AlertCircle className="w-4 h-4 text-destructive" />
+                Missed
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-future"
+                checked={showFutureDue}
+                onCheckedChange={setShowFutureDue}
+                data-testid="toggle-future"
+              />
+              <Label htmlFor="show-future" className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <Clock className="w-4 h-4 text-amber-500" />
+                Upcoming
+              </Label>
+            </div>
           </div>
         </div>
       </Card>
@@ -194,49 +262,35 @@ export default function CalendarView() {
                 {calendarDays.map((day, idx) => {
                   const dayData = getDataForDay(day);
                   const indicators = getDayIndicators(dayData);
+                  const heatValue = getHeatMapValue(dayData);
                   const isCurrentMonth = isSameMonth(day, currentMonth);
                   const isSelected = selectedDate && isSameDay(day, selectedDate);
                   const isTodayDate = isToday(day);
-                  const totalCompletions = indicators.completions;
 
                   return (
                     <button
                       key={idx}
                       onClick={() => setSelectedDate(day)}
                       className={cn(
-                        "aspect-square p-1 rounded-lg text-sm transition-all relative",
+                        "aspect-square p-1 rounded-md text-sm transition-all relative",
                         "hover:ring-2 hover:ring-primary/50",
-                        !isCurrentMonth && "text-muted-foreground/40",
-                        isCurrentMonth && showCompletions && getDensityColor(totalCompletions),
+                        !isCurrentMonth && "text-muted-foreground/40 opacity-50",
+                        isCurrentMonth && getDensityColor(heatValue),
                         isSelected && "ring-2 ring-primary",
-                        isTodayDate && "font-bold"
+                        isTodayDate && "font-bold ring-1 ring-primary/30"
                       )}
                       data-testid={`calendar-day-${format(day, "yyyy-MM-dd")}`}
                     >
                       <span className={cn(
-                        "absolute top-1 left-1/2 -translate-x-1/2",
+                        "absolute top-1 left-1/2 -translate-x-1/2 text-xs",
                         isTodayDate && "text-primary"
                       )}>
                         {format(day, "d")}
                       </span>
                       
-                      {!condensedMode && isCurrentMonth && (
-                        <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                          {indicators.completions > 0 && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" title={`${indicators.completions} completed`} />
-                          )}
-                          {indicators.missed > 0 && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-destructive" title={`${indicators.missed} missed`} />
-                          )}
-                          {indicators.dueSoon > 0 && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" title={`${indicators.dueSoon} upcoming`} />
-                          )}
-                        </div>
-                      )}
-                      
-                      {condensedMode && isCurrentMonth && (totalCompletions > 0 || indicators.missed > 0 || indicators.dueSoon > 0) && (
-                        <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] text-muted-foreground font-medium">
-                          {totalCompletions + indicators.missed + indicators.dueSoon}
+                      {isCurrentMonth && heatValue > 0 && (
+                        <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[10px] font-semibold">
+                          {heatValue}
                         </span>
                       )}
                     </button>
@@ -245,19 +299,16 @@ export default function CalendarView() {
               </div>
             )}
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span>Completed</span>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">
+              <span>Less</span>
+              <div className="flex gap-0.5">
+                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l1)} />
+                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l2)} />
+                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l3)} />
+                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l4)} />
+                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l5)} />
               </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-destructive" />
-                <span>Missed</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>Upcoming</span>
-              </div>
+              <span>More</span>
             </div>
           </CardContent>
         </Card>
