@@ -1,7 +1,7 @@
 import { 
-  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues,
+  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues, taskStreaks,
   type User, type Category, type Tag, type Task, type TaskTag, type Completion,
-  type Routine, type TaskMetric, type MetricValue,
+  type Routine, type TaskMetric, type MetricValue, type TaskStreak,
   type InsertCategory, type InsertTag, type InsertTask, type InsertRoutine,
   type InsertTaskMetric, type InsertMetricValue
 } from "@shared/schema";
@@ -40,7 +40,7 @@ export interface IStorage {
   deleteTaskMetrics(taskId: number): Promise<void>;
   
   // Completions
-  completeTask(taskId: number, completedAt?: Date, notes?: string, metricData?: {metricId: number, value: number | string}[]): Promise<{task: Task, completion: Completion}>;
+  completeTask(taskId: number, completedAt?: Date, notes?: string, metricData?: {metricId: number, value: number | string}[], userId?: string): Promise<{task: Task, completion: Completion, streak?: TaskStreak}>;
   getCompletions(taskId: number): Promise<Completion[]>;
   getAllCompletions(userId: string): Promise<Completion[]>;
   getCompletionsInPeriod(taskId: number, startDate: Date, endDate: Date): Promise<Completion[]>;
@@ -51,6 +51,11 @@ export interface IStorage {
 
   // Task Tags helpers
   getTaskTags(taskId: number): Promise<Tag[]>;
+  
+  // Streaks
+  getTaskStreak(taskId: number, userId: string): Promise<TaskStreak | undefined>;
+  updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date): Promise<TaskStreak>;
+  getAllStreaks(userId: string): Promise<TaskStreak[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -175,8 +180,9 @@ export class DatabaseStorage implements IStorage {
     taskId: number, 
     completedAt: Date = new Date(), 
     notes?: string,
-    metricData?: {metricId: number, value: number | string}[]
-  ): Promise<{task: Task, completion: Completion}> {
+    metricData?: {metricId: number, value: number | string}[],
+    userId?: string
+  ): Promise<{task: Task, completion: Completion, streak?: TaskStreak}> {
     // Get the task to check if it's a variation
     const task = await this.getTask(taskId);
     
@@ -213,7 +219,21 @@ export class DatabaseStorage implements IStorage {
         .where(eq(tasks.id, task.parentTaskId));
     }
 
-    return { task: updatedTask, completion };
+    // Update streak if userId provided
+    let streak: TaskStreak | undefined;
+    if (userId && task) {
+      streak = await this.updateTaskStreak(taskId, userId, task, completedAt);
+      
+      // Also update parent task streak if this is a variation
+      if (task.parentTaskId) {
+        const parentTask = await this.getTask(task.parentTaskId);
+        if (parentTask) {
+          await this.updateTaskStreak(task.parentTaskId, userId, parentTask, completedAt);
+        }
+      }
+    }
+
+    return { task: updatedTask, completion, streak };
   }
 
   async getCompletions(taskId: number): Promise<Completion[]> {
@@ -276,6 +296,105 @@ export class DatabaseStorage implements IStorage {
     .where(eq(taskTags.taskId, taskId));
     
     return result.map(r => r.tag);
+  }
+
+  // Streak methods
+  async getTaskStreak(taskId: number, userId: string): Promise<TaskStreak | undefined> {
+    const [streak] = await db.select().from(taskStreaks)
+      .where(and(eq(taskStreaks.taskId, taskId), eq(taskStreaks.userId, userId)));
+    return streak;
+  }
+
+  async getAllStreaks(userId: string): Promise<TaskStreak[]> {
+    return await db.select().from(taskStreaks)
+      .where(eq(taskStreaks.userId, userId))
+      .orderBy(desc(taskStreaks.currentStreak));
+  }
+
+  async updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date): Promise<TaskStreak> {
+    // Get current streak or create new one
+    let streak = await this.getTaskStreak(taskId, userId);
+    
+    // Get interval in days for this task to determine if streak is broken
+    const intervalDays = this.getIntervalInDays(task);
+    
+    // Calculate streak based on completion date
+    const now = completedAt;
+    
+    if (!streak) {
+      // First completion - create streak record
+      const [newStreak] = await db.insert(taskStreaks).values({
+        taskId,
+        userId,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastCompletedAt: now,
+        streakStartDate: now,
+        totalCompletions: 1,
+      }).returning();
+      return newStreak;
+    }
+
+    // Calculate if streak continues or breaks
+    const lastCompletion = streak.lastCompletedAt;
+    const daysSinceLastCompletion = lastCompletion 
+      ? Math.floor((now.getTime() - lastCompletion.getTime()) / (1000 * 60 * 60 * 24))
+      : Infinity;
+
+    // Streak continues if completed within the grace window (interval + 50% buffer)
+    const graceWindow = Math.max(intervalDays * 1.5, intervalDays + 1);
+    const streakContinues = daysSinceLastCompletion <= graceWindow;
+
+    let newCurrentStreak: number;
+    let newStreakStartDate: Date;
+
+    if (streakContinues && daysSinceLastCompletion >= 0.5) {
+      // Streak continues - increment
+      newCurrentStreak = streak.currentStreak + 1;
+      newStreakStartDate = streak.streakStartDate || now;
+    } else if (daysSinceLastCompletion < 0.5) {
+      // Same day completion - don't increment streak
+      newCurrentStreak = streak.currentStreak;
+      newStreakStartDate = streak.streakStartDate || now;
+    } else {
+      // Streak broken - reset to 1
+      newCurrentStreak = 1;
+      newStreakStartDate = now;
+    }
+
+    const newLongestStreak = Math.max(streak.longestStreak, newCurrentStreak);
+
+    const [updatedStreak] = await db.update(taskStreaks)
+      .set({
+        currentStreak: newCurrentStreak,
+        longestStreak: newLongestStreak,
+        lastCompletedAt: now,
+        streakStartDate: newStreakStartDate,
+        totalCompletions: streak.totalCompletions + 1,
+      })
+      .where(eq(taskStreaks.id, streak.id))
+      .returning();
+
+    return updatedStreak;
+  }
+
+  private getIntervalInDays(task: Task): number {
+    // For frequency tasks, use target period
+    if (task.taskType === 'frequency') {
+      return task.targetPeriod === 'week' ? 7 : 30;
+    }
+    
+    // For interval tasks
+    const value = task.intervalValue || 1;
+    const unit = task.intervalUnit || 'days';
+    
+    switch (unit) {
+      case 'days': return value;
+      case 'weeks': return value * 7;
+      case 'months': return value * 30;
+      case 'years': return value * 365;
+      default: return value;
+    }
   }
 }
 

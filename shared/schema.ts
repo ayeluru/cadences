@@ -172,6 +172,25 @@ export type InsertRoutine = z.infer<typeof insertRoutineSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
 
+// Task streaks - track consecutive completions
+export const taskStreaks = pgTable("task_streaks", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => tasks.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  currentStreak: integer("current_streak").default(0).notNull(),
+  longestStreak: integer("longest_streak").default(0).notNull(),
+  lastCompletedAt: timestamp("last_completed_at"),
+  streakStartDate: timestamp("streak_start_date"),
+  totalCompletions: integer("total_completions").default(0).notNull(),
+});
+
+export const taskStreaksRelations = relations(taskStreaks, ({ one }) => ({
+  task: one(tasks, { fields: [taskStreaks.taskId], references: [tasks.id] }),
+  user: one(users, { fields: [taskStreaks.userId], references: [users.id] }),
+}));
+
+export type TaskStreak = typeof taskStreaks.$inferSelect;
+
 // Custom Types for API
 export type TaskWithDetails = Task & {
   category?: Category | null;
@@ -187,4 +206,6 @@ export type TaskWithDetails = Task & {
   // For frequency tasks - progress toward target
   completionsThisPeriod?: number;
   targetProgress?: number; // percentage 0-100
+  // Streak data
+  streak?: TaskStreak | null;
 };

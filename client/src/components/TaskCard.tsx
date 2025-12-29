@@ -1,6 +1,6 @@
 import { TaskWithDetails, TaskMetric } from "@shared/schema";
 import { format, formatDistanceToNow, addDays, isPast } from "date-fns";
-import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2 } from "lucide-react";
+import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -125,6 +125,28 @@ export function TaskCard({ task, showVariations = true }: TaskCardProps) {
               {hasMetrics && (
                 <Badge variant="outline" className="text-[10px] px-1.5 h-5">
                   <BarChart2 className="w-3 h-3 mr-1" /> Tracked
+                </Badge>
+              )}
+              {task.streak && task.streak.currentStreak > 0 && (
+                <Badge 
+                  variant="secondary" 
+                  className={cn(
+                    "text-[10px] px-1.5 h-5",
+                    task.streak.currentStreak >= 7 && "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+                    task.streak.currentStreak >= 30 && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                  )}
+                >
+                  <Flame className={cn(
+                    "w-3 h-3 mr-1",
+                    task.streak.currentStreak >= 7 && "text-orange-500",
+                    task.streak.currentStreak >= 30 && "text-red-500"
+                  )} />
+                  {task.streak.currentStreak}
+                </Badge>
+              )}
+              {task.streak && task.streak.currentStreak === task.streak.longestStreak && task.streak.longestStreak >= 5 && (
+                <Badge variant="outline" className="text-[10px] px-1.5 h-5 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-300">
+                  <Trophy className="w-3 h-3 mr-1 text-yellow-500" /> Best
                 </Badge>
               )}
               <div className="flex gap-1">

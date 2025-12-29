@@ -110,6 +110,9 @@ async function enrichTask(task: any, userId: string) {
     urgency = -daysUntilDue;
   }
 
+  // Get streak data
+  const streak = await storage.getTaskStreak(task.id, userId);
+
   return {
     ...task,
     category,
@@ -122,7 +125,8 @@ async function enrichTask(task: any, userId: string) {
     daysUntilDue,
     urgency,
     completionsThisPeriod,
-    targetProgress
+    targetProgress,
+    streak
   };
 }
 
@@ -164,7 +168,7 @@ export async function registerRoutes(
       filtered = filtered.filter(t => t.categoryId === Number(categoryId));
     }
     if (tagId) {
-      filtered = filtered.filter(t => t.tags.some(tag => tag.id === Number(tagId)));
+      filtered = filtered.filter(t => t.tags.some((tag: any) => tag.id === Number(tagId)));
     }
 
     res.json(filtered);
@@ -242,9 +246,9 @@ export async function registerRoutes(
     // Parse metric data if provided
     const metricData = (req.body.metrics || []) as {metricId: number, value: number | string}[];
     
-    const { task: updated, completion } = await storage.completeTask(taskId, completedAt, input.notes, metricData);
+    const { task: updated, completion, streak } = await storage.completeTask(taskId, completedAt, input.notes, metricData, userId);
     const enriched = await enrichTask(updated, userId);
-    res.json({ ...enriched, lastCompletion: completion });
+    res.json({ ...enriched, lastCompletion: completion, streak });
   });
 
   app.get(api.categories.list.path, requireAuth, async (req: any, res) => {
@@ -333,6 +337,37 @@ export async function registerRoutes(
     const parentId = Number(req.params.id);
     const variationsList = await storage.getTaskVariations(parentId);
     res.json(variationsList);
+  });
+
+  // Task completions history
+  app.get("/api/tasks/:id/completions", requireAuth, async (req: any, res) => {
+    const taskId = Number(req.params.id);
+    const userId = req.user.claims.sub;
+    const task = await storage.getTask(taskId);
+    
+    if (!task || task.userId !== userId) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    
+    const taskCompletions = await storage.getCompletions(taskId);
+    res.json(taskCompletions);
+  });
+
+  // Streaks endpoint
+  app.get("/api/streaks", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const allStreaks = await storage.getAllStreaks(userId);
+    
+    // Enrich with task names
+    const enrichedStreaks = await Promise.all(allStreaks.map(async (streak) => {
+      const task = await storage.getTask(streak.taskId);
+      return {
+        ...streak,
+        taskTitle: task?.title || "Unknown Task"
+      };
+    }));
+    
+    res.json(enrichedStreaks);
   });
 
   app.get(api.stats.get.path, requireAuth, async (req: any, res) => {
@@ -462,7 +497,7 @@ export async function registerRoutes(
         filtered = filtered.filter(t => t.categoryId === Number(categoryId));
       }
       if (tagId) {
-        filtered = filtered.filter(t => t.tags.some(tag => tag.id === Number(tagId)));
+        filtered = filtered.filter(t => t.tags.some((tag: any) => tag.id === Number(tagId)));
       }
 
       res.json(filtered);
