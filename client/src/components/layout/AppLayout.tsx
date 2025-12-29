@@ -36,7 +36,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <p className="text-sm text-muted-foreground mt-1">Track your recurring tasks.</p>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map((item, idx) => {
             if (item.type === "divider") {
               return <div key={`divider-${idx}`} className="my-2 border-t border-border/30" />;
