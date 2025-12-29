@@ -557,6 +557,31 @@ export async function registerRoutes(
     }
   });
 
+  // Import tasks from one profile to another
+  app.post("/api/profiles/:targetId/import/:sourceId", requireAuth, async (req: any, res) => {
+    try {
+      const sourceProfileId = Number(req.params.sourceId);
+      const targetProfileId = Number(req.params.targetId);
+      const userId = req.user.claims.sub;
+      
+      // Verify both profiles exist and belong to the user
+      const sourceProfile = await storage.getProfile(sourceProfileId, userId);
+      const targetProfile = await storage.getProfile(targetProfileId, userId);
+      
+      if (!sourceProfile) {
+        return res.status(404).json({ error: "Source profile not found" });
+      }
+      if (!targetProfile) {
+        return res.status(404).json({ error: "Target profile not found" });
+      }
+      
+      const result = await storage.importTasksFromProfile(sourceProfileId, targetProfileId, userId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Routines
   app.get("/api/routines", requireAuth, async (req: any, res) => {
     const profileId = req.query.profileId ? Number(req.query.profileId) : undefined;

@@ -78,6 +78,9 @@ export interface IStorage {
   // Task Migration
   reassignTaskToProfile(taskId: number, targetProfileId: number, userId: string): Promise<Task>;
   migrateTasksToProfile(taskIds: number[], targetProfileId: number, userId: string): Promise<Task[]>;
+  
+  // Profile Import
+  importTasksFromProfile(sourceProfileId: number, targetProfileId: number, userId: string): Promise<{ tasksCreated: number, categoriesCreated: number, tagsCreated: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1979,6 +1982,154 @@ export class DatabaseStorage implements IStorage {
       results.push(updatedTask);
     }
     return results;
+  }
+
+  async importTasksFromProfile(
+    sourceProfileId: number, 
+    targetProfileId: number, 
+    userId: string
+  ): Promise<{ tasksCreated: number, categoriesCreated: number, tagsCreated: number }> {
+    // Get all source data
+    const sourceCategories = await this.getCategories(userId, sourceProfileId);
+    const sourceTags = await this.getTags(userId, sourceProfileId);
+    const sourceTasks = await this.getTasks(userId, sourceProfileId);
+    const sourceRoutines = await this.getRoutines(userId, sourceProfileId);
+    
+    // Maps from old IDs to new IDs
+    const categoryMap = new Map<number, number>();
+    const tagMap = new Map<number, number>();
+    const routineMap = new Map<number, number>();
+    const taskMap = new Map<number, number>();
+    
+    // 1. Copy categories
+    for (const cat of sourceCategories) {
+      const newCat = await this.createCategory(userId, { 
+        name: cat.name, 
+        parentId: null, // Handle parent mapping below
+        profileId: targetProfileId 
+      });
+      categoryMap.set(cat.id, newCat.id);
+    }
+    
+    // Update parent references for categories
+    for (const cat of sourceCategories) {
+      if (cat.parentId && categoryMap.has(cat.parentId)) {
+        const newCatId = categoryMap.get(cat.id)!;
+        const newParentId = categoryMap.get(cat.parentId)!;
+        await db.update(categories)
+          .set({ parentId: newParentId })
+          .where(eq(categories.id, newCatId));
+      }
+    }
+    
+    // 2. Copy tags
+    for (const tag of sourceTags) {
+      const newTag = await this.createTag(userId, { 
+        name: tag.name, 
+        profileId: targetProfileId 
+      });
+      tagMap.set(tag.id, newTag.id);
+    }
+    
+    // 3. Copy routines
+    for (const routine of sourceRoutines) {
+      const newRoutine = await this.createRoutine(userId, { 
+        name: routine.name, 
+        description: routine.description,
+        profileId: targetProfileId 
+      });
+      routineMap.set(routine.id, newRoutine.id);
+    }
+    
+    // 4. Copy tasks (parent tasks first, then variations)
+    const parentTasks = sourceTasks.filter(t => !t.parentTaskId);
+    const variationTasks = sourceTasks.filter(t => t.parentTaskId);
+    
+    for (const task of parentTasks) {
+      // Get task's tags
+      const taskTagIds = await this.getTaskTags(task.id);
+      const newTagIds = taskTagIds.map(t => tagMap.get(t.id)).filter((id): id is number => id !== undefined);
+      
+      // Create the task copy
+      const newTask = await this.createTask(userId, {
+        title: task.title,
+        description: task.description,
+        taskType: task.taskType,
+        intervalValue: task.intervalValue,
+        intervalUnit: task.intervalUnit,
+        targetCount: task.targetCount,
+        targetPeriod: task.targetPeriod,
+        scheduledDaysOfWeek: task.scheduledDaysOfWeek,
+        scheduledDaysOfMonth: task.scheduledDaysOfMonth,
+        scheduledTime: task.scheduledTime,
+        scheduledDates: task.scheduledDates,
+        refractoryMinutes: task.refractoryMinutes,
+        categoryId: task.categoryId ? categoryMap.get(task.categoryId) : null,
+        routineId: task.routineId ? routineMap.get(task.routineId) : null,
+        profileId: targetProfileId,
+        parentTaskId: null // Parent tasks have no parent
+      }, newTagIds);
+      
+      // Copy metrics for this task
+      const taskMetricsList = await this.getTaskMetrics(task.id);
+      for (const metric of taskMetricsList) {
+        await this.createTaskMetric({
+          taskId: newTask.id,
+          name: metric.name,
+          unit: metric.unit,
+          dataType: metric.dataType
+        });
+      }
+      
+      taskMap.set(task.id, newTask.id);
+    }
+    
+    // Now copy variation tasks
+    for (const task of variationTasks) {
+      const newParentId = task.parentTaskId ? taskMap.get(task.parentTaskId) : null;
+      if (!newParentId && task.parentTaskId) continue; // Skip if parent wasn't copied
+      
+      const taskTagIds = await this.getTaskTags(task.id);
+      const newTagIds = taskTagIds.map(t => tagMap.get(t.id)).filter((id): id is number => id !== undefined);
+      
+      const newTask = await this.createTask(userId, {
+        title: task.title,
+        description: task.description,
+        taskType: task.taskType,
+        intervalValue: task.intervalValue,
+        intervalUnit: task.intervalUnit,
+        targetCount: task.targetCount,
+        targetPeriod: task.targetPeriod,
+        scheduledDaysOfWeek: task.scheduledDaysOfWeek,
+        scheduledDaysOfMonth: task.scheduledDaysOfMonth,
+        scheduledTime: task.scheduledTime,
+        scheduledDates: task.scheduledDates,
+        refractoryMinutes: task.refractoryMinutes,
+        categoryId: task.categoryId ? categoryMap.get(task.categoryId) : null,
+        routineId: task.routineId ? routineMap.get(task.routineId) : null,
+        profileId: targetProfileId,
+        parentTaskId: newParentId
+      }, newTagIds);
+      
+      // Copy metrics for this variation
+      const taskMetricsList = await this.getTaskMetrics(task.id);
+      for (const metric of taskMetricsList) {
+        await this.createTaskMetric({
+          taskId: newTask.id,
+          name: metric.name,
+          unit: metric.unit,
+          dataType: metric.dataType
+        });
+      }
+      
+      taskMap.set(task.id, newTask.id);
+    }
+    
+    return {
+      tasksCreated: taskMap.size,
+      categoriesCreated: categoryMap.size,
+      tagsCreated: tagMap.size
+    };
   }
 }
 

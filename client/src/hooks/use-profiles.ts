@@ -177,3 +177,39 @@ export function useClearAllProfilesData() {
     }
   });
 }
+
+export function useImportFromProfile() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async ({ targetProfileId, sourceProfileId }: { targetProfileId: number; sourceProfileId: number }) => {
+      const res = await apiRequest('POST', `/api/profiles/${targetProfileId}/import/${sourceProfileId}`);
+      return res.json();
+    },
+    onSuccess: (data: { tasksCreated: number; categoriesCreated: number; tagsCreated: number }) => {
+      // Invalidate all profile-scoped queries
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return typeof key === 'string' && (
+            key.startsWith('/api/tasks') ||
+            key.startsWith('/api/categories') ||
+            key.startsWith('/api/tags') ||
+            key.startsWith('/api/routines') ||
+            key.startsWith('/api/streaks') ||
+            key.startsWith('/api/calendar') ||
+            key.startsWith('/api/completions') ||
+            key.startsWith('/api/metrics') ||
+            key.startsWith('/api/stats')
+          );
+        }
+      });
+      toast({ 
+        title: "Tasks imported", 
+        description: `Imported ${data.tasksCreated} tasks, ${data.categoriesCreated} categories, and ${data.tagsCreated} tags.` 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+}

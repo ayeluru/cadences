@@ -1,14 +1,15 @@
 import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useRoutines, useCreateRoutine, useDeleteRoutine, useCompleteRoutine } from "@/hooks/use-routines";
-import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile } from "@/hooks/use-profiles";
+import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile, useImportFromProfile } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, PlayCircle } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, PlayCircle, Copy } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
 import {
@@ -40,11 +41,13 @@ export default function Settings() {
   const clearAllProfilesDataMutation = useClearAllProfilesData();
   const regenerateDemoMutation = useRegenerateDemoProfile();
   const completeRoutineMutation = useCompleteRoutine();
+  const importFromProfileMutation = useImportFromProfile();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newRoutineName, setNewRoutineName] = useState("");
   const [newProfileName, setNewProfileName] = useState("");
+  const [importFromProfileId, setImportFromProfileId] = useState<string>("");
 
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +69,17 @@ export default function Settings() {
     e.preventDefault();
     if (!newProfileName.trim()) return;
     createProfileMutation.mutate({ name: newProfileName }, {
-      onSuccess: () => setNewProfileName("")
+      onSuccess: (newProfile) => {
+        setNewProfileName("");
+        // If a source profile was selected, import tasks from it
+        if (importFromProfileId && importFromProfileId !== "none") {
+          importFromProfileMutation.mutate({
+            targetProfileId: newProfile.id,
+            sourceProfileId: Number(importFromProfileId)
+          });
+          setImportFromProfileId("");
+        }
+      }
     });
   };
 
@@ -106,21 +119,42 @@ export default function Settings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <form onSubmit={handleAddProfile} className="flex gap-3 max-w-md">
-            <div className="flex-1">
-              <Label htmlFor="profile-name" className="sr-only">New Profile Name</Label>
-              <Input 
-                id="profile-name" 
-                placeholder="New profile name (e.g., Work, Exercise)..." 
-                value={newProfileName}
-                onChange={(e) => setNewProfileName(e.target.value)}
-                data-testid="input-profile-name"
-              />
+          <form onSubmit={handleAddProfile} className="space-y-3 max-w-lg">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Label htmlFor="profile-name" className="sr-only">New Profile Name</Label>
+                <Input 
+                  id="profile-name" 
+                  placeholder="New profile name (e.g., Work, Exercise)..." 
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                  data-testid="input-profile-name"
+                />
+              </div>
+              <Button type="submit" disabled={createProfileMutation.isPending || importFromProfileMutation.isPending || !newProfileName.trim()} data-testid="button-create-profile">
+                {(createProfileMutation.isPending || importFromProfileMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                <span className="ml-2 hidden sm:inline">Create</span>
+              </Button>
             </div>
-            <Button type="submit" disabled={createProfileMutation.isPending || !newProfileName.trim()} data-testid="button-create-profile">
-              {createProfileMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              <span className="ml-2 hidden sm:inline">Create</span>
-            </Button>
+            {profiles && profiles.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Copy className="w-4 h-4 text-muted-foreground" />
+                <Label htmlFor="import-from" className="text-sm text-muted-foreground whitespace-nowrap">Copy tasks from:</Label>
+                <Select value={importFromProfileId} onValueChange={setImportFromProfileId}>
+                  <SelectTrigger className="w-[200px]" data-testid="select-import-profile">
+                    <SelectValue placeholder="None (empty profile)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (empty profile)</SelectItem>
+                    {profiles.map(p => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        {p.name}{p.isDemo ? " (Demo)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </form>
 
           {!hasDemoProfile && (

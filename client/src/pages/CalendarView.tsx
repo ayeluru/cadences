@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday, isBefore } from "date-fns";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CheckCircle2, Loader2, AlertCircle, Clock, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CheckCircle2, Loader2, AlertCircle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,10 +22,7 @@ export default function CalendarView() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const { currentProfile, isAggregatedView } = useProfileContext();
   
-  // Toggle states for visibility
-  const [showCompletions, setShowCompletions] = useState(true);
-  const [showMissed, setShowMissed] = useState(false);
-  const [showFutureDue, setShowFutureDue] = useState(false);
+  // Heatmap mode determines what's shown in both heatmap and details
   const [heatMapSource, setHeatMapSource] = useState<"combined" | "completions" | "missed" | "upcoming">("combined");
   
   // Collapsible states for day details
@@ -288,45 +283,6 @@ export default function CalendarView() {
               </Button>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-4 border-t pt-3">
-            <span className="text-sm font-medium text-muted-foreground">Show in details:</span>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="show-completions"
-                checked={showCompletions}
-                onCheckedChange={setShowCompletions}
-                data-testid="toggle-completions"
-              />
-              <Label htmlFor="show-completions" className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-                Completed
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="show-missed"
-                checked={showMissed}
-                onCheckedChange={setShowMissed}
-                data-testid="toggle-missed"
-              />
-              <Label htmlFor="show-missed" className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <AlertCircle className="w-4 h-4 text-destructive" />
-                Missed
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="show-future"
-                checked={showFutureDue}
-                onCheckedChange={setShowFutureDue}
-                data-testid="toggle-future"
-              />
-              <Label htmlFor="show-future" className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <Clock className="w-4 h-4 text-amber-500" />
-                Upcoming
-              </Label>
-            </div>
-          </div>
         </div>
       </Card>
 
@@ -488,7 +444,7 @@ export default function CalendarView() {
                   exit={{ opacity: 0, y: -10 }}
                   className="space-y-3"
                 >
-                  {showCompletions && selectedDayData && selectedDayData.completions.length > 0 && (
+                  {(heatMapSource === "combined" || heatMapSource === "completions") && selectedDayData && selectedDayData.completions.length > 0 && (
                     <Collapsible open={expandedSections.completions} onOpenChange={() => toggleSection("completions")}>
                       <CollapsibleTrigger asChild>
                         <button className="flex items-center justify-between w-full p-2 rounded-lg bg-green-50 dark:bg-green-900/20 hover-elevate">
@@ -526,7 +482,7 @@ export default function CalendarView() {
                     </Collapsible>
                   )}
 
-                  {showMissed && selectedDayData && selectedDayData.missed.length > 0 && (
+                  {(heatMapSource === "combined" || heatMapSource === "missed") && selectedDayData && selectedDayData.missed.length > 0 && (
                     <Collapsible open={expandedSections.missed} onOpenChange={() => toggleSection("missed")}>
                       <CollapsibleTrigger asChild>
                         <button className="flex items-center justify-between w-full p-2 rounded-lg bg-destructive/10 hover-elevate">
@@ -561,7 +517,7 @@ export default function CalendarView() {
                     </Collapsible>
                   )}
 
-                  {showFutureDue && selectedDayData && selectedDayData.dueSoon.length > 0 && (
+                  {heatMapSource === "upcoming" && selectedDayData && selectedDayData.dueSoon.length > 0 && (
                     <Collapsible open={expandedSections.dueSoon} onOpenChange={() => toggleSection("dueSoon")}>
                       <CollapsibleTrigger asChild>
                         <button className="flex items-center justify-between w-full p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 hover-elevate">
@@ -596,14 +552,29 @@ export default function CalendarView() {
                     </Collapsible>
                   )}
 
-                  {selectedDayData && 
-                    selectedDayData.completions.length === 0 && 
-                    selectedDayData.missed.length === 0 && 
-                    selectedDayData.dueSoon.length === 0 && (
-                    <p className="text-muted-foreground text-sm text-center py-4">
-                      Nothing scheduled for this day.
-                    </p>
-                  )}
+                  {selectedDayData && (() => {
+                    // Check if there's nothing to show based on current mode
+                    const showEmpty = 
+                      (heatMapSource === "combined" && selectedDayData.completions.length === 0 && selectedDayData.missed.length === 0) ||
+                      (heatMapSource === "completions" && selectedDayData.completions.length === 0) ||
+                      (heatMapSource === "missed" && selectedDayData.missed.length === 0) ||
+                      (heatMapSource === "upcoming" && selectedDayData.dueSoon.length === 0);
+                    
+                    if (!showEmpty) return null;
+                    
+                    const emptyMessages: Record<typeof heatMapSource, string> = {
+                      combined: "No completed or missed tasks.",
+                      completions: "No completed tasks.",
+                      missed: "No missed tasks.",
+                      upcoming: "No upcoming tasks."
+                    };
+                    
+                    return (
+                      <p className="text-muted-foreground text-sm text-center py-4">
+                        {emptyMessages[heatMapSource]}
+                      </p>
+                    );
+                  })()}
                 </motion.div>
               </AnimatePresence>
             )}
