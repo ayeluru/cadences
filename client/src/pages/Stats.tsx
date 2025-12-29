@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { useStats } from "@/hooks/use-stats";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { CheckCircle2, AlertTriangle, TrendingUp, Flame, Trophy, Target } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Flame, Trophy, ChevronDown, ChevronUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import { useProfileContext } from "@/contexts/ProfileContext";
+import { differenceInDays } from "date-fns";
 
 interface StreakData {
   id: number;
@@ -18,10 +21,36 @@ interface StreakData {
   lastCompletedAt: string | null;
   streakStartDate: string | null;
   taskTitle: string;
+  intervalUnit?: string;
+  intervalValue?: number;
+}
+
+// Calculate streak duration in human-readable format
+function getStreakDuration(streak: StreakData): { days: number; label: string } {
+  if (!streak.streakStartDate) return { days: 0, label: "No active streak" };
+  
+  const now = new Date();
+  const startDate = new Date(streak.streakStartDate);
+  const days = differenceInDays(now, startDate);
+  
+  // Format label based on duration and interval
+  if (days >= 365) {
+    const years = Math.floor(days / 365);
+    return { days, label: `${years}+ year${years > 1 ? 's' : ''}` };
+  } else if (days >= 30) {
+    const months = Math.floor(days / 30);
+    return { days, label: `${months} month${months > 1 ? 's' : ''}` };
+  } else if (days >= 7) {
+    const weeks = Math.floor(days / 7);
+    return { days, label: `${weeks} week${weeks > 1 ? 's' : ''}` };
+  } else {
+    return { days, label: `${days} day${days !== 1 ? 's' : ''}` };
+  }
 }
 
 export default function Stats() {
   const { currentProfile } = useProfileContext();
+  const [showAllStreaks, setShowAllStreaks] = useState(false);
   const { data: stats, isLoading } = useStats(currentProfile?.id);
   const { data: streaks = [], isLoading: streaksLoading } = useQuery<StreakData[]>({
     queryKey: ['/api/streaks', currentProfile?.id],
@@ -52,9 +81,19 @@ export default function Stats() {
     completions: item.count
   })).reverse() || [];
 
-  const topStreaks = streaks.filter(s => s.currentStreak > 0).slice(0, 5);
+  // Sort streaks by elapsed time (days since streak started) - longer duration first
+  const activeStreaks = streaks
+    .filter(s => s.currentStreak > 0)
+    .map(s => ({
+      ...s,
+      duration: getStreakDuration(s)
+    }))
+    .sort((a, b) => b.duration.days - a.duration.days);
+
+  const topStreaks = showAllStreaks ? activeStreaks : activeStreaks.slice(0, 5);
+  const hasMoreStreaks = activeStreaks.length > 5;
   const longestAllTimeStreak = streaks.reduce((max, s) => s.longestStreak > max ? s.longestStreak : max, 0);
-  const totalActiveStreaks = streaks.filter(s => s.currentStreak > 0).length;
+  const totalActiveStreaks = activeStreaks.length;
 
   return (
     <div className="space-y-8">
@@ -109,21 +148,26 @@ export default function Stats() {
         </Card>
       </div>
 
-      {topStreaks.length > 0 && (
+      {activeStreaks.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Flame className="w-5 h-5 text-orange-500" />
               Active Streaks
             </CardTitle>
-            <CardDescription>Your current consecutive completion streaks</CardDescription>
+            <CardDescription>
+              Ranked by time maintained - your longest-running habits first
+            </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="space-y-4">
-              {topStreaks.map((streak) => (
+              {topStreaks.map((streak, index) => (
                 <div key={streak.id} className="flex items-center gap-4" data-testid={`streak-item-${streak.taskId}`}>
+                  <div className="w-6 text-center text-sm text-muted-foreground font-medium">
+                    #{index + 1}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-medium truncate">{streak.taskTitle}</span>
                       {streak.currentStreak === streak.longestStreak && streak.longestStreak >= 3 && (
                         <Badge variant="outline" className="text-[10px] px-1.5 h-5 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-300">
@@ -131,13 +175,13 @@ export default function Stats() {
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Progress 
                         value={Math.min(100, (streak.currentStreak / Math.max(streak.longestStreak, 10)) * 100)} 
-                        className="h-2 flex-1" 
+                        className="h-2 flex-1 min-w-[60px]" 
                       />
-                      <span className="text-sm text-muted-foreground whitespace-nowrap">
-                        {streak.totalCompletions} total
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {streak.duration.label} running
                       </span>
                     </div>
                   </div>
@@ -159,6 +203,27 @@ export default function Stats() {
                 </div>
               ))}
             </div>
+            {hasMoreStreaks && (
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setShowAllStreaks(!showAllStreaks)}
+                className="w-full"
+                data-testid="button-toggle-streaks"
+              >
+                {showAllStreaks ? (
+                  <>
+                    <ChevronUp className="w-4 h-4 mr-2" />
+                    Show Less
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4 mr-2" />
+                    Show All {activeStreaks.length} Streaks
+                  </>
+                )}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

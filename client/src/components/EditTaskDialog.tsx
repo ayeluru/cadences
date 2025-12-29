@@ -4,14 +4,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useUpdateTask, useTasks } from "@/hooks/use-tasks";
+import { useUpdateTask, useTasks, useReassignTask } from "@/hooks/use-tasks";
 import { insertTaskSchema, TaskWithDetails, TaskMetric } from "@shared/schema";
 import { z } from "zod";
 import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { useRoutines } from "@/hooks/use-routines";
+import { useProfiles } from "@/hooks/use-profiles";
 import { useState, useEffect } from "react";
-import { Loader2, Plus, X, BarChart3 } from "lucide-react";
+import { Loader2, Plus, X, BarChart3, ArrowRightLeft } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
@@ -42,9 +43,11 @@ interface EditTaskDialogProps {
 
 export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps) {
   const updateMutation = useUpdateTask();
+  const reassignMutation = useReassignTask();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const { data: routines } = useRoutines();
+  const { data: profiles } = useProfiles();
   const { data: allTasks } = useTasks();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -53,6 +56,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const [newMetricName, setNewMetricName] = useState("");
   const [newMetricUnit, setNewMetricUnit] = useState("");
   const [isSavingMetrics, setIsSavingMetrics] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>(task.profileId ?? undefined);
 
   const parentTasks = allTasks?.filter((t: TaskWithDetails) => 
     t.taskType === 'frequency' && !t.parentTaskId && t.id !== task.id
@@ -84,6 +88,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       });
       setSelectedTagIds(task.tags?.map(t => t.id) || []);
       setNewMetrics([]);
+      setSelectedProfileId(task.profileId ?? undefined);
     }
   }, [task, reset]);
 
@@ -91,6 +96,11 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
     setIsSavingMetrics(true);
     
     try {
+      // If profile has changed, reassign first
+      if (selectedProfileId && selectedProfileId !== task.profileId) {
+        await reassignMutation.mutateAsync({ taskId: task.id, targetProfileId: selectedProfileId });
+      }
+      
       if (newMetrics.length > 0) {
         for (const metric of newMetrics) {
           await fetch(`/api/tasks/${task.id}/metrics`, {
@@ -117,7 +127,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         }
       });
     } catch (error) {
-      toast({ title: "Error", description: "Failed to save metrics", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to save changes", variant: "destructive" });
     } finally {
       setIsSavingMetrics(false);
     }
@@ -248,6 +258,31 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
                 Group related tasks together (e.g., Morning Routine, Leg Day).
               </p>
             </div>
+
+            {profiles && profiles.length > 1 && (
+              <div className="space-y-2 border-t pt-4">
+                <Label htmlFor="edit-profile" className="flex items-center gap-2">
+                  <ArrowRightLeft className="h-4 w-4" />
+                  Move to Profile
+                </Label>
+                <select 
+                  id="edit-profile"
+                  data-testid="select-edit-profile"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={selectedProfileId ?? ""}
+                  onChange={(e) => setSelectedProfileId(e.target.value ? Number(e.target.value) : undefined)}
+                >
+                  {profiles.map(profile => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name}{profile.isDemo ? " (Demo)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Move this task and its history to a different profile. Tags and categories will be copied if they don't exist.
+                </p>
+              </div>
+            )}
 
             {parentTasks.length > 0 && (
               <div className="space-y-2">

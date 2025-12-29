@@ -200,3 +200,68 @@ export function useCompleteTask() {
     },
   });
 }
+
+export function useReassignTask() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ taskId, targetProfileId }: { taskId: number; targetProfileId: number }) => {
+      const res = await fetch(`/api/tasks/${taskId}/reassign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetProfileId }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to reassign task");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
+      toast({ title: "Task moved", description: "Task has been moved to the new profile." });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useMigrateTasks() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ taskIds, targetProfileId }: { taskIds: number[]; targetProfileId: number }) => {
+      const res = await fetch("/api/tasks/migrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskIds, targetProfileId }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to migrate tasks");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
+      toast({ 
+        title: "Tasks migrated", 
+        description: `${variables.taskIds.length} task(s) moved to the new profile.` 
+      });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}

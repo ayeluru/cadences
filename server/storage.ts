@@ -74,6 +74,10 @@ export interface IStorage {
   getTaskStreak(taskId: number, userId: string): Promise<TaskStreak | undefined>;
   updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date): Promise<TaskStreak>;
   getAllStreaks(userId: string): Promise<TaskStreak[]>;
+  
+  // Task Migration
+  reassignTaskToProfile(taskId: number, targetProfileId: number, userId: string): Promise<Task>;
+  migrateTasksToProfile(taskIds: number[], targetProfileId: number, userId: string): Promise<Task[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1869,6 +1873,104 @@ export class DatabaseStorage implements IStorage {
       case 'years': return value * 365;
       default: return value;
     }
+  }
+
+  // Task Migration methods
+  async reassignTaskToProfile(taskId: number, targetProfileId: number, userId: string): Promise<Task> {
+    // Verify task ownership
+    const task = await this.getTask(taskId);
+    if (!task || task.userId !== userId) {
+      throw new Error("Task not found or access denied");
+    }
+    
+    // Verify target profile ownership
+    const profile = await this.getProfile(targetProfileId, userId);
+    if (!profile) {
+      throw new Error("Target profile not found or access denied");
+    }
+    
+    // Get task's tags and find/create equivalent tags in target profile
+    const taskTagsList = await this.getTaskTags(taskId);
+    const newTagIds: number[] = [];
+    
+    for (const tag of taskTagsList) {
+      // Check if a tag with the same name exists in target profile
+      const targetTags = await this.getTags(userId, targetProfileId);
+      let existingTag = targetTags.find(t => t.name === tag.name);
+      
+      if (!existingTag) {
+        // Create tag in target profile
+        existingTag = await this.createTag(userId, { name: tag.name, profileId: targetProfileId });
+      }
+      newTagIds.push(existingTag.id);
+    }
+    
+    // Handle category - find/create equivalent in target profile
+    let newCategoryId: number | null = null;
+    if (task.categoryId) {
+      const categories = await this.getCategories(userId);
+      const oldCategory = categories.find(c => c.id === task.categoryId);
+      if (oldCategory) {
+        const targetCategories = await this.getCategories(userId, targetProfileId);
+        let existingCategory = targetCategories.find(c => c.name === oldCategory.name);
+        if (!existingCategory) {
+          existingCategory = await this.createCategory(userId, { name: oldCategory.name, profileId: targetProfileId });
+        }
+        newCategoryId = existingCategory.id;
+      }
+    }
+    
+    // Handle routine - find/create equivalent in target profile
+    let newRoutineId: number | null = null;
+    if (task.routineId) {
+      const routines = await this.getRoutines(userId);
+      const oldRoutine = routines.find(r => r.id === task.routineId);
+      if (oldRoutine) {
+        const targetRoutines = await this.getRoutines(userId, targetProfileId);
+        let existingRoutine = targetRoutines.find(r => r.name === oldRoutine.name);
+        if (!existingRoutine) {
+          existingRoutine = await this.createRoutine(userId, { 
+            name: oldRoutine.name, 
+            description: oldRoutine.description, 
+            profileId: targetProfileId 
+          });
+        }
+        newRoutineId = existingRoutine.id;
+      }
+    }
+    
+    // Clear old tag associations
+    await db.delete(taskTags).where(eq(taskTags.taskId, taskId));
+    
+    // Update task's profileId, categoryId, routineId
+    const [updatedTask] = await db.update(tasks)
+      .set({ 
+        profileId: targetProfileId, 
+        categoryId: newCategoryId,
+        routineId: newRoutineId
+      })
+      .where(eq(tasks.id, taskId))
+      .returning();
+    
+    // Create new tag associations
+    for (const tagId of newTagIds) {
+      await db.insert(taskTags).values({ taskId, tagId });
+    }
+    
+    // Update streak to new profile context
+    const streakRecord = await this.getTaskStreak(taskId, userId);
+    // Streaks remain with the task - no profile-level changes needed since streaks are task-based
+    
+    return updatedTask;
+  }
+
+  async migrateTasksToProfile(taskIds: number[], targetProfileId: number, userId: string): Promise<Task[]> {
+    const results: Task[] = [];
+    for (const taskId of taskIds) {
+      const updatedTask = await this.reassignTaskToProfile(taskId, targetProfileId, userId);
+      results.push(updatedTask);
+    }
+    return results;
   }
 }
 

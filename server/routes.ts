@@ -889,5 +889,43 @@ export async function registerRoutes(
     }
   });
 
+  // Reassign a single task to a different profile
+  app.post("/api/tasks/:id/reassign", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const taskId = Number(req.params.id);
+    const { targetProfileId } = req.body;
+    
+    if (!targetProfileId) {
+      return res.status(400).json({ error: "targetProfileId is required" });
+    }
+    
+    try {
+      const updatedTask = await storage.reassignTaskToProfile(taskId, Number(targetProfileId), userId);
+      res.json(updatedTask);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Migrate multiple tasks to a different profile
+  app.post("/api/tasks/migrate", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const { taskIds, targetProfileId } = req.body;
+    
+    if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+      return res.status(400).json({ error: "taskIds array is required" });
+    }
+    if (!targetProfileId) {
+      return res.status(400).json({ error: "targetProfileId is required" });
+    }
+    
+    try {
+      const updatedTasks = await storage.migrateTasksToProfile(taskIds.map(Number), Number(targetProfileId), userId);
+      res.json({ success: true, tasks: updatedTasks });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   return httpServer;
 }

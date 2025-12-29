@@ -28,7 +28,7 @@ export default function CalendarView() {
   const [showCompletions, setShowCompletions] = useState(true);
   const [showMissed, setShowMissed] = useState(false);
   const [showFutureDue, setShowFutureDue] = useState(false);
-  const [heatMapSource, setHeatMapSource] = useState<"completions" | "missed" | "upcoming">("completions");
+  const [heatMapSource, setHeatMapSource] = useState<"combined" | "completions" | "missed" | "upcoming">("combined");
   
   // Collapsible states for day details
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -85,9 +85,26 @@ export default function CalendarView() {
     };
   };
 
+  // Get combined ratio: positive = more completions, negative = more missed
+  const getCombinedRatio = (dayData: EnhancedCalendarDay | undefined): { ratio: number; intensity: number } => {
+    if (!dayData) return { ratio: 0, intensity: 0 };
+    const completed = dayData.completions.length;
+    const missed = dayData.missed.length;
+    const total = completed + missed;
+    if (total === 0) return { ratio: 0, intensity: 0 };
+    
+    // Ratio: 1 = all completed, -1 = all missed, 0 = equal
+    const ratio = (completed - missed) / total;
+    // Intensity: based on total count (more items = more intense)
+    const intensity = Math.min(5, Math.ceil(total / 2));
+    return { ratio, intensity };
+  };
+
   const getHeatMapValue = (dayData: EnhancedCalendarDay | undefined) => {
     if (!dayData) return 0;
     switch (heatMapSource) {
+      case "combined": 
+        return dayData.completions.length + dayData.missed.length;
       case "completions": return dayData.completions.length;
       case "missed": return dayData.missed.length;
       case "upcoming": return dayData.dueSoon.length;
@@ -95,8 +112,75 @@ export default function CalendarView() {
     }
   };
 
+  // Get combined color based on ratio and intensity
+  const getCombinedColor = (dayData: EnhancedCalendarDay | undefined): string => {
+    const { ratio, intensity } = getCombinedRatio(dayData);
+    if (intensity === 0) return "";
+    
+    // Ratio-based colors: green for positive, red for negative, neutral for zero
+    if (ratio > 0.6) {
+      // Strong green (more completions)
+      const greenColors = [
+        "bg-green-100 dark:bg-green-900/30",
+        "bg-green-200 dark:bg-green-800/50",
+        "bg-green-300 dark:bg-green-700/60",
+        "bg-green-400 dark:bg-green-600/70",
+        "bg-green-500 dark:bg-green-500/80",
+      ];
+      return greenColors[Math.min(intensity - 1, 4)];
+    } else if (ratio > 0.2) {
+      // Light green
+      const lightGreenColors = [
+        "bg-green-50 dark:bg-green-950/30",
+        "bg-green-100 dark:bg-green-900/40",
+        "bg-green-150 dark:bg-green-800/50",
+        "bg-green-200 dark:bg-green-700/60",
+        "bg-green-250 dark:bg-green-600/70",
+      ];
+      return lightGreenColors[Math.min(intensity - 1, 4)] || "bg-green-100 dark:bg-green-900/30";
+    } else if (ratio > -0.2) {
+      // Neutral (close to equal) - gray tones
+      const neutralColors = [
+        "bg-gray-100 dark:bg-gray-800/30",
+        "bg-gray-150 dark:bg-gray-700/40",
+        "bg-gray-200 dark:bg-gray-600/50",
+        "bg-gray-250 dark:bg-gray-500/60",
+        "bg-gray-300 dark:bg-gray-400/70",
+      ];
+      return neutralColors[Math.min(intensity - 1, 4)] || "bg-gray-100 dark:bg-gray-800/30";
+    } else if (ratio > -0.6) {
+      // Light red
+      const lightRedColors = [
+        "bg-red-50 dark:bg-red-950/30",
+        "bg-red-100 dark:bg-red-900/40",
+        "bg-red-150 dark:bg-red-800/50",
+        "bg-red-200 dark:bg-red-700/60",
+        "bg-red-250 dark:bg-red-600/70",
+      ];
+      return lightRedColors[Math.min(intensity - 1, 4)] || "bg-red-100 dark:bg-red-900/30";
+    } else {
+      // Strong red (more missed)
+      const redColors = [
+        "bg-red-100 dark:bg-red-900/30",
+        "bg-red-200 dark:bg-red-800/50",
+        "bg-red-300 dark:bg-red-700/60",
+        "bg-red-400 dark:bg-red-600/70",
+        "bg-red-500 dark:bg-red-500/80",
+      ];
+      return redColors[Math.min(intensity - 1, 4)];
+    }
+  };
+
   const getHeatMapColors = () => {
     switch (heatMapSource) {
+      case "combined":
+        return {
+          l1: "bg-gray-100 dark:bg-gray-800/30",
+          l2: "bg-gray-200 dark:bg-gray-700/50",
+          l3: "bg-gray-300 dark:bg-gray-600/60",
+          l4: "bg-gray-400 dark:bg-gray-500/70",
+          l5: "bg-gray-500 dark:bg-gray-400/80",
+        };
       case "completions":
         return {
           l1: "bg-green-100 dark:bg-green-900/30",
@@ -124,7 +208,12 @@ export default function CalendarView() {
     }
   };
 
-  const getDensityColor = (count: number) => {
+  const getDensityColor = (count: number, dayData?: EnhancedCalendarDay) => {
+    // For combined mode, use ratio-based coloring
+    if (heatMapSource === "combined" && dayData) {
+      return getCombinedColor(dayData);
+    }
+    
     if (count === 0) return "";
     const colors = getHeatMapColors();
     if (count === 1) return colors.l1;
@@ -153,7 +242,20 @@ export default function CalendarView() {
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium text-muted-foreground">Heat map shows:</span>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
+              <Button
+                variant={heatMapSource === "combined" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setHeatMapSource("combined")}
+                className="gap-1.5"
+                data-testid="heatmap-combined"
+              >
+                <div className="flex items-center gap-0.5">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <div className="w-2 h-2 rounded-full bg-red-500" />
+                </div>
+                Balance
+              </Button>
               <Button
                 variant={heatMapSource === "completions" ? "default" : "outline"}
                 size="sm"
@@ -282,6 +384,20 @@ export default function CalendarView() {
                   const isCurrentMonth = isSameMonth(day, currentMonth);
                   const isSelected = selectedDate && isSameDay(day, selectedDate);
                   const isTodayDate = isToday(day);
+                  
+                  // For combined mode, show +/- indicator
+                  const getDisplayValue = () => {
+                    if (heatMapSource === "combined" && dayData) {
+                      const completed = dayData.completions.length;
+                      const missed = dayData.missed.length;
+                      if (completed === 0 && missed === 0) return null;
+                      const diff = completed - missed;
+                      if (diff > 0) return `+${diff}`;
+                      if (diff < 0) return `${diff}`;
+                      return "=";
+                    }
+                    return heatValue > 0 ? heatValue : null;
+                  };
 
                   return (
                     <button
@@ -291,7 +407,7 @@ export default function CalendarView() {
                         "aspect-square p-1 rounded-md text-sm transition-all relative",
                         "hover:ring-2 hover:ring-primary/50",
                         !isCurrentMonth && "text-muted-foreground/40 opacity-50",
-                        isCurrentMonth && getDensityColor(heatValue),
+                        isCurrentMonth && getDensityColor(heatValue, dayData),
                         isSelected && "ring-2 ring-primary",
                         isTodayDate && "font-bold ring-1 ring-primary/30"
                       )}
@@ -304,9 +420,9 @@ export default function CalendarView() {
                         {format(day, "d")}
                       </span>
                       
-                      {isCurrentMonth && heatValue > 0 && (
+                      {isCurrentMonth && getDisplayValue() !== null && (
                         <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[10px] font-semibold">
-                          {heatValue}
+                          {getDisplayValue()}
                         </span>
                       )}
                     </button>
@@ -316,15 +432,37 @@ export default function CalendarView() {
             )}
 
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">
-              <span>Less</span>
-              <div className="flex gap-0.5">
-                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l1)} />
-                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l2)} />
-                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l3)} />
-                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l4)} />
-                <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l5)} />
-              </div>
-              <span>More</span>
+              {heatMapSource === "combined" ? (
+                <>
+                  <span className="flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-destructive" />
+                    Missed
+                  </span>
+                  <div className="flex gap-0.5">
+                    <div className="w-3 h-3 rounded-sm bg-red-400 dark:bg-red-600/70" />
+                    <div className="w-3 h-3 rounded-sm bg-red-200 dark:bg-red-800/50" />
+                    <div className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600/50" />
+                    <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-800/50" />
+                    <div className="w-3 h-3 rounded-sm bg-green-400 dark:bg-green-600/70" />
+                  </div>
+                  <span className="flex items-center gap-1">
+                    Completed
+                    <CheckCircle2 className="w-3 h-3 text-green-500" />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span>Less</span>
+                  <div className="flex gap-0.5">
+                    <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l1)} />
+                    <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l2)} />
+                    <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l3)} />
+                    <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l4)} />
+                    <div className={cn("w-3 h-3 rounded-sm", getHeatMapColors().l5)} />
+                  </div>
+                  <span>More</span>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
