@@ -41,6 +41,7 @@ export default function Dashboard() {
 
   // Manually group tasks client-side for display order
   // Order: Overdue -> Due Soon -> Later -> Never Done
+  // Filter out variations - they should only appear nested under their parent task
   const groupedTasks: Record<string, TaskWithDetails[]> = {
     overdue: [],
     due_soon: [],
@@ -49,6 +50,9 @@ export default function Dashboard() {
   };
 
   tasks?.forEach(task => {
+    // Skip variations - they appear nested under their parent
+    if (task.parentTaskId) return;
+    
     const status = task.status || 'later'; // Default fallback
     if (groupedTasks[status]) {
       groupedTasks[status].push(task);
