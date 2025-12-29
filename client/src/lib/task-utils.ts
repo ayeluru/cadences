@@ -1,6 +1,6 @@
 import { TaskWithDetails } from "@shared/schema";
 
-export type CadenceMagnitude = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type CadenceMagnitude = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export function filterTasksByCadence(tasks: TaskWithDetails[], magnitude: CadenceMagnitude): TaskWithDetails[] {
   return tasks.filter(task => {
@@ -8,10 +8,6 @@ export function filterTasksByCadence(tasks: TaskWithDetails[], magnitude: Cadenc
     const unit = task.intervalUnit;
 
     switch (magnitude) {
-      case 'hourly':
-        // 1-23 hours
-        return unit === 'hours' && val >= 1 && val <= 23;
-      
       case 'daily':
         // 1-6 days
         return unit === 'days' && val >= 1 && val <= 6;
@@ -39,7 +35,6 @@ export function filterTasksByCadence(tasks: TaskWithDetails[], magnitude: Cadenc
 
 export function getCadenceLabel(magnitude: CadenceMagnitude): string {
   const labels: Record<CadenceMagnitude, string> = {
-    hourly: 'Hourly Tasks',
     daily: 'Daily Tasks',
     weekly: 'Weekly Tasks',
     monthly: 'Monthly Tasks',
@@ -50,7 +45,6 @@ export function getCadenceLabel(magnitude: CadenceMagnitude): string {
 
 export function getCadenceDescription(magnitude: CadenceMagnitude): string {
   const descriptions: Record<CadenceMagnitude, string> = {
-    hourly: 'Tasks that repeat every few hours',
     daily: 'Tasks that repeat daily to weekly',
     weekly: 'Tasks that repeat weekly to bi-weekly',
     monthly: 'Tasks that repeat monthly to quarterly',

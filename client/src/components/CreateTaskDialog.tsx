@@ -40,7 +40,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     resolver: zodResolver(formSchema),
     defaultValues: {
       intervalValue: 1,
-      intervalUnit: 'hours',
+      intervalUnit: 'days',
       categoryId: null,
       tagIds: []
     }
@@ -58,7 +58,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         onOpenChange(false);
         reset({
           intervalValue: 1,
-          intervalUnit: 'hours',
+          intervalUnit: 'days',
           categoryId: null,
           tagIds: []
         });
@@ -119,7 +119,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 {...register("intervalUnit")}
               >
-                <option value="hours">Hours</option>
                 <option value="days">Days</option>
                 <option value="weeks">Weeks</option>
                 <option value="months">Months</option>
@@ -130,7 +129,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="category">Category (Optional)</Label>
+              <Label htmlFor="category">Category</Label>
               <Button
                 type="button"
                 variant="ghost"
@@ -168,7 +167,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 {...register("categoryId")}
               >
-                <option value="">Select a category... (optional)</option>
+                <option value="">Select a category...</option>
                 {categories?.map(cat => (
                   <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}

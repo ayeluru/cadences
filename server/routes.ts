@@ -190,6 +190,17 @@ export async function registerRoutes(
     res.status(201).json(category);
   });
 
+  app.delete("/api/categories/:id", requireAuth, async (req: any, res) => {
+    try {
+      const categoryId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      await storage.deleteCategory(categoryId, userId);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(403).json({ message: error.message });
+    }
+  });
+
   app.get(api.tags.list.path, requireAuth, async (req: any, res) => {
     const tags = await storage.getTags(req.user.claims.sub);
     res.json(tags);

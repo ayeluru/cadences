@@ -35,3 +35,26 @@ export function useCreateCategory() {
     },
   });
 }
+
+export function useDeleteCategory() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (categoryId: number) => {
+      const res = await fetch(`/api/categories/${categoryId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete category");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.categories.list.path] });
+      toast({ title: "Category deleted" });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: "Failed to delete category", variant: "destructive" });
+    }
+  });
+}

@@ -1,11 +1,11 @@
-import { useCategories } from "@/hooks/use-categories";
+import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Tag as TagIcon, Folder } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
 import { Loader2 } from "lucide-react";
@@ -14,6 +14,7 @@ export default function Settings() {
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: tags, isLoading: tagsLoading } = useTags();
   const createTagMutation = useCreateTag();
+  const deleteCategoryMutation = useDeleteCategory();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
@@ -54,8 +55,20 @@ export default function Settings() {
               <span className="text-muted-foreground text-sm italic">No categories created yet.</span>
             ) : (
               categories?.map(cat => (
-                <div key={cat.id} className="bg-secondary text-secondary-foreground px-3 py-1.5 rounded-lg text-sm font-medium border border-border/50">
-                  {cat.name}
+                <div key={cat.id} className="bg-secondary text-secondary-foreground px-3 py-1.5 rounded-lg text-sm font-medium border border-border/50 flex items-center gap-2 group">
+                  <span>{cat.name}</span>
+                  <button
+                    onClick={() => deleteCategoryMutation.mutate(cat.id)}
+                    disabled={deleteCategoryMutation.isPending}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 ml-1"
+                    title="Delete category"
+                  >
+                    {deleteCategoryMutation.isPending && deleteCategoryMutation.variables === cat.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3 h-3" />
+                    )}
+                  </button>
                 </div>
               ))
             )}

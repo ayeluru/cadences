@@ -13,6 +13,7 @@ export interface IStorage {
   // Categories
   getCategories(userId: string): Promise<Category[]>;
   createCategory(userId: string, category: InsertCategory): Promise<Category>;
+  deleteCategory(id: number, userId: string): Promise<void>;
   
   // Tags
   getTags(userId: string): Promise<Tag[]>;
@@ -47,6 +48,16 @@ export class DatabaseStorage implements IStorage {
   async createCategory(userId: string, category: InsertCategory): Promise<Category> {
     const [newCategory] = await db.insert(categories).values({ ...category, userId }).returning();
     return newCategory;
+  }
+
+  async deleteCategory(id: number, userId: string): Promise<void> {
+    // Verify ownership first
+    const [cat] = await db.select().from(categories).where(eq(categories.id, id));
+    if (!cat || cat.userId !== userId) {
+      throw new Error("Category not found or unauthorized");
+    }
+    // Delete the category
+    await db.delete(categories).where(eq(categories.id, id));
   }
 
   async getTags(userId: string): Promise<Tag[]> {
