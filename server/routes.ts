@@ -195,7 +195,7 @@ export async function registerRoutes(
       const categoryId = Number(req.params.id);
       const userId = req.user.claims.sub;
       await storage.deleteCategory(categoryId, userId);
-      res.status(204).send();
+      res.json({ success: true });
     } catch (error: any) {
       res.status(403).json({ message: error.message });
     }
