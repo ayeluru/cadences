@@ -56,6 +56,8 @@ export class DatabaseStorage implements IStorage {
     if (!cat || cat.userId !== userId) {
       throw new Error("Category not found or unauthorized");
     }
+    // Clear any tasks that reference this category
+    await db.update(tasks).set({ categoryId: null }).where(eq(tasks.categoryId, id));
     // Delete the category
     await db.delete(categories).where(eq(categories.id, id));
   }
