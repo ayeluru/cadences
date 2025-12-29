@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock } from "lucide-react";
+import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, CalendarDays, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,6 +12,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/calendar", label: "Calendar", icon: CalendarDays },
     { type: "divider" },
     { href: "/tasks/daily", label: "Daily", icon: Clock },
     { href: "/tasks/weekly", label: "Weekly", icon: Clock },
@@ -19,6 +20,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/tasks/yearly", label: "Long-term", icon: Clock },
     { type: "divider" },
     { href: "/stats", label: "Statistics", icon: PieChart },
+    { href: "/guide", label: "User Guide", icon: HelpCircle },
     { href: "/settings", label: "Manage", icon: Settings },
   ] as any[];
 

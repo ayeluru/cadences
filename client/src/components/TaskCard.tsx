@@ -1,6 +1,6 @@
 import { TaskWithDetails, TaskMetric } from "@shared/schema";
 import { format, formatDistanceToNow, addDays, isPast } from "date-fns";
-import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy } from "lucide-react";
+import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -16,6 +16,7 @@ import { useCompleteTask, useDeleteTask } from "@/hooks/use-tasks";
 import { useState } from "react";
 import { EditTaskDialog } from "./EditTaskDialog";
 import { CompleteTaskDialog } from "./CompleteTaskDialog";
+import { TaskHistoryDialog } from "./TaskHistoryDialog";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -29,6 +30,7 @@ export function TaskCard({ task, showVariations = true }: TaskCardProps) {
   const deleteMutation = useDeleteTask();
   const [editOpen, setEditOpen] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [variationsExpanded, setVariationsExpanded] = useState(false);
 
   const isFrequencyTask = task.taskType === 'frequency';
@@ -231,6 +233,9 @@ export function TaskCard({ task, showVariations = true }: TaskCardProps) {
                 <DropdownMenuItem onClick={() => setEditOpen(true)} data-testid={`menu-edit-${task.id}`}>
                   <Edit2 className="w-4 h-4 mr-2" /> Edit
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setHistoryOpen(true)} data-testid={`menu-history-${task.id}`}>
+                  <History className="w-4 h-4 mr-2" /> View History
+                </DropdownMenuItem>
                 {(!isFrequencyTask || !hasVariations) && (
                   <DropdownMenuItem onClick={handleComplete} data-testid={`menu-complete-${task.id}`}>
                     <CalendarCheck className="w-4 h-4 mr-2" /> Mark Done
@@ -273,6 +278,12 @@ export function TaskCard({ task, showVariations = true }: TaskCardProps) {
       </motion.div>
 
       <EditTaskDialog open={editOpen} onOpenChange={setEditOpen} task={task} />
+      <TaskHistoryDialog 
+        open={historyOpen} 
+        onOpenChange={setHistoryOpen} 
+        taskId={task.id}
+        taskTitle={task.title}
+      />
       {hasMetrics && (
         <CompleteTaskDialog 
           open={completeDialogOpen} 

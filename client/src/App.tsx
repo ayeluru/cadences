@@ -11,6 +11,8 @@ import MonthlyTasks from "@/pages/MonthlyTasks";
 import YearlyTasks from "@/pages/YearlyTasks";
 import Stats from "@/pages/Stats";
 import Settings from "@/pages/Settings";
+import UserGuide from "@/pages/UserGuide";
+import CalendarView from "@/pages/CalendarView";
 import AuthPage from "@/pages/AuthPage";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/use-auth";
@@ -47,6 +49,8 @@ function Router() {
       <Route path="/tasks/monthly" component={() => <PrivateRoute component={MonthlyTasks} />} />
       <Route path="/tasks/yearly" component={() => <PrivateRoute component={YearlyTasks} />} />
       <Route path="/stats" component={() => <PrivateRoute component={Stats} />} />
+      <Route path="/calendar" component={() => <PrivateRoute component={CalendarView} />} />
+      <Route path="/guide" component={() => <PrivateRoute component={UserGuide} />} />
       <Route path="/settings" component={() => <PrivateRoute component={Settings} />} />
       <Route path="/login" component={AuthPage} />
       <Route component={NotFound} />

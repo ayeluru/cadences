@@ -44,8 +44,11 @@ export interface IStorage {
   // Completions
   completeTask(taskId: number, completedAt?: Date, notes?: string, metricData?: {metricId: number, value: number | string}[], userId?: string): Promise<{task: Task, completion: Completion, streak?: TaskStreak}>;
   getCompletions(taskId: number): Promise<Completion[]>;
+  getCompletionWithMetrics(completionId: number): Promise<{completion: Completion, metrics: MetricValue[]} | undefined>;
   getAllCompletions(userId: string): Promise<Completion[]>;
   getCompletionsInPeriod(taskId: number, startDate: Date, endDate: Date): Promise<Completion[]>;
+  getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]>;
+  deleteCompletion(completionId: number, userId: string): Promise<void>;
   
   // Metric Values
   getMetricValues(completionId: number): Promise<MetricValue[]>;
@@ -866,6 +869,62 @@ export class DatabaseStorage implements IStorage {
         sql`${completions.completedAt} <= ${endDate}`
       ))
       .orderBy(desc(completions.completedAt));
+  }
+
+  async getCompletionWithMetrics(completionId: number): Promise<{completion: Completion, metrics: MetricValue[]} | undefined> {
+    const [completion] = await db.select().from(completions).where(eq(completions.id, completionId));
+    if (!completion) return undefined;
+    const metrics = await this.getMetricValues(completionId);
+    return { completion, metrics };
+  }
+
+  async getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]> {
+    const result = await db.select({
+      completion: completions,
+      task: tasks,
+    })
+    .from(completions)
+    .innerJoin(tasks, eq(completions.taskId, tasks.id))
+    .where(and(
+      eq(tasks.userId, userId),
+      gte(completions.completedAt, startDate),
+      sql`${completions.completedAt} <= ${endDate}`
+    ))
+    .orderBy(completions.completedAt);
+    
+    // Group by date
+    const groupedByDate = new Map<string, {id: number, title: string, completedAt: string}[]>();
+    for (const row of result) {
+      const dateStr = row.completion.completedAt.toISOString().slice(0, 10);
+      if (!groupedByDate.has(dateStr)) {
+        groupedByDate.set(dateStr, []);
+      }
+      groupedByDate.get(dateStr)!.push({
+        id: row.task.id,
+        title: row.task.title,
+        completedAt: row.completion.completedAt.toISOString(),
+      });
+    }
+    
+    return Array.from(groupedByDate.entries()).map(([date, taskList]) => ({
+      date,
+      count: taskList.length,
+      tasks: taskList,
+    }));
+  }
+
+  async deleteCompletion(completionId: number, userId: string): Promise<void> {
+    const [completion] = await db.select().from(completions).where(eq(completions.id, completionId));
+    if (!completion) throw new Error("Completion not found");
+    
+    const task = await this.getTask(completion.taskId);
+    if (!task || task.userId !== userId) throw new Error("Access denied");
+    
+    // Delete metric values first
+    await db.delete(metricValues).where(eq(metricValues.completionId, completionId));
+    
+    // Delete the completion
+    await db.delete(completions).where(eq(completions.id, completionId));
   }
 
   // Metric Values

@@ -371,6 +371,71 @@ export async function registerRoutes(
     res.json(taskCompletions);
   });
 
+  // Task history with metrics for each completion
+  app.get("/api/tasks/:id/history", requireAuth, async (req: any, res) => {
+    const taskId = Number(req.params.id);
+    const userId = req.user.claims.sub;
+    const task = await storage.getTask(taskId);
+    
+    if (!task || task.userId !== userId) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    
+    const taskCompletions = await storage.getCompletions(taskId);
+    const taskMetrics = await storage.getTaskMetrics(taskId);
+    
+    // Get metric values for each completion
+    const completionsWithMetrics = await Promise.all(taskCompletions.map(async (completion) => {
+      const metricValuesData = await storage.getMetricValues(completion.id);
+      return {
+        ...completion,
+        metricValues: metricValuesData,
+      };
+    }));
+    
+    res.json({
+      task: await enrichTask(task, userId),
+      completions: completionsWithMetrics,
+      metrics: taskMetrics,
+    });
+  });
+
+  // Calendar aggregation endpoint
+  app.get("/api/completions/calendar", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const startStr = req.query.start as string;
+    const endStr = req.query.end as string;
+    
+    if (!startStr || !endStr) {
+      return res.status(400).json({ message: "Start and end dates required" });
+    }
+    
+    const startDate = parseISO(startStr);
+    const endDate = parseISO(endStr);
+    
+    const calendarData = await storage.getCompletionsForCalendar(userId, startDate, endDate);
+    res.json(calendarData);
+  });
+
+  // Delete a completion
+  app.delete("/api/completions/:id", requireAuth, async (req: any, res) => {
+    const completionId = Number(req.params.id);
+    const userId = req.user.claims.sub;
+    
+    try {
+      await storage.deleteCompletion(completionId, userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.message === "Completion not found") {
+        return res.status(404).json({ message: error.message });
+      }
+      if (error.message === "Access denied") {
+        return res.status(403).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Streaks endpoint
   app.get("/api/streaks", requireAuth, async (req: any, res) => {
     const userId = req.user.claims.sub;
