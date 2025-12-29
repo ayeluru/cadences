@@ -1,7 +1,8 @@
 import { useTasks } from "@/hooks/use-tasks";
 import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
-import { Plus, SlidersHorizontal, Calendar, LayoutGrid, List } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, SlidersHorizontal, Calendar, LayoutGrid, List, Tag, X } from "lucide-react";
 import { useState } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { TaskWithDetails } from "@shared/schema";
@@ -15,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCategories } from "@/hooks/use-categories";
+import { useTags } from "@/hooks/use-tags";
 import { motion } from "framer-motion";
 import { filterTasksByCadence, getCadenceLabel, getCadenceDescription, type CadenceMagnitude } from "@/lib/task-utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -25,8 +27,10 @@ interface TasksByMagnitudeProps {
 
 export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
   const [filterCategory, setFilterCategory] = useState<number | undefined>();
-  const { data: allTasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory });
+  const [filterTagId, setFilterTagId] = useState<number | undefined>();
+  const { data: allTasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory, tagId: filterTagId });
   const { data: categories } = useCategories();
+  const { data: tags } = useTags();
   const [createOpen, setCreateOpen] = useState(false);
   const [condensedView, setCondensedView] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
@@ -143,6 +147,39 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
           </Button>
         </div>
       </div>
+
+      {/* Tag Filter Chips */}
+      {tags && tags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Tag className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground mr-1">Filter by tag:</span>
+          {tags.map(tag => (
+            <Badge
+              key={tag.id}
+              variant={filterTagId === tag.id ? "default" : "outline"}
+              className="cursor-pointer gap-1"
+              onClick={() => setFilterTagId(filterTagId === tag.id ? undefined : tag.id)}
+              data-testid={`tag-filter-${tag.id}`}
+            >
+              {tag.name}
+              {filterTagId === tag.id && (
+                <X className="w-3 h-3" />
+              )}
+            </Badge>
+          ))}
+          {filterTagId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => setFilterTagId(undefined)}
+              data-testid="button-clear-tag-filter"
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Task List */}
       <div className="space-y-8">

@@ -89,6 +89,12 @@ Key database tables:
 - Created ProfileSwitcher component in sidebar header for quick profile switching
 - Added Profiles management section in Settings page with create/delete functionality
 - Demo profile feature allows users to try the app with sample data
+- Demo profiles can now be deleted (previously restricted); "Try Demo Profile" button reappears when no demo exists
+- Added "Regenerate Demo Data" button for demo profiles in Settings
+- Calendar view now respects profile filtering and aggregate view
+- Added tag filter chips to task list pages for filtering tasks by tag
+- Routines now have "Complete All" button to mark all routine tasks as done at once
+- Added API endpoints: GET /api/routines/:id/tasks, POST /api/routines/:id/complete-all
 
 ## External Dependencies
 

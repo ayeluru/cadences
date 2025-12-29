@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday, isBefore } from "date-fns";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CheckCircle2, Loader2, AlertCircle, Clock, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
+import { useProfileContext } from "@/contexts/ProfileContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ interface EnhancedCalendarDay {
 export default function CalendarView() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const { currentProfile, isAggregatedView } = useProfileContext();
   
   // Toggle states for visibility
   const [showCompletions, setShowCompletions] = useState(true);
@@ -38,10 +40,24 @@ export default function CalendarView() {
   const startDate = format(startOfMonth(currentMonth), "yyyy-MM-dd");
   const endDate = format(endOfMonth(currentMonth), "yyyy-MM-dd");
 
+  // Build query params with profile filtering
+  const buildQueryParams = () => {
+    const params = new URLSearchParams();
+    params.set("start", startDate);
+    params.set("end", endDate);
+    if (!isAggregatedView && currentProfile) {
+      params.set("profileId", currentProfile.id.toString());
+    } else {
+      // Aggregate view: exclude demo profiles
+      params.set("excludeDemo", "true");
+    }
+    return params.toString();
+  };
+
   const { data: calendarData, isLoading } = useQuery<EnhancedCalendarDay[]>({
-    queryKey: ["/api/calendar/enhanced", startDate, endDate],
+    queryKey: ["/api/calendar/enhanced", startDate, endDate, isAggregatedView ? "all" : currentProfile?.id],
     queryFn: async () => {
-      const res = await fetch(`/api/calendar/enhanced?start=${startDate}&end=${endDate}`);
+      const res = await fetch(`/api/calendar/enhanced?${buildQueryParams()}`);
       if (!res.ok) throw new Error("Failed to fetch calendar data");
       return res.json();
     },

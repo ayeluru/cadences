@@ -1,6 +1,6 @@
 import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
-import { useRoutines, useCreateRoutine, useDeleteRoutine } from "@/hooks/use-routines";
+import { useRoutines, useCreateRoutine, useDeleteRoutine, useCompleteRoutine } from "@/hooks/use-routines";
 import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser, Loader2, RefreshCw } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Repeat, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, PlayCircle } from "lucide-react";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
 import {
@@ -39,6 +39,7 @@ export default function Settings() {
   const clearProfileDataMutation = useClearProfileData();
   const clearAllProfilesDataMutation = useClearAllProfilesData();
   const regenerateDemoMutation = useRegenerateDemoProfile();
+  const completeRoutineMutation = useCompleteRoutine();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
@@ -199,7 +200,7 @@ export default function Settings() {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                  {!profile.isDemo && profiles.length > 1 && (
+                  {profiles.length > 1 && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <button
@@ -365,6 +366,19 @@ export default function Settings() {
                 <div key={routine.id} className="bg-secondary text-secondary-foreground px-3 py-1.5 rounded-lg text-sm font-medium border border-border/50 flex items-center gap-2 group">
                   <Repeat className="w-3 h-3 text-muted-foreground" />
                   <span>{routine.name}</span>
+                  <button
+                    onClick={() => completeRoutineMutation.mutate(routine.id)}
+                    disabled={completeRoutineMutation.isPending}
+                    className="text-primary hover:text-primary/80 ml-1"
+                    title="Complete all tasks in routine"
+                    data-testid={`button-complete-routine-${routine.id}`}
+                  >
+                    {completeRoutineMutation.isPending && completeRoutineMutation.variables === routine.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <PlayCircle className="w-3 h-3" />
+                    )}
+                  </button>
                   <button
                     onClick={() => deleteRoutineMutation.mutate(routine.id)}
                     disabled={deleteRoutineMutation.isPending}

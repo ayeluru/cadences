@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import type { Task } from "@shared/schema";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, eachDayOfInterval, format } from "date-fns";
@@ -467,6 +468,69 @@ export async function registerRoutes(
     }
   });
 
+  // Complete all tasks in a routine
+  app.post("/api/routines/:id/complete-all", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      // Get the routine first to verify ownership
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      // Get all tasks in the routine
+      const routineTasks = await storage.getTasksByRoutine(routineId, userId);
+      
+      if (routineTasks.length === 0) {
+        return res.status(400).json({ message: "No tasks in this routine" });
+      }
+      
+      const now = new Date();
+      const completedTasks = [];
+      
+      // Complete each task
+      for (const task of routineTasks) {
+        try {
+          const result = await storage.completeTask(task.id, now, undefined, undefined, userId);
+          completedTasks.push(result);
+        } catch (err) {
+          // Skip tasks that fail to complete (e.g., refractory period)
+          console.warn(`Failed to complete task ${task.id}:`, err);
+        }
+      }
+      
+      res.json({ 
+        success: true, 
+        completedCount: completedTasks.length,
+        totalTasks: routineTasks.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get tasks in a routine
+  app.get("/api/routines/:id/tasks", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const routineTasks = await storage.getTasksByRoutine(routineId, userId);
+      const enrichedTasks = await Promise.all(routineTasks.map((t: Task) => enrichTask(t, userId)));
+      
+      res.json(enrichedTasks);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Task Metrics
   app.get("/api/tasks/:id/metrics", requireAuth, async (req: any, res) => {
     const taskId = Number(req.params.id);
@@ -585,6 +649,8 @@ export async function registerRoutes(
     const userId = req.user.claims.sub;
     const startStr = req.query.start as string;
     const endStr = req.query.end as string;
+    const profileIdStr = req.query.profileId as string | undefined;
+    const excludeDemo = req.query.excludeDemo === "true";
     
     if (!startStr || !endStr) {
       return res.status(400).json({ message: "Start and end dates required" });
@@ -593,13 +659,14 @@ export async function registerRoutes(
     const startDate = parseISO(startStr);
     const endDate = parseISO(endStr);
     const today = new Date();
+    const profileId = profileIdStr ? parseInt(profileIdStr, 10) : undefined;
     
-    // Get all completions in range
-    const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate);
+    // Get all completions in range (filtered by profile)
+    const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate, profileId, excludeDemo);
     
-    // Get all tasks to calculate missed and future due
-    const allTasks = await storage.getTasks(userId);
-    const enrichedTasks = await Promise.all(allTasks.map(t => enrichTask(t, userId)));
+    // Get all tasks to calculate missed and future due (filtered by profile)
+    const allTasks = await storage.getTasks(userId, profileId, excludeDemo);
+    const enrichedTasks = await Promise.all(allTasks.map((t: Task) => enrichTask(t, userId)));
     
     // Build day-by-day data
     const days = eachDayOfInterval({ start: startDate, end: endDate });

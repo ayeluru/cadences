@@ -32,11 +32,13 @@ export interface IStorage {
   
   // Routines (profileId: null = all profiles, number = specific profile)
   getRoutines(userId: string, profileId?: number | null): Promise<Routine[]>;
+  getRoutine(id: number, userId: string): Promise<Routine | undefined>;
   createRoutine(userId: string, routine: InsertRoutine): Promise<Routine>;
   deleteRoutine(id: number, userId: string): Promise<void>;
+  getTasksByRoutine(routineId: number, userId: string): Promise<Task[]>;
   
   // Tasks (profileId: null = all profiles, number = specific profile)
-  getTasks(userId: string, profileId?: number | null): Promise<Task[]>;
+  getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]>;
   getTask(id: number): Promise<Task | undefined>;
   getTaskVariations(parentId: number): Promise<Task[]>;
   createTask(userId: string, task: InsertTask, tagIds?: number[], metrics?: InsertTaskMetric[]): Promise<Task>;
@@ -58,7 +60,7 @@ export interface IStorage {
   getCompletionWithMetrics(completionId: number): Promise<{completion: Completion, metrics: MetricValue[]} | undefined>;
   getAllCompletions(userId: string): Promise<Completion[]>;
   getCompletionsInPeriod(taskId: number, startDate: Date, endDate: Date): Promise<Completion[]>;
-  getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]>;
+  getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date, profileId?: number, excludeDemo?: boolean): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]>;
   deleteCompletion(completionId: number, userId: string): Promise<void>;
   
   // Metric Values
@@ -1467,6 +1469,15 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(routines).where(eq(routines.userId, userId));
   }
 
+  async getRoutine(id: number, userId: string): Promise<Routine | undefined> {
+    const [routine] = await db.select().from(routines).where(and(eq(routines.id, id), eq(routines.userId, userId)));
+    return routine;
+  }
+
+  async getTasksByRoutine(routineId: number, userId: string): Promise<Task[]> {
+    return await db.select().from(tasks).where(and(eq(tasks.routineId, routineId), eq(tasks.userId, userId), eq(tasks.isArchived, false)));
+  }
+
   async createRoutine(userId: string, routine: InsertRoutine): Promise<Routine> {
     const [newRoutine] = await db.insert(routines).values({ ...routine, userId }).returning();
     return newRoutine;
@@ -1634,18 +1645,35 @@ export class DatabaseStorage implements IStorage {
     return { completion, metrics };
   }
 
-  async getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]> {
+  async getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date, profileId?: number, excludeDemo?: boolean): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]> {
+    const conditions = [
+      eq(tasks.userId, userId),
+      gte(completions.completedAt, startDate),
+      sql`${completions.completedAt} <= ${endDate}`
+    ];
+    
+    if (profileId !== undefined) {
+      conditions.push(eq(tasks.profileId, profileId));
+    }
+    
+    if (excludeDemo) {
+      // Exclude tasks from demo profiles
+      const demoProfileIds = await db.select({ id: profiles.id })
+        .from(profiles)
+        .where(and(eq(profiles.userId, userId), eq(profiles.isDemo, true)));
+      const demoIds = demoProfileIds.map(p => p.id);
+      if (demoIds.length > 0) {
+        conditions.push(notInArray(tasks.profileId, demoIds));
+      }
+    }
+    
     const result = await db.select({
       completion: completions,
       task: tasks,
     })
     .from(completions)
     .innerJoin(tasks, eq(completions.taskId, tasks.id))
-    .where(and(
-      eq(tasks.userId, userId),
-      gte(completions.completedAt, startDate),
-      sql`${completions.completedAt} <= ${endDate}`
-    ))
+    .where(and(...conditions))
     .orderBy(completions.completedAt);
     
     // Group by date
