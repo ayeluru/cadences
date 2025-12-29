@@ -5,19 +5,70 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Tag as TagIcon, Folder, Trash2 } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, Database, RefreshCw, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
 import { Loader2 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function Settings() {
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: tags, isLoading: tagsLoading } = useTags();
   const createTagMutation = useCreateTag();
   const deleteCategoryMutation = useDeleteCategory();
+  const { toast } = useToast();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
+
+  const clearDataMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/clear-data");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      toast({ title: "Data cleared", description: "All your data has been removed." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const seedDataMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/seed");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      toast({ title: "Sample data loaded", description: data.message });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
 
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +164,69 @@ export default function Settings() {
               ))
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Developer Tools - Seed Data */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-primary" /> Sample Data
+          </CardTitle>
+          <CardDescription>Load sample tasks with 90+ days of history to test the app features.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-3">
+            <Button 
+              onClick={() => seedDataMutation.mutate()}
+              disabled={seedDataMutation.isPending}
+              data-testid="button-seed-data"
+            >
+              {seedDataMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              Load Sample Data
+            </Button>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" data-testid="button-clear-data">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear All Data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-destructive" />
+                    Clear all data?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete all your tasks, completions, streaks, categories, tags, and routines. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => clearDataMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    data-testid="button-confirm-clear"
+                  >
+                    {clearDataMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Yes, delete everything
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Sample data includes daily/weekly/monthly/yearly tasks, exercise routines with variations, 
+            custom metrics for tracking progress, and varied completion patterns showing different streak lengths.
+          </p>
         </CardContent>
       </Card>
 

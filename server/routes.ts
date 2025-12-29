@@ -401,106 +401,26 @@ export async function registerRoutes(
     });
   });
 
-  // SEED DATA (for demo)
-  // We can't easily seed for a user we don't know the ID of until they log in.
-  // But we can add a check: IF user has 0 tasks, add some sample ones.
-  // I'll add this to the list endpoint.
-  
-  // NOTE: Modifying the list endpoint above to auto-seed.
-  const originalListHandler = app._router.stack.find((r: any) => r.route && r.route.path === api.tasks.list.path)?.route.stack[0].handle;
-  
-  // Actually, re-writing the handler is cleaner.
-  // I'll just rely on the user manually creating tasks, OR I can inject a seeding step.
-  // Let's add a "seed" query param or just check on list.
-  
-  // Adding seeding logic to list endpoint:
-  app.get(api.tasks.list.path, requireAuth, async (req: any, res) => {
-      const userId = req.user.claims.sub;
-      let tasks = await storage.getTasks(userId);
+  // Seed data endpoint
+  app.post("/api/seed", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    try {
+      const result = await storage.seedUserData(userId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
 
-      if (tasks.length === 0) {
-        // Seed with sample tasks
-        const defaultCategory = await storage.createCategory(userId, { name: "General" });
-        const exerciseCategory = await storage.createCategory(userId, { name: "Exercise" });
-        
-        // Regular interval tasks
-        await storage.createTask(userId, { title: "Change Toothbrush", taskType: "interval", intervalValue: 3, intervalUnit: "months", categoryId: defaultCategory.id, isArchived: false });
-        await storage.createTask(userId, { title: "Water Plants", taskType: "interval", intervalValue: 1, intervalUnit: "weeks", categoryId: defaultCategory.id, isArchived: false });
-        
-        // Example frequency-based task with variations
-        const squatTask = await storage.createTask(userId, { 
-          title: "Squats", 
-          taskType: "frequency", 
-          targetCount: 3, 
-          targetPeriod: "week", 
-          categoryId: exerciseCategory.id, 
-          isArchived: false 
-        });
-        
-        // Add squat variations
-        const backSquat = await storage.createTask(userId, { 
-          title: "Back Squat", 
-          taskType: "interval", 
-          intervalValue: 1, 
-          intervalUnit: "days",
-          parentTaskId: squatTask.id, 
-          categoryId: exerciseCategory.id, 
-          isArchived: false 
-        });
-        const gobletSquat = await storage.createTask(userId, { 
-          title: "Goblet Squat", 
-          taskType: "interval", 
-          intervalValue: 1, 
-          intervalUnit: "days",
-          parentTaskId: squatTask.id, 
-          categoryId: exerciseCategory.id, 
-          isArchived: false 
-        });
-        
-        // Add metrics to squat variations
-        await storage.createTaskMetric({ taskId: backSquat.id, name: "Weight", unit: "lbs", dataType: "number" });
-        await storage.createTaskMetric({ taskId: backSquat.id, name: "Sets", unit: "", dataType: "number" });
-        await storage.createTaskMetric({ taskId: backSquat.id, name: "Reps", unit: "", dataType: "number" });
-        await storage.createTaskMetric({ taskId: gobletSquat.id, name: "Weight", unit: "lbs", dataType: "number" });
-        await storage.createTaskMetric({ taskId: gobletSquat.id, name: "Sets", unit: "", dataType: "number" });
-        await storage.createTaskMetric({ taskId: gobletSquat.id, name: "Reps", unit: "", dataType: "number" });
-        
-        // Car maintenance example with tire pressure metrics
-        const tirePressureTask = await storage.createTask(userId, { 
-          title: "Check Tire Pressure", 
-          taskType: "interval", 
-          intervalValue: 1, 
-          intervalUnit: "months", 
-          categoryId: defaultCategory.id, 
-          isArchived: false 
-        });
-        await storage.createTaskMetric({ taskId: tirePressureTask.id, name: "Front Left", unit: "psi", dataType: "number" });
-        await storage.createTaskMetric({ taskId: tirePressureTask.id, name: "Front Right", unit: "psi", dataType: "number" });
-        await storage.createTaskMetric({ taskId: tirePressureTask.id, name: "Rear Left", unit: "psi", dataType: "number" });
-        await storage.createTaskMetric({ taskId: tirePressureTask.id, name: "Rear Right", unit: "psi", dataType: "number" });
-        
-        // Refresh
-        tasks = await storage.getTasks(userId);
-      }
-
-      const enrichedTasks = await Promise.all(tasks.map(t => enrichTask(t, userId)));
-      enrichedTasks.sort((a, b) => b.urgency - a.urgency);
-
-      const { search, categoryId, tagId } = req.query;
-      let filtered = enrichedTasks;
-      
-      if (search) {
-        const lower = String(search).toLowerCase();
-        filtered = filtered.filter(t => t.title.toLowerCase().includes(lower));
-      }
-      if (categoryId) {
-        filtered = filtered.filter(t => t.categoryId === Number(categoryId));
-      }
-      if (tagId) {
-        filtered = filtered.filter(t => t.tags.some((tag: any) => tag.id === Number(tagId)));
-      }
-
-      res.json(filtered);
+  // Clear all user data endpoint (for resetting before seeding)
+  app.delete("/api/clear-data", requireAuth, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    try {
+      await storage.clearUserData(userId);
+      res.json({ success: true, message: "All data cleared" });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
   });
 
   return httpServer;
