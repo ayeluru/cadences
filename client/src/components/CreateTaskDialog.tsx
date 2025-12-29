@@ -11,9 +11,21 @@ import { useCategories, useCreateCategory } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { useRoutines } from "@/hooks/use-routines";
 import { useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2, Clock, Calendar } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Checkbox } from "./ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
+
+const DAYS_OF_WEEK = [
+  { id: 0, label: "Sun" },
+  { id: 1, label: "Mon" },
+  { id: 2, label: "Tue" },
+  { id: 3, label: "Wed" },
+  { id: 4, label: "Thu" },
+  { id: 5, label: "Fri" },
+  { id: 6, label: "Sat" },
+];
 
 const formSchema = insertTaskSchema.extend({
   intervalValue: z.coerce.number().min(1).optional().nullable(),
@@ -38,6 +50,7 @@ interface CreateTaskDialogProps {
 }
 
 export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) {
+  const { toast } = useToast();
   const createMutation = useCreateTask();
   const createCategoryMutation = useCreateCategory();
   const { data: categories } = useCategories();
@@ -47,10 +60,14 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [taskType, setTaskType] = useState<'interval' | 'frequency'>('interval');
+  const [taskType, setTaskType] = useState<'interval' | 'frequency' | 'scheduled'>('interval');
   const [metrics, setMetrics] = useState<MetricDef[]>([]);
   const [newMetricName, setNewMetricName] = useState("");
   const [newMetricUnit, setNewMetricUnit] = useState("");
+  // Scheduled task state
+  const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
+  const [scheduledTime, setScheduledTime] = useState("");
+  const [scheduledDaysOfMonth, setScheduledDaysOfMonth] = useState("");
 
   const parentTasks = allTasks?.filter((t: TaskWithDetails) => 
     t.taskType === 'frequency' && !t.parentTaskId
@@ -86,10 +103,34 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     if (taskType === 'interval') {
       taskData.intervalValue = data.intervalValue;
       taskData.intervalUnit = data.intervalUnit;
-    } else {
+    } else if (taskType === 'frequency') {
       taskData.targetCount = data.targetCount;
       taskData.targetPeriod = data.targetPeriod;
       taskData.refractoryMinutes = data.refractoryMinutes || null;
+    } else if (taskType === 'scheduled') {
+      // Scheduled task type - validate at least one schedule option is set
+      const hasSchedule = selectedDaysOfWeek.length > 0 || scheduledDaysOfMonth.trim();
+      if (!hasSchedule) {
+        toast({ title: "Schedule Required", description: "Please select days of week or days of month", variant: "destructive" });
+        return;
+      }
+      
+      if (selectedDaysOfWeek.length > 0) {
+        taskData.scheduledDaysOfWeek = selectedDaysOfWeek.sort((a, b) => a - b).join(',');
+      }
+      if (scheduledDaysOfMonth.trim()) {
+        // Validate and normalize days of month input
+        const daysInput = scheduledDaysOfMonth.split(',')
+          .map(d => parseInt(d.trim()))
+          .filter(d => !isNaN(d) && d >= 1 && d <= 31)
+          .sort((a, b) => a - b);
+        if (daysInput.length > 0) {
+          taskData.scheduledDaysOfMonth = daysInput.join(',');
+        }
+      }
+      if (scheduledTime.trim()) {
+        taskData.scheduledTime = scheduledTime.trim();
+      }
     }
 
     createMutation.mutate(taskData, {
@@ -122,6 +163,9 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         setNewCategoryName("");
         setMetrics([]);
         setTaskType('interval');
+        setSelectedDaysOfWeek([]);
+        setScheduledTime("");
+        setScheduledDaysOfMonth("");
       }
     });
   };
@@ -188,10 +232,11 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
             />
           </div>
 
-          <Tabs value={taskType} onValueChange={(v) => setTaskType(v as 'interval' | 'frequency')}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="interval" data-testid="tab-interval">Every X Days/Weeks</TabsTrigger>
-              <TabsTrigger value="frequency" data-testid="tab-frequency">X Times per Week</TabsTrigger>
+          <Tabs value={taskType} onValueChange={(v) => setTaskType(v as 'interval' | 'frequency' | 'scheduled')}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="interval" data-testid="tab-interval">Every X Days</TabsTrigger>
+              <TabsTrigger value="frequency" data-testid="tab-frequency">X Per Week</TabsTrigger>
+              <TabsTrigger value="scheduled" data-testid="tab-scheduled">Scheduled</TabsTrigger>
             </TabsList>
             
             <TabsContent value="interval" className="space-y-4 pt-4">
@@ -293,6 +338,72 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               <p className="text-xs text-muted-foreground">
                 Create variations of this task to track different ways to fulfill this goal.
               </p>
+            </TabsContent>
+
+            <TabsContent value="scheduled" className="space-y-4 pt-4">
+              <div className="space-y-3">
+                <Label className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  Days of the Week
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS_OF_WEEK.map((day) => (
+                    <button
+                      key={day.id}
+                      type="button"
+                      data-testid={`checkbox-day-${day.id}`}
+                      onClick={() => {
+                        setSelectedDaysOfWeek(prev => 
+                          prev.includes(day.id) 
+                            ? prev.filter(d => d !== day.id) 
+                            : [...prev, day.id]
+                        );
+                      }}
+                      className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                        selectedDaysOfWeek.includes(day.id)
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background border-input hover-elevate"
+                      }`}
+                    >
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Select which days this task should be done (e.g., Mon/Wed/Fri).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="scheduledTime" className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Preferred Time (optional)
+                </Label>
+                <Input 
+                  type="time" 
+                  id="scheduledTime" 
+                  data-testid="input-scheduled-time"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Set a preferred time for reminders and scheduling.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="scheduledDaysOfMonth">Specific Days of Month (optional)</Label>
+                <Input 
+                  id="scheduledDaysOfMonth" 
+                  data-testid="input-days-of-month"
+                  placeholder="e.g., 1,15 for 1st and 15th"
+                  value={scheduledDaysOfMonth}
+                  onChange={(e) => setScheduledDaysOfMonth(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter comma-separated days (1-31) for monthly scheduling, e.g., "1,15" for bi-monthly.
+                </p>
+              </div>
             </TabsContent>
           </Tabs>
 

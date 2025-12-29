@@ -46,7 +46,7 @@ export const tasks = pgTable("tasks", {
   title: text("title").notNull(),
   description: text("description"),
   
-  // Task type: 'interval' (every X days), 'frequency' (X times per week/month)
+  // Task type: 'interval' (every X days), 'frequency' (X times per week/month), 'scheduled' (specific days/times)
   taskType: text("task_type").default('interval').notNull(),
   
   // For interval-based tasks (every X days/weeks/months/years)
@@ -56,6 +56,16 @@ export const tasks = pgTable("tasks", {
   // For frequency-based tasks (X times per period)
   targetCount: integer("target_count"), // e.g., 3
   targetPeriod: text("target_period"), // 'week', 'month'
+  
+  // For scheduled tasks - when this task should occur
+  // Days of week: 0=Sunday, 1=Monday, ..., 6=Saturday (stored as comma-separated, e.g., "1,3,5")
+  scheduledDaysOfWeek: text("scheduled_days_of_week"),
+  // Days of month: 1-31 (stored as comma-separated, e.g., "1,15" for 1st and 15th)
+  scheduledDaysOfMonth: text("scheduled_days_of_month"),
+  // Time of day in HH:MM format (e.g., "09:00")
+  scheduledTime: text("scheduled_time"),
+  // Specific dates in YYYY-MM-DD format (stored as comma-separated for one-time or recurring annual dates)
+  scheduledDates: text("scheduled_dates"),
   
   // For task variations - parent task that this variation fulfills
   parentTaskId: integer("parent_task_id"),

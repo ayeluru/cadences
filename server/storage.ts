@@ -1957,9 +1957,17 @@ export class DatabaseStorage implements IStorage {
       await db.insert(taskTags).values({ taskId, tagId });
     }
     
-    // Update streak to new profile context
-    const streakRecord = await this.getTaskStreak(taskId, userId);
-    // Streaks remain with the task - no profile-level changes needed since streaks are task-based
+    // Migrate any variations (child tasks linked to this parent)
+    const variationTasks = await db.select().from(tasks)
+      .where(and(eq(tasks.parentTaskId, taskId), eq(tasks.userId, userId)));
+    
+    for (const variation of variationTasks) {
+      // Recursively migrate variations to the same target profile
+      await this.reassignTaskToProfile(variation.id, targetProfileId, userId);
+    }
+    
+    // Note: Completions and streaks remain linked to the task by taskId - no migration needed
+    // as they are not profile-scoped but task-scoped
     
     return updatedTask;
   }

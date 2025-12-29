@@ -89,6 +89,21 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
     if (isFrequencyTask) {
       return `${task.targetCount}x per ${task.targetPeriod}`;
     }
+    if (task.taskType === 'scheduled') {
+      const parts: string[] = [];
+      if (task.scheduledDaysOfWeek) {
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const days = task.scheduledDaysOfWeek.split(',').map(d => dayNames[parseInt(d)]);
+        parts.push(days.join('/'));
+      }
+      if (task.scheduledDaysOfMonth) {
+        parts.push(`on ${task.scheduledDaysOfMonth} of month`);
+      }
+      if (task.scheduledTime) {
+        parts.push(`at ${task.scheduledTime}`);
+      }
+      return parts.length > 0 ? parts.join(' ') : 'Scheduled';
+    }
     return `Every ${task.intervalValue} ${task.intervalUnit}`;
   };
 

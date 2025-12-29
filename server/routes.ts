@@ -106,6 +106,99 @@ async function enrichTask(task: any, userId: string) {
     } else {
       nextDue = new Date(); // Due now
     }
+  } else if (task.taskType === 'scheduled') {
+    // Scheduled task - find next occurrence based on schedule
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let foundNextDue = false;
+    
+    // Parse scheduled time
+    let scheduledHour = 0;
+    let scheduledMinute = 0;
+    if (task.scheduledTime) {
+      const [h, m] = task.scheduledTime.split(':').map(Number);
+      scheduledHour = h || 0;
+      scheduledMinute = m || 0;
+    }
+    
+    // Helper to check if task was completed after a specific time
+    const wasCompletedAfter = (dateTime: Date): boolean => {
+      if (!task.lastCompletedAt) return false;
+      return new Date(task.lastCompletedAt) >= dateTime;
+    };
+    
+    // 1. Check specific dates first (highest priority)
+    if (task.scheduledDates) {
+      const scheduledDates = task.scheduledDates.split(',').map(d => d.trim()).filter(Boolean);
+      const dateCandidates = scheduledDates
+        .map(dateStr => {
+          const date = new Date(dateStr + 'T00:00:00');
+          date.setHours(scheduledHour, scheduledMinute, 0, 0);
+          return date;
+        })
+        .filter(d => !isNaN(d.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+      
+      for (const candidate of dateCandidates) {
+        if (candidate >= now && !wasCompletedAfter(candidate)) {
+          nextDue = candidate;
+          foundNextDue = true;
+          break;
+        }
+      }
+    }
+    
+    // 2. Check days of week
+    if (!foundNextDue && task.scheduledDaysOfWeek) {
+      const scheduledDays = task.scheduledDaysOfWeek.split(',').map(Number).filter(d => d >= 0 && d <= 6);
+      // Check next 8 days to find the next scheduled day (8 to ensure we wrap around)
+      for (let i = 0; i <= 8 && !foundNextDue; i++) {
+        const checkDate = addDays(today, i);
+        const dayOfWeek = checkDate.getDay();
+        if (scheduledDays.includes(dayOfWeek)) {
+          const candidate = new Date(checkDate);
+          candidate.setHours(scheduledHour, scheduledMinute, 0, 0);
+          // Skip if it's in the past or already completed after this time
+          if (candidate >= now && !wasCompletedAfter(candidate)) {
+            nextDue = candidate;
+            foundNextDue = true;
+          }
+        }
+      }
+    }
+    
+    // 3. Check days of month
+    if (!foundNextDue && task.scheduledDaysOfMonth) {
+      const scheduledDays = task.scheduledDaysOfMonth.split(',')
+        .map(d => parseInt(d.trim()))
+        .filter(d => !isNaN(d) && d >= 1 && d <= 31)
+        .sort((a, b) => a - b);
+      
+      // Check current month and next 2 months
+      for (let monthOffset = 0; monthOffset <= 2 && !foundNextDue; monthOffset++) {
+        const checkMonth = addMonths(today, monthOffset);
+        const daysInMonth = new Date(checkMonth.getFullYear(), checkMonth.getMonth() + 1, 0).getDate();
+        
+        for (const day of scheduledDays) {
+          // Skip invalid days for this month (e.g., 31 in February)
+          if (day > daysInMonth) continue;
+          
+          const candidate = new Date(checkMonth.getFullYear(), checkMonth.getMonth(), day);
+          candidate.setHours(scheduledHour, scheduledMinute, 0, 0);
+          
+          if (candidate >= now && !wasCompletedAfter(candidate)) {
+            nextDue = candidate;
+            foundNextDue = true;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!foundNextDue) {
+      // Default: due now if no schedule matched (or schedule is empty)
+      nextDue = new Date();
+    }
   } else if (task.intervalValue && task.intervalUnit) {
     // Interval-based task
     if (task.lastCompletedAt) {
@@ -131,8 +224,28 @@ async function enrichTask(task: any, userId: string) {
   const dueSoonThreshold = getDueSoonThreshold(cadenceDays);
   
   let status: 'overdue' | 'due_soon' | 'later' | 'never_done' = 'later';
-  if (!task.lastCompletedAt && task.taskType !== 'frequency') {
+  if (!task.lastCompletedAt && task.taskType !== 'frequency' && task.taskType !== 'scheduled') {
     status = 'never_done';
+  } else if (task.taskType === 'scheduled') {
+    // For scheduled tasks, determine status based on schedule
+    // Calculate "cadence" for scheduled tasks to determine due-soon threshold
+    let scheduledCadenceDays = 7; // Default weekly cadence
+    if (task.scheduledDaysOfWeek) {
+      const days = task.scheduledDaysOfWeek.split(',').length;
+      scheduledCadenceDays = Math.ceil(7 / Math.max(days, 1)); // e.g., 3 days/week = ~2-3 day cadence
+    } else if (task.scheduledDaysOfMonth) {
+      const days = task.scheduledDaysOfMonth.split(',').length;
+      scheduledCadenceDays = Math.ceil(30 / Math.max(days, 1)); // e.g., 2 days/month = ~15 day cadence
+    }
+    const scheduledDueSoonThreshold = getDueSoonThreshold(scheduledCadenceDays);
+    
+    if (!task.lastCompletedAt && !task.scheduledDates) {
+      status = 'never_done';
+    } else if (isBefore(nextDue, now)) {
+      status = 'overdue';
+    } else if (daysUntilDue <= scheduledDueSoonThreshold) {
+      status = 'due_soon'; // Due within threshold
+    }
   } else if (task.taskType === 'frequency') {
     // For frequency tasks, check if target is met
     if (completionsThisPeriod >= (task.targetCount || 0)) {
