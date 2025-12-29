@@ -6,7 +6,7 @@ import {
   type InsertTaskMetric, type InsertMetricValue, type InsertProfile
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
+import { eq, desc, sql, and, gte, inArray, notInArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -906,9 +906,17 @@ export class DatabaseStorage implements IStorage {
     return { success: true, message: "Demo profile seeded successfully" };
   }
 
-  async getCategories(userId: string, profileId?: number | null): Promise<Category[]> {
+  async getCategories(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Category[]> {
     if (profileId !== undefined && profileId !== null) {
       return await db.select().from(categories).where(and(eq(categories.userId, userId), eq(categories.profileId, profileId)));
+    }
+    // For aggregate view, optionally exclude demo profile data
+    if (excludeDemo) {
+      const demoProfiles = await db.select({ id: profiles.id }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.isDemo, true)));
+      const demoProfileIds = demoProfiles.map(p => p.id);
+      if (demoProfileIds.length > 0) {
+        return await db.select().from(categories).where(and(eq(categories.userId, userId), notInArray(categories.profileId, demoProfileIds)));
+      }
     }
     return await db.select().from(categories).where(eq(categories.userId, userId));
   }
@@ -930,9 +938,16 @@ export class DatabaseStorage implements IStorage {
     await db.delete(categories).where(eq(categories.id, id));
   }
 
-  async getTags(userId: string, profileId?: number | null): Promise<Tag[]> {
+  async getTags(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Tag[]> {
     if (profileId !== undefined && profileId !== null) {
       return await db.select().from(tags).where(and(eq(tags.userId, userId), eq(tags.profileId, profileId)));
+    }
+    if (excludeDemo) {
+      const demoProfiles = await db.select({ id: profiles.id }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.isDemo, true)));
+      const demoProfileIds = demoProfiles.map(p => p.id);
+      if (demoProfileIds.length > 0) {
+        return await db.select().from(tags).where(and(eq(tags.userId, userId), notInArray(tags.profileId, demoProfileIds)));
+      }
     }
     return await db.select().from(tags).where(eq(tags.userId, userId));
   }
@@ -942,9 +957,16 @@ export class DatabaseStorage implements IStorage {
     return newTag;
   }
 
-  async getTasks(userId: string, profileId?: number | null): Promise<Task[]> {
+  async getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]> {
     if (profileId !== undefined && profileId !== null) {
       return await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.profileId, profileId), eq(tasks.isArchived, false)));
+    }
+    if (excludeDemo) {
+      const demoProfiles = await db.select({ id: profiles.id }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.isDemo, true)));
+      const demoProfileIds = demoProfiles.map(p => p.id);
+      if (demoProfileIds.length > 0) {
+        return await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.isArchived, false), notInArray(tasks.profileId, demoProfileIds)));
+      }
     }
     return await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.isArchived, false)));
   }
@@ -1050,9 +1072,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Routines
-  async getRoutines(userId: string, profileId?: number | null): Promise<Routine[]> {
+  async getRoutines(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Routine[]> {
     if (profileId !== undefined && profileId !== null) {
       return await db.select().from(routines).where(and(eq(routines.userId, userId), eq(routines.profileId, profileId)));
+    }
+    if (excludeDemo) {
+      const demoProfiles = await db.select({ id: profiles.id }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.isDemo, true)));
+      const demoProfileIds = demoProfiles.map(p => p.id);
+      if (demoProfileIds.length > 0) {
+        return await db.select().from(routines).where(and(eq(routines.userId, userId), notInArray(routines.profileId, demoProfileIds)));
+      }
     }
     return await db.select().from(routines).where(eq(routines.userId, userId));
   }

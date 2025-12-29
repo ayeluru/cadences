@@ -1,7 +1,7 @@
 import { 
   Clock, Target, Flame, AlertCircle, CheckCircle2, Calendar,
   BarChart2, FolderOpen, Tag, Repeat, ArrowRight, Trophy,
-  HelpCircle, Zap, TrendingUp, CalendarDays
+  HelpCircle, Zap, TrendingUp, CalendarDays, Users, Sparkles
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,92 @@ export default function UserGuide() {
         </p>
       </div>
 
-      <Accordion type="single" collapsible className="space-y-4" defaultValue="task-types">
+      <Accordion type="single" collapsible className="space-y-4" defaultValue="profiles">
+        <AccordionItem value="profiles" className="border rounded-xl px-4 bg-card">
+          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-profiles">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Users className="w-5 h-5 text-primary" />
+              </div>
+              Profiles
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-2 pb-4 space-y-4">
+            <p className="text-muted-foreground">
+              Profiles let you organize your tasks into separate contexts. Each profile has its own tasks, categories, tags, and routines - completely isolated from other profiles.
+            </p>
+            <div className="grid gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    Creating Profiles
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-2">
+                  <p>Create profiles for different areas of your life:</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge>Work</Badge>
+                    <Badge>Personal</Badge>
+                    <Badge>Exercise</Badge>
+                    <Badge>Home</Badge>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-2 mt-2">
+                    <p className="text-xs">
+                      Go to <strong>Settings</strong>, scroll to <strong>Profiles</strong>, and enter a name to create a new profile.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ArrowRight className="w-4 h-4" />
+                    Switching Profiles
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-2">
+                  <p>Use the profile switcher in the sidebar header to switch between profiles. Each profile shows only its own data.</p>
+                  <p className="text-xs">On mobile, the profile switcher is in the top header bar.</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4" />
+                    All Profiles View
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-2">
+                  <p>Select "All Profiles" in the profile switcher to see an aggregated view of tasks from all your non-demo profiles combined.</p>
+                  <p className="text-xs">Note: Demo profile data is excluded from the All Profiles view.</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Demo Profile
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-2">
+                  <p>Create a Demo profile from Settings to explore the app with sample data. The demo includes:</p>
+                  <ul className="list-disc list-inside text-xs space-y-1 ml-2">
+                    <li>Daily, weekly, and monthly tasks</li>
+                    <li>Exercise routines with metrics</li>
+                    <li>Sample categories and tags</li>
+                    <li>Completion history with streaks</li>
+                  </ul>
+                  <p className="text-xs mt-2">Demo data won't appear in the "All Profiles" view - it's just for testing.</p>
+                </CardContent>
+              </Card>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
         <AccordionItem value="task-types" className="border rounded-xl px-4 bg-card">
           <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-task-types">
             <div className="flex items-center gap-3">
@@ -308,7 +393,7 @@ export default function UserGuide() {
                   <div className="bg-muted/50 rounded-lg p-3 space-y-2">
                     <p className="font-medium text-foreground">How to create a routine:</p>
                     <ol className="list-decimal list-inside space-y-1 text-xs">
-                      <li>Go to <strong>Manage</strong> in the sidebar</li>
+                      <li>Go to <strong>Settings</strong> in the sidebar</li>
                       <li>Scroll to the <strong>Routines</strong> section</li>
                       <li>Click <strong>Create Routine</strong></li>
                       <li>Give it a name like "Morning Routine"</li>

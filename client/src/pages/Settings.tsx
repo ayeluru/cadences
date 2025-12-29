@@ -68,24 +68,6 @@ export default function Settings() {
     }
   });
 
-  const seedDataMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/seed");
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/routines"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
-      toast({ title: "Sample data loaded", description: data.message });
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
-
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTagName.trim()) return;
@@ -426,66 +408,47 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      {/* Developer Tools - Seed Data */}
+      {/* Data Management */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Database className="w-5 h-5 text-primary" /> Sample Data
+            <Database className="w-5 h-5 text-primary" /> Data Management
           </CardTitle>
-          <CardDescription>Load sample tasks with 90+ days of history to test the app features.</CardDescription>
+          <CardDescription>Manage your account data.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <Button 
-              onClick={() => seedDataMutation.mutate()}
-              disabled={seedDataMutation.isPending}
-              data-testid="button-seed-data"
-            >
-              {seedDataMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4 mr-2" />
-              )}
-              Load Sample Data
-            </Button>
-
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" data-testid="button-clear-data">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Clear All Data
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-destructive" />
-                    Clear all data?
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete all your tasks, completions, streaks, categories, tags, and routines. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => clearDataMutation.mutate()}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    data-testid="button-confirm-clear"
-                  >
-                    {clearDataMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : null}
-                    Yes, delete everything
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Sample data includes daily/weekly/monthly/yearly tasks, exercise routines with variations, 
-            custom metrics for tracking progress, and varied completion patterns showing different streak lengths.
-          </p>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" data-testid="button-clear-data">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear All Data
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-destructive" />
+                  Clear all data?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete all your tasks, completions, streaks, categories, tags, and routines across all profiles. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => clearDataMutation.mutate()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  data-testid="button-confirm-clear"
+                >
+                  {clearDataMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : null}
+                  Yes, delete everything
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </CardContent>
       </Card>
 
