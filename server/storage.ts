@@ -6,7 +6,7 @@ import {
   type InsertTaskMetric, type InsertMetricValue
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql, and, gte } from "drizzle-orm";
+import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -553,29 +553,29 @@ export class DatabaseStorage implements IStorage {
     if (taskIds.length > 0) {
       // Delete metric values for completions of these tasks
       const taskCompletions = await db.select().from(completions).where(
-        sql`${completions.taskId} = ANY(${taskIds})`
+        inArray(completions.taskId, taskIds)
       );
       const completionIds = taskCompletions.map(c => c.id);
       
       if (completionIds.length > 0) {
         await db.delete(metricValues).where(
-          sql`${metricValues.completionId} = ANY(${completionIds})`
+          inArray(metricValues.completionId, completionIds)
         );
       }
 
       // Delete completions
       await db.delete(completions).where(
-        sql`${completions.taskId} = ANY(${taskIds})`
+        inArray(completions.taskId, taskIds)
       );
 
       // Delete task metrics
       await db.delete(taskMetrics).where(
-        sql`${taskMetrics.taskId} = ANY(${taskIds})`
+        inArray(taskMetrics.taskId, taskIds)
       );
 
       // Delete task tags
       await db.delete(taskTags).where(
-        sql`${taskTags.taskId} = ANY(${taskIds})`
+        inArray(taskTags.taskId, taskIds)
       );
 
       // Delete streaks
