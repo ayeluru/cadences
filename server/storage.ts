@@ -36,7 +36,9 @@ export interface IStorage {
   
   // Task Metrics
   getTaskMetrics(taskId: number): Promise<TaskMetric[]>;
+  getTaskMetric(metricId: number): Promise<TaskMetric | undefined>;
   createTaskMetric(metric: InsertTaskMetric): Promise<TaskMetric>;
+  deleteTaskMetric(metricId: number): Promise<void>;
   deleteTaskMetrics(taskId: number): Promise<void>;
   
   // Completions
@@ -759,9 +761,19 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(taskMetrics).where(eq(taskMetrics.taskId, taskId));
   }
 
+  async getTaskMetric(metricId: number): Promise<TaskMetric | undefined> {
+    const [metric] = await db.select().from(taskMetrics).where(eq(taskMetrics.id, metricId));
+    return metric;
+  }
+
   async createTaskMetric(metric: InsertTaskMetric): Promise<TaskMetric> {
     const [newMetric] = await db.insert(taskMetrics).values(metric).returning();
     return newMetric;
+  }
+
+  async deleteTaskMetric(metricId: number): Promise<void> {
+    await db.delete(metricValues).where(eq(metricValues.metricId, metricId));
+    await db.delete(taskMetrics).where(eq(taskMetrics.id, metricId));
   }
 
   async deleteTaskMetrics(taskId: number): Promise<void> {

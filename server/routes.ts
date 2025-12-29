@@ -324,6 +324,24 @@ export async function registerRoutes(
     res.status(201).json(metric);
   });
 
+  app.delete("/api/metrics/:id", requireAuth, async (req: any, res) => {
+    const metricId = Number(req.params.id);
+    const userId = req.user.claims.sub;
+    
+    const metric = await storage.getTaskMetric(metricId);
+    if (!metric) {
+      return res.status(404).json({ message: "Metric not found" });
+    }
+    
+    const task = await storage.getTask(metric.taskId);
+    if (!task || task.userId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    
+    await storage.deleteTaskMetric(metricId);
+    res.json({ success: true });
+  });
+
   // Metric History
   app.get("/api/metrics/:id/history", requireAuth, async (req: any, res) => {
     const metricId = Number(req.params.id);
