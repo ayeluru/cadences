@@ -94,7 +94,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-0 top-16 z-30 bg-background/95 backdrop-blur-sm md:hidden p-4 flex flex-col gap-2"
+            className="fixed inset-0 top-16 z-30 bg-background/95 backdrop-blur-sm md:hidden p-4 flex flex-col gap-2 overflow-y-auto"
           >
             {navItems.map((item, idx) => {
               if (item.type === "divider") {

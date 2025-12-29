@@ -1,7 +1,7 @@
 import { useTasks } from "@/hooks/use-tasks";
 import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
-import { Plus, SlidersHorizontal, Calendar } from "lucide-react";
+import { Plus, SlidersHorizontal, Calendar, LayoutGrid, List } from "lucide-react";
 import { useState } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { TaskWithDetails } from "@shared/schema";
@@ -17,6 +17,7 @@ import {
 import { useCategories } from "@/hooks/use-categories";
 import { motion } from "framer-motion";
 import { filterTasksByCadence, getCadenceLabel, getCadenceDescription, type CadenceMagnitude } from "@/lib/task-utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TasksByMagnitudeProps {
   magnitude: CadenceMagnitude;
@@ -27,6 +28,8 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
   const { data: allTasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory });
   const { data: categories } = useCategories();
   const [createOpen, setCreateOpen] = useState(false);
+  const [condensedView, setCondensedView] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
   const tasks = allTasks ? filterTasksByCadence(allTasks, magnitude) : [];
 
@@ -92,6 +95,22 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
         </div>
 
         <div className="flex items-center gap-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCondensedView(!condensedView)}
+                data-testid="button-toggle-view"
+              >
+                {condensedView ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {condensedView ? "Expanded view" : "Condensed view"}
+            </TooltipContent>
+          </Tooltip>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="gap-2">
@@ -152,7 +171,7 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
                     {section.count}
                   </span>
                 </h3>
-                <div className="space-y-3">
+                <div className={condensedView ? "space-y-1" : "space-y-3"}>
                   {groupedTasks[section.id as keyof typeof groupedTasks].map((task, index) => (
                     <motion.div
                       key={task.id}
@@ -160,7 +179,12 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.05 }}
                     >
-                      <TaskCard task={task} />
+                      <TaskCard 
+                        task={task} 
+                        condensed={condensedView}
+                        expanded={expandedTaskId === task.id}
+                        onToggleExpand={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                      />
                     </motion.div>
                   ))}
                 </div>
