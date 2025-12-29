@@ -114,16 +114,26 @@ export function useCompleteTask() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, notes, completedAt }: { id: number; notes?: string; completedAt?: string }) => {
+    mutationFn: async ({ 
+      id, 
+      notes, 
+      completedAt,
+      metrics 
+    }: { 
+      id: number; 
+      notes?: string; 
+      completedAt?: string;
+      metrics?: { metricId: number; value: number | string }[];
+    }) => {
       const url = buildUrl(api.tasks.complete.path, { id });
       const res = await fetch(url, {
         method: api.tasks.complete.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes, completedAt }),
+        body: JSON.stringify({ notes, completedAt, metrics }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to complete task");
-      return api.tasks.complete.responses[200].parse(await res.json());
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });

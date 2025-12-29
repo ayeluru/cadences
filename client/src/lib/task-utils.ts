@@ -4,8 +4,24 @@ export type CadenceMagnitude = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export function filterTasksByCadence(tasks: TaskWithDetails[], magnitude: CadenceMagnitude): TaskWithDetails[] {
   return tasks.filter(task => {
-    const val = task.intervalValue;
-    const unit = task.intervalUnit;
+    // Skip variations - they should only appear under their parent task
+    if (task.parentTaskId) return false;
+    
+    // Handle frequency-based tasks
+    if (task.taskType === 'frequency') {
+      // Show frequency tasks in weekly view since they're typically weekly targets
+      if (task.targetPeriod === 'week') {
+        return magnitude === 'weekly';
+      }
+      if (task.targetPeriod === 'month') {
+        return magnitude === 'monthly';
+      }
+      return false;
+    }
+    
+    // Handle interval-based tasks
+    const val = task.intervalValue || 1;
+    const unit = task.intervalUnit || 'days';
 
     switch (magnitude) {
       case 'daily':
