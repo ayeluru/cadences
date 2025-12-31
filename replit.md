@@ -8,7 +8,7 @@ The application supports two task types:
 - **Interval-based tasks**: Complete every X days/weeks/months/years
 - **Frequency-based tasks**: Complete X times per week/month (with optional refractory period)
 
-Tasks can be organized with categories and tags, grouped into routines, and track custom metrics (like weight, reps, duration) with each completion.
+Tasks can be organized with categories and tags, and track custom metrics (like weight, reps, duration) with each completion.
 
 ### Key Features
 - **Profiles**: Organize tasks into separate contexts (Work, Personal, Exercise, Demo) with independent data
@@ -64,7 +64,6 @@ Key database tables:
 - `completions` - Append-only log of task completions
 - `categories` - Hierarchical task organization (scoped by profileId)
 - `tags` - Flexible task labeling (scoped by profileId)
-- `routines` - Groups of related tasks (scoped by profileId)
 - `task_metrics` - Custom metrics per task
 - `metric_values` - Recorded metric values per completion
 
@@ -75,6 +74,12 @@ Key database tables:
 
 ## Recent Changes
 
+### December 31, 2025
+- Completely removed routines feature (user requested to start fresh)
+- Dropped routine tables from database (routines, routine_runs, routine_components)
+- Removed routineId foreign key from tasks table
+- Cleaned all routine references from frontend and backend code
+
 ### December 29, 2025
 - Renamed application from "Maintain" to "Cadences"
 - Implemented percentage-based urgency calculation (20% of cadence, clamped 1-14 days)
@@ -83,7 +88,7 @@ Key database tables:
 - Added calendar UI toggles (completed/missed/upcoming) with condensed mode
 - Implemented collapsible task summaries in calendar day details
 - Created dedicated Metrics page with trend charts for all tracked metrics
-- Updated User Guide with dynamic urgency info and routine creation steps
+- Updated User Guide with dynamic urgency info
 - Implemented Profiles system: users can create multiple profiles (Work, Personal, Exercise, etc.)
 - Added ProfileContext for state management with localStorage persistence
 - Created ProfileSwitcher component in sidebar header for quick profile switching
@@ -93,11 +98,6 @@ Key database tables:
 - Added "Regenerate Demo Data" button for demo profiles in Settings
 - Calendar view now respects profile filtering and aggregate view
 - Added tag filter chips to task list pages for filtering tasks by tag
-- Routines now have "Complete All" button to mark all routine tasks as done at once
-- Added API endpoints: GET /api/routines/:id/tasks, POST /api/routines/:id/complete-all
-- Routines redesign: added compositionMode field (unified vs independent), cadence fields, and routine_occurrences table
-- Created dedicated Routines page with collapsible routine cards showing stats (task count, overdue, completion %)
-- Updated Dashboard to visually group tasks by routine with container boxes
 - Restructured sidebar with collapsible "Cadences" section containing Daily/Weekly/Monthly/Long-term views
 - Added inline tag creation in CreateTaskDialog (create tags without leaving the dialog)
 - Minimum profile validation: prevents deleting the last non-demo profile
