@@ -1,9 +1,9 @@
 import { 
-  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues, taskStreaks, profiles, routineTaskLinks,
+  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues, taskStreaks, profiles, routineTaskLinks, routineComponents, routineRuns,
   type User, type Category, type Tag, type Task, type TaskTag, type Completion,
-  type Routine, type TaskMetric, type MetricValue, type TaskStreak, type Profile, type RoutineTaskLink,
+  type Routine, type TaskMetric, type MetricValue, type TaskStreak, type Profile, type RoutineTaskLink, type RoutineComponent, type RoutineRun,
   type InsertCategory, type InsertTag, type InsertTask, type InsertRoutine,
-  type InsertTaskMetric, type InsertMetricValue, type InsertProfile, type InsertRoutineTaskLink
+  type InsertTaskMetric, type InsertMetricValue, type InsertProfile, type InsertRoutineTaskLink, type InsertRoutineComponent, type InsertRoutineRun
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gte, inArray, notInArray } from "drizzle-orm";
@@ -39,12 +39,26 @@ export interface IStorage {
   getTasksByRoutine(routineId: number, userId: string): Promise<Task[]>;
   completeFixedRoutine(routineId: number, userId: string, notes?: string): Promise<{ routine: Routine, completedTasks: Task[] }>;
   
-  // Routine Task Links (for dynamic routines)
+  // Routine Task Links (legacy - for dynamic routines)
   getRoutineTaskLinks(routineId: number): Promise<RoutineTaskLink[]>;
   addTaskToRoutine(routineId: number, taskId: number, orderIndex?: number): Promise<RoutineTaskLink>;
   removeTaskFromRoutine(routineId: number, taskId: number): Promise<void>;
   getLinkedTasksForRoutine(routineId: number, userId: string): Promise<Task[]>;
   getRoutinesForTask(taskId: number): Promise<Routine[]>;
+  
+  // Routine Components (new system - tasks linked with run rules)
+  getRoutineComponents(routineId: number): Promise<RoutineComponent[]>;
+  addRoutineComponent(component: InsertRoutineComponent): Promise<RoutineComponent>;
+  updateRoutineComponent(id: number, updates: Partial<InsertRoutineComponent>): Promise<RoutineComponent>;
+  removeRoutineComponent(id: number): Promise<void>;
+  getComponentTasks(routineId: number, userId: string): Promise<(RoutineComponent & { task: Task })[]>;
+  
+  // Routine Runs (tracking routine executions)
+  getRoutineRuns(routineId: number, limit?: number): Promise<RoutineRun[]>;
+  createRoutineRun(userId: string, run: InsertRoutineRun): Promise<RoutineRun>;
+  completeRoutineRun(runId: number, completedCount: number): Promise<RoutineRun>;
+  getRoutineRunCount(routineId: number): Promise<number>;
+  getEligibleTasksForRun(routineId: number, userId: string): Promise<(RoutineComponent & { task: Task })[]>;
   
   // Tasks (profileId: null = all profiles, number = specific profile)
   getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]>;
@@ -1535,7 +1549,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const [updatedRoutine] = await db.update(routines)
-      .set({ lastCompletedAt: now })
+      .set({ lastRunAt: now })
       .where(eq(routines.id, routineId))
       .returning();
 
@@ -1575,6 +1589,115 @@ export class DatabaseStorage implements IStorage {
     if (links.length === 0) return [];
     const routineIds = links.map(l => l.routineId);
     return await db.select().from(routines).where(inArray(routines.id, routineIds));
+  }
+
+  // Routine Components (new system)
+  async getRoutineComponents(routineId: number): Promise<RoutineComponent[]> {
+    return await db.select().from(routineComponents)
+      .where(eq(routineComponents.routineId, routineId))
+      .orderBy(routineComponents.orderIndex);
+  }
+
+  async addRoutineComponent(component: InsertRoutineComponent): Promise<RoutineComponent> {
+    const [newComponent] = await db.insert(routineComponents).values(component).returning();
+    return newComponent;
+  }
+
+  async updateRoutineComponent(id: number, updates: Partial<InsertRoutineComponent>): Promise<RoutineComponent> {
+    const [updated] = await db.update(routineComponents)
+      .set(updates)
+      .where(eq(routineComponents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async removeRoutineComponent(id: number): Promise<void> {
+    await db.delete(routineComponents).where(eq(routineComponents.id, id));
+  }
+
+  async getComponentTasks(routineId: number, userId: string): Promise<(RoutineComponent & { task: Task })[]> {
+    const components = await this.getRoutineComponents(routineId);
+    if (components.length === 0) return [];
+    
+    const taskIds = components.map(c => c.taskId);
+    const taskList = await db.select().from(tasks)
+      .where(and(inArray(tasks.id, taskIds), eq(tasks.userId, userId), eq(tasks.isArchived, false)));
+    
+    const taskMap = new Map(taskList.map(t => [t.id, t]));
+    return components
+      .filter(c => taskMap.has(c.taskId))
+      .map(c => ({ ...c, task: taskMap.get(c.taskId)! }));
+  }
+
+  // Routine Runs
+  async getRoutineRuns(routineId: number, limit?: number): Promise<RoutineRun[]> {
+    let query = db.select().from(routineRuns)
+      .where(eq(routineRuns.routineId, routineId))
+      .orderBy(desc(routineRuns.startedAt));
+    
+    if (limit) {
+      query = query.limit(limit) as typeof query;
+    }
+    return await query;
+  }
+
+  async createRoutineRun(userId: string, run: InsertRoutineRun): Promise<RoutineRun> {
+    const [newRun] = await db.insert(routineRuns)
+      .values({ ...run, userId })
+      .returning();
+    return newRun;
+  }
+
+  async completeRoutineRun(runId: number, completedCount: number): Promise<RoutineRun> {
+    const [updated] = await db.update(routineRuns)
+      .set({ completedAt: new Date(), completedCount })
+      .where(eq(routineRuns.id, runId))
+      .returning();
+    return updated;
+  }
+
+  async getRoutineRunCount(routineId: number): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(routineRuns)
+      .where(and(eq(routineRuns.routineId, routineId), sql`${routineRuns.completedAt} IS NOT NULL`));
+    return result?.count || 0;
+  }
+
+  async getEligibleTasksForRun(routineId: number, userId: string): Promise<(RoutineComponent & { task: Task })[]> {
+    const componentTasks = await this.getComponentTasks(routineId, userId);
+    const runCount = await this.getRoutineRunCount(routineId);
+    const nextRunNumber = runCount + 1;
+    
+    return componentTasks.filter(ct => {
+      switch (ct.ruleType) {
+        case 'always':
+          return true;
+        case 'every_n':
+          const n = ct.ruleValue || 1;
+          return nextRunNumber % n === 0;
+        case 'when_due':
+          // Check if task is due based on its own cadence
+          if (!ct.task.lastCompletedAt || !ct.task.intervalValue) return true;
+          const now = new Date();
+          const lastCompleted = new Date(ct.task.lastCompletedAt);
+          const intervalMs = this.getIntervalMs(ct.task.intervalValue, ct.task.intervalUnit || 'days');
+          const dueDate = new Date(lastCompleted.getTime() + intervalMs);
+          return now >= dueDate;
+        default:
+          return true;
+      }
+    });
+  }
+
+  private getIntervalMs(value: number, unit: string): number {
+    const msPerDay = 24 * 60 * 60 * 1000;
+    switch (unit) {
+      case 'days': return value * msPerDay;
+      case 'weeks': return value * 7 * msPerDay;
+      case 'months': return value * 30 * msPerDay;
+      case 'years': return value * 365 * msPerDay;
+      default: return value * msPerDay;
+    }
   }
 
   // Task Variations

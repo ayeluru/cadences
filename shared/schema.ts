@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, real, unique } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -31,10 +31,8 @@ export const tags = pgTable("tags", {
   profileId: integer("profile_id").references(() => profiles.id),
 });
 
-// Routines - group of exercises/tasks done together
-// Routine type determines behavior:
-// - 'fixed': Routine has its own cadence; tasks have no individual cadence and are done together
-// - 'dynamic': Groups existing tasks that have their own cadences; shows which are due
+// Routines - container for grouping tasks that are done together
+// Tasks remain independent and can belong to multiple routines
 export const routines = pgTable("routines", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -42,20 +40,49 @@ export const routines = pgTable("routines", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   profileId: integer("profile_id").references(() => profiles.id),
   
-  // Routine type: 'fixed' (unified cadence) or 'dynamic' (aggregates existing tasks)
-  routineType: text("routine_type").default('fixed').notNull(), // 'fixed' | 'dynamic'
-  
-  // For fixed routines: routine-level cadence (interval-based)
-  intervalValue: integer("interval_value"), // e.g., 3
+  // Routine cadence - how often the routine should be performed
+  intervalValue: integer("interval_value"), // e.g., 1 for daily
   intervalUnit: text("interval_unit"), // 'days', 'weeks', 'months', 'years'
   
-  // Tracking for fixed routines
-  lastCompletedAt: timestamp("last_completed_at"),
+  // Legacy field - will be removed after migration
+  routineType: text("routine_type").default('fixed'),
   
+  // Tracking
+  lastRunAt: timestamp("last_run_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Routine occurrences - track when a fixed routine was completed
+// Routine runs - track each time a routine is executed
+export const routineRuns = pgTable("routine_runs", {
+  id: serial("id").primaryKey(),
+  routineId: integer("routine_id").references(() => routines.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  taskCount: integer("task_count").default(0).notNull(), // How many tasks were included
+  completedCount: integer("completed_count").default(0).notNull(), // How many were completed
+  notes: text("notes"),
+});
+
+// Routine components - links tasks to routines with run rules
+// Run rule types:
+// - 'always': Task is included every time the routine runs
+// - 'every_n': Task is included every Nth run (e.g., every 2nd time)
+// - 'when_due': Task is included only when it's due based on its own cadence
+export const routineComponents = pgTable("routine_components", {
+  id: serial("id").primaryKey(),
+  routineId: integer("routine_id").references(() => routines.id, { onDelete: 'cascade' }).notNull(),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: 'cascade' }).notNull(),
+  orderIndex: integer("order_index").default(0).notNull(),
+  
+  // Run rule configuration
+  ruleType: text("rule_type").default('always').notNull(), // 'always' | 'every_n' | 'when_due'
+  ruleValue: integer("rule_value").default(1).notNull(), // For 'every_n': the N value (2 = every other time)
+}, (table) => ({
+  uniqueRoutineTask: unique().on(table.routineId, table.taskId),
+}));
+
+// Legacy tables kept for migration - will be removed
 export const routineOccurrences = pgTable("routine_occurrences", {
   id: serial("id").primaryKey(),
   routineId: integer("routine_id").references(() => routines.id).notNull(),
@@ -64,8 +91,6 @@ export const routineOccurrences = pgTable("routine_occurrences", {
   notes: text("notes"),
 });
 
-// Routine task links - for dynamic routines, links existing tasks without changing their routineId
-// A task can belong to multiple dynamic routines
 export const routineTaskLinks = pgTable("routine_task_links", {
   id: serial("id").primaryKey(),
   routineId: integer("routine_id").references(() => routines.id).notNull(),
@@ -181,8 +206,20 @@ export const routinesRelations = relations(routines, ({ one, many }) => ({
   user: one(users, { fields: [routines.userId], references: [users.id] }),
   profile: one(profiles, { fields: [routines.profileId], references: [profiles.id] }),
   tasks: many(tasks),
+  components: many(routineComponents),
+  runs: many(routineRuns),
   occurrences: many(routineOccurrences),
   taskLinks: many(routineTaskLinks),
+}));
+
+export const routineRunsRelations = relations(routineRuns, ({ one }) => ({
+  routine: one(routines, { fields: [routineRuns.routineId], references: [routines.id] }),
+  user: one(users, { fields: [routineRuns.userId], references: [users.id] }),
+}));
+
+export const routineComponentsRelations = relations(routineComponents, ({ one }) => ({
+  routine: one(routines, { fields: [routineComponents.routineId], references: [routines.id] }),
+  task: one(tasks, { fields: [routineComponents.taskId], references: [tasks.id] }),
 }));
 
 export const routineOccurrencesRelations = relations(routineOccurrences, ({ one }) => ({
@@ -237,7 +274,9 @@ export const metricValuesRelations = relations(metricValues, ({ one }) => ({
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, createdAt: true });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, userId: true });
 export const insertTagSchema = createInsertSchema(tags).omit({ id: true, userId: true });
-export const insertRoutineSchema = createInsertSchema(routines).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true });
+export const insertRoutineSchema = createInsertSchema(routines).omit({ id: true, userId: true, createdAt: true, lastRunAt: true });
+export const insertRoutineRunSchema = createInsertSchema(routineRuns).omit({ id: true, userId: true, startedAt: true });
+export const insertRoutineComponentSchema = createInsertSchema(routineComponents).omit({ id: true });
 export const insertRoutineOccurrenceSchema = createInsertSchema(routineOccurrences).omit({ id: true, userId: true, completedAt: true });
 export const insertRoutineTaskLinkSchema = createInsertSchema(routineTaskLinks).omit({ id: true });
 export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true });
@@ -250,6 +289,8 @@ export type Profile = typeof profiles.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
 export type Routine = typeof routines.$inferSelect;
+export type RoutineRun = typeof routineRuns.$inferSelect;
+export type RoutineComponent = typeof routineComponents.$inferSelect;
 export type RoutineOccurrence = typeof routineOccurrences.$inferSelect;
 export type RoutineTaskLink = typeof routineTaskLinks.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
@@ -263,10 +304,23 @@ export type InsertProfile = z.infer<typeof insertProfileSchema>;
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type InsertTag = z.infer<typeof insertTagSchema>;
 export type InsertRoutine = z.infer<typeof insertRoutineSchema>;
+export type InsertRoutineRun = z.infer<typeof insertRoutineRunSchema>;
+export type InsertRoutineComponent = z.infer<typeof insertRoutineComponentSchema>;
 export type InsertRoutineOccurrence = z.infer<typeof insertRoutineOccurrenceSchema>;
 export type InsertRoutineTaskLink = z.infer<typeof insertRoutineTaskLinkSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
+
+// Routine with component details
+export type RoutineComponentWithTask = RoutineComponent & {
+  task: TaskWithDetails;
+};
+
+export type RoutineWithDetails = Routine & {
+  components?: RoutineComponentWithTask[];
+  runCount?: number;
+  lastRun?: RoutineRun | null;
+};
 
 // Task streaks - track consecutive completions
 export const taskStreaks = pgTable("task_streaks", {

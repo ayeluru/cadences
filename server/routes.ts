@@ -722,7 +722,7 @@ export async function registerRoutes(
     }
   });
 
-  // Get tasks in a routine
+  // Get tasks in a routine (legacy - for fixed routines)
   app.get("/api/routines/:id/tasks", requireAuth, async (req: any, res) => {
     try {
       const routineId = Number(req.params.id);
@@ -737,6 +737,233 @@ export async function registerRoutes(
       const enrichedTasks = await Promise.all(routineTasks.map((t: Task) => enrichTask(t, userId)));
       
       res.json(enrichedTasks);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==================== Routine Components (new system) ====================
+  
+  // Get routine components with tasks
+  app.get("/api/routines/:id/components", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const componentTasks = await storage.getComponentTasks(routineId, userId);
+      const enrichedComponents = await Promise.all(
+        componentTasks.map(async (ct) => ({
+          ...ct,
+          task: await enrichTask(ct.task, userId)
+        }))
+      );
+      
+      res.json(enrichedComponents);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Add component to routine
+  app.post("/api/routines/:id/components", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      const { taskId, orderIndex, ruleType, ruleValue } = req.body;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const task = await storage.getTask(taskId);
+      if (!task || task.userId !== userId) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const component = await storage.addRoutineComponent({
+        routineId,
+        taskId,
+        orderIndex: orderIndex ?? 0,
+        ruleType: ruleType ?? 'always',
+        ruleValue: ruleValue ?? 1,
+      });
+      
+      res.status(201).json(component);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update component
+  app.put("/api/routines/:routineId/components/:componentId", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.routineId);
+      const componentId = Number(req.params.componentId);
+      const userId = req.user.claims.sub;
+      const { orderIndex, ruleType, ruleValue } = req.body;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const updated = await storage.updateRoutineComponent(componentId, {
+        orderIndex,
+        ruleType,
+        ruleValue,
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Remove component from routine
+  app.delete("/api/routines/:routineId/components/:componentId", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.routineId);
+      const componentId = Number(req.params.componentId);
+      const userId = req.user.claims.sub;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      await storage.removeRoutineComponent(componentId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==================== Routine Runs ====================
+  
+  // Get routine runs (history)
+  app.get("/api/routines/:id/runs", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      const limit = req.query.limit ? Number(req.query.limit) : 20;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const runs = await storage.getRoutineRuns(routineId, limit);
+      res.json(runs);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get eligible tasks for the next run
+  app.get("/api/routines/:id/eligible-tasks", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const eligibleTasks = await storage.getEligibleTasksForRun(routineId, userId);
+      const enrichedTasks = await Promise.all(
+        eligibleTasks.map(async (ct) => ({
+          ...ct,
+          task: await enrichTask(ct.task, userId)
+        }))
+      );
+      
+      const runCount = await storage.getRoutineRunCount(routineId);
+      
+      res.json({ 
+        eligibleTasks: enrichedTasks,
+        nextRunNumber: runCount + 1
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Start a routine run
+  app.post("/api/routines/:id/runs", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const eligibleTasks = await storage.getEligibleTasksForRun(routineId, userId);
+      
+      const run = await storage.createRoutineRun(userId, {
+        routineId,
+        taskCount: eligibleTasks.length,
+        completedCount: 0,
+      });
+      
+      res.status(201).json({
+        run,
+        eligibleTasks: await Promise.all(
+          eligibleTasks.map(async (ct) => ({
+            ...ct,
+            task: await enrichTask(ct.task, userId)
+          }))
+        )
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Complete a routine run (mark all eligible tasks as done)
+  app.post("/api/routines/:id/runs/:runId/complete", requireAuth, async (req: any, res) => {
+    try {
+      const routineId = Number(req.params.id);
+      const runId = Number(req.params.runId);
+      const userId = req.user.claims.sub;
+      const { taskIds, notes } = req.body;
+      
+      const routine = await storage.getRoutine(routineId, userId);
+      if (!routine) {
+        return res.status(404).json({ message: "Routine not found" });
+      }
+      
+      const now = new Date();
+      let completedCount = 0;
+      
+      // Complete each specified task
+      for (const taskId of taskIds || []) {
+        try {
+          await storage.completeTask(taskId, now, notes, undefined, userId);
+          completedCount++;
+        } catch (err) {
+          console.warn(`Failed to complete task ${taskId}:`, err);
+        }
+      }
+      
+      // Update the run record
+      const updatedRun = await storage.completeRoutineRun(runId, completedCount);
+      
+      // Update routine's lastRunAt
+      await storage.updateRoutine(routineId, userId, { lastRunAt: now } as any);
+      
+      res.json({
+        run: updatedRun,
+        completedCount,
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
