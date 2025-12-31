@@ -14,7 +14,6 @@ import Settings from "@/pages/Settings";
 import UserGuide from "@/pages/UserGuide";
 import CalendarView from "@/pages/CalendarView";
 import MetricsPage from "@/pages/Metrics";
-import Routines from "@/pages/Routines";
 import AuthPage from "@/pages/AuthPage";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/use-auth";
@@ -56,7 +55,6 @@ function Router() {
       <Route path="/stats" component={() => <PrivateRoute component={Stats} />} />
       <Route path="/calendar" component={() => <PrivateRoute component={CalendarView} />} />
       <Route path="/metrics" component={() => <PrivateRoute component={MetricsPage} />} />
-      <Route path="/routines" component={() => <PrivateRoute component={Routines} />} />
       <Route path="/guide" component={() => <PrivateRoute component={UserGuide} />} />
       <Route path="/settings" component={() => <PrivateRoute component={Settings} />} />
       <Route path="/login" component={AuthPage} />

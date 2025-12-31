@@ -9,7 +9,6 @@ import { insertTaskSchema, InsertTask, TaskWithDetails } from "@shared/schema";
 import { z } from "zod";
 import { useCategories, useCreateCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
-import { useRoutines } from "@/hooks/use-routines";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { useState, useEffect } from "react";
@@ -34,7 +33,6 @@ const formSchema = insertTaskSchema.extend({
   targetCount: z.coerce.number().min(1).optional().nullable(),
   categoryId: z.coerce.number().optional().nullable(),
   parentTaskId: z.coerce.number().optional().nullable(),
-  routineId: z.coerce.number().optional().nullable(),
   refractoryMinutes: z.coerce.number().min(0).optional().nullable(),
 });
 
@@ -58,7 +56,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const createTagMutation = useCreateTag();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
-  const { data: routines } = useRoutines();
   const { data: allTasks } = useTasks();
   const { data: profiles } = useProfiles();
   const { currentProfile, isAggregatedView } = useProfileContext();
@@ -94,7 +91,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       intervalValue: 1,
       intervalUnit: 'days',
       categoryId: null,
-      routineId: null,
       tagIds: [],
       taskType: 'interval',
       targetCount: null,
@@ -115,7 +111,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       description: data.description,
       taskType,
       categoryId: data.categoryId || undefined,
-      routineId: data.routineId || undefined,
       tagIds: selectedTagIds,
       parentTaskId: data.parentTaskId || undefined,
       profileId: selectedProfileId,
@@ -171,7 +166,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
           intervalValue: 1,
           intervalUnit: 'days',
           categoryId: null,
-          routineId: null,
           tagIds: [],
           taskType: 'interval',
           targetCount: null,
@@ -519,24 +513,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                 ))}
               </select>
             )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="routine">Routine (optional)</Label>
-            <select 
-              id="routine"
-              data-testid="select-routine"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              {...register("routineId")}
-            >
-              <option value="">No routine</option>
-              {routines?.map(routine => (
-                <option key={routine.id} value={routine.id}>{routine.name}</option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">
-              Group related tasks together (e.g., Morning Routine, Leg Day).
-            </p>
           </div>
 
           <div className="space-y-2">

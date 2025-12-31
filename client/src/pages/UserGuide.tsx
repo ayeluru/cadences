@@ -1,6 +1,6 @@
 import { 
   Clock, Target, Flame, AlertCircle, CheckCircle2, Calendar,
-  BarChart2, FolderOpen, Tag, Repeat, ArrowRight, Trophy,
+  BarChart2, FolderOpen, Tag, ArrowRight, Trophy,
   HelpCircle, Zap, TrendingUp, CalendarDays, Users, Sparkles
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +36,7 @@ export default function UserGuide() {
           </AccordionTrigger>
           <AccordionContent className="pt-2 pb-4 space-y-4">
             <p className="text-muted-foreground">
-              Profiles let you organize your tasks into separate contexts. Each profile has its own tasks, categories, tags, and routines - completely isolated from other profiles.
+              Profiles let you organize your tasks into separate contexts. Each profile has its own tasks, categories, and tags - completely isolated from other profiles.
             </p>
             <div className="grid gap-4">
               <Card>
@@ -99,7 +99,7 @@ export default function UserGuide() {
                   <p>Create a Demo profile from Settings to explore the app with sample data. The demo includes:</p>
                   <ul className="list-disc list-inside text-xs space-y-1 ml-2">
                     <li>Daily, weekly, and monthly tasks</li>
-                    <li>Exercise routines with metrics</li>
+                    <li>Exercise tasks with metrics</li>
                     <li>Sample categories and tags</li>
                     <li>Completion history with streaks</li>
                   </ul>
@@ -340,7 +340,7 @@ export default function UserGuide() {
               <div className="p-2 rounded-lg bg-primary/10">
                 <FolderOpen className="w-5 h-5 text-primary" />
               </div>
-              Categories, Tags & Routines
+              Categories & Tags
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-2 pb-4 space-y-4">
@@ -380,33 +380,6 @@ export default function UserGuide() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Repeat className="w-4 h-4" />
-                    Routines
-                  </CardTitle>
-                  <CardDescription>Bundle related tasks together</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-3">
-                  <p>Create routines like "Morning Routine" or "Weekly Reset" to group tasks that you typically do together.</p>
-                  <div className="bg-muted/50 rounded-lg p-3 space-y-2">
-                    <p className="font-medium text-foreground">How to create a routine:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-xs">
-                      <li>Go to <strong>Settings</strong> in the sidebar</li>
-                      <li>Scroll to the <strong>Routines</strong> section</li>
-                      <li>Click <strong>Create Routine</strong></li>
-                      <li>Give it a name like "Morning Routine"</li>
-                      <li>Then edit any task and assign it to the routine</li>
-                    </ol>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">Morning Routine</Badge>
-                    <Badge variant="outline">Weekly Reset</Badge>
-                    <Badge variant="outline">Gym Day</Badge>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </AccordionContent>
         </AccordionItem>

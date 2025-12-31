@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, real, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, real } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -31,73 +31,6 @@ export const tags = pgTable("tags", {
   profileId: integer("profile_id").references(() => profiles.id),
 });
 
-// Routines - container for grouping tasks that are done together
-// Tasks remain independent and can belong to multiple routines
-export const routines = pgTable("routines", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  profileId: integer("profile_id").references(() => profiles.id),
-  
-  // Routine cadence - how often the routine should be performed
-  intervalValue: integer("interval_value"), // e.g., 1 for daily
-  intervalUnit: text("interval_unit"), // 'days', 'weeks', 'months', 'years'
-  
-  // Legacy field - will be removed after migration
-  routineType: text("routine_type").default('fixed'),
-  
-  // Tracking
-  lastRunAt: timestamp("last_run_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// Routine runs - track each time a routine is executed
-export const routineRuns = pgTable("routine_runs", {
-  id: serial("id").primaryKey(),
-  routineId: integer("routine_id").references(() => routines.id).notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  startedAt: timestamp("started_at").defaultNow().notNull(),
-  completedAt: timestamp("completed_at"),
-  taskCount: integer("task_count").default(0).notNull(), // How many tasks were included
-  completedCount: integer("completed_count").default(0).notNull(), // How many were completed
-  notes: text("notes"),
-});
-
-// Routine components - links tasks to routines with run rules
-// Run rule types:
-// - 'always': Task is included every time the routine runs
-// - 'every_n': Task is included every Nth run (e.g., every 2nd time)
-// - 'when_due': Task is included only when it's due based on its own cadence
-export const routineComponents = pgTable("routine_components", {
-  id: serial("id").primaryKey(),
-  routineId: integer("routine_id").references(() => routines.id, { onDelete: 'cascade' }).notNull(),
-  taskId: integer("task_id").references(() => tasks.id, { onDelete: 'cascade' }).notNull(),
-  orderIndex: integer("order_index").default(0).notNull(),
-  
-  // Run rule configuration
-  ruleType: text("rule_type").default('always').notNull(), // 'always' | 'every_n' | 'when_due'
-  ruleValue: integer("rule_value").default(1).notNull(), // For 'every_n': the N value (2 = every other time)
-}, (table) => ({
-  uniqueRoutineTask: unique().on(table.routineId, table.taskId),
-}));
-
-// Legacy tables kept for migration - will be removed
-export const routineOccurrences = pgTable("routine_occurrences", {
-  id: serial("id").primaryKey(),
-  routineId: integer("routine_id").references(() => routines.id).notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  completedAt: timestamp("completed_at").defaultNow().notNull(),
-  notes: text("notes"),
-});
-
-export const routineTaskLinks = pgTable("routine_task_links", {
-  id: serial("id").primaryKey(),
-  routineId: integer("routine_id").references(() => routines.id).notNull(),
-  taskId: integer("task_id").references(() => tasks.id).notNull(),
-  orderIndex: integer("order_index").default(0).notNull(),
-});
-
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -126,9 +59,6 @@ export const tasks = pgTable("tasks", {
   
   // For task variations - parent task that this variation fulfills
   parentTaskId: integer("parent_task_id"),
-  
-  // Routine this task belongs to (optional)
-  routineId: integer("routine_id"),
   
   // Profile this task belongs to
   profileId: integer("profile_id").references(() => profiles.id),
@@ -183,14 +113,12 @@ export const profilesRelations = relations(profiles, ({ one, many }) => ({
   tasks: many(tasks),
   categories: many(categories),
   tags: many(tags),
-  routines: many(routines),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
   tasks: many(tasks),
   categories: many(categories),
   tags: many(tags),
-  routines: many(routines),
   profiles: many(profiles),
 }));
 
@@ -202,41 +130,10 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
   tasks: many(tasks),
 }));
 
-export const routinesRelations = relations(routines, ({ one, many }) => ({
-  user: one(users, { fields: [routines.userId], references: [users.id] }),
-  profile: one(profiles, { fields: [routines.profileId], references: [profiles.id] }),
-  tasks: many(tasks),
-  components: many(routineComponents),
-  runs: many(routineRuns),
-  occurrences: many(routineOccurrences),
-  taskLinks: many(routineTaskLinks),
-}));
-
-export const routineRunsRelations = relations(routineRuns, ({ one }) => ({
-  routine: one(routines, { fields: [routineRuns.routineId], references: [routines.id] }),
-  user: one(users, { fields: [routineRuns.userId], references: [users.id] }),
-}));
-
-export const routineComponentsRelations = relations(routineComponents, ({ one }) => ({
-  routine: one(routines, { fields: [routineComponents.routineId], references: [routines.id] }),
-  task: one(tasks, { fields: [routineComponents.taskId], references: [tasks.id] }),
-}));
-
-export const routineOccurrencesRelations = relations(routineOccurrences, ({ one }) => ({
-  routine: one(routines, { fields: [routineOccurrences.routineId], references: [routines.id] }),
-  user: one(users, { fields: [routineOccurrences.userId], references: [users.id] }),
-}));
-
-export const routineTaskLinksRelations = relations(routineTaskLinks, ({ one }) => ({
-  routine: one(routines, { fields: [routineTaskLinks.routineId], references: [routines.id] }),
-  task: one(tasks, { fields: [routineTaskLinks.taskId], references: [tasks.id] }),
-}));
-
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
   user: one(users, { fields: [tasks.userId], references: [users.id] }),
   profile: one(profiles, { fields: [tasks.profileId], references: [profiles.id] }),
   category: one(categories, { fields: [tasks.categoryId], references: [categories.id] }),
-  routine: one(routines, { fields: [tasks.routineId], references: [routines.id] }),
   parentTask: one(tasks, { fields: [tasks.parentTaskId], references: [tasks.id], relationName: "variations" }),
   variations: many(tasks, { relationName: "variations" }),
   tags: many(taskTags),
@@ -274,11 +171,6 @@ export const metricValuesRelations = relations(metricValues, ({ one }) => ({
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, createdAt: true });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, userId: true });
 export const insertTagSchema = createInsertSchema(tags).omit({ id: true, userId: true });
-export const insertRoutineSchema = createInsertSchema(routines).omit({ id: true, userId: true, createdAt: true, lastRunAt: true });
-export const insertRoutineRunSchema = createInsertSchema(routineRuns).omit({ id: true, userId: true, startedAt: true });
-export const insertRoutineComponentSchema = createInsertSchema(routineComponents).omit({ id: true });
-export const insertRoutineOccurrenceSchema = createInsertSchema(routineOccurrences).omit({ id: true, userId: true, completedAt: true });
-export const insertRoutineTaskLinkSchema = createInsertSchema(routineTaskLinks).omit({ id: true });
 export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true });
 export const insertTaskMetricSchema = createInsertSchema(taskMetrics).omit({ id: true });
 export const insertCompletionSchema = createInsertSchema(completions).omit({ id: true, completedAt: true });
@@ -288,11 +180,6 @@ export const insertMetricValueSchema = createInsertSchema(metricValues).omit({ i
 export type Profile = typeof profiles.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
-export type Routine = typeof routines.$inferSelect;
-export type RoutineRun = typeof routineRuns.$inferSelect;
-export type RoutineComponent = typeof routineComponents.$inferSelect;
-export type RoutineOccurrence = typeof routineOccurrences.$inferSelect;
-export type RoutineTaskLink = typeof routineTaskLinks.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type TaskTag = typeof taskTags.$inferSelect;
 export type TaskMetric = typeof taskMetrics.$inferSelect;
@@ -303,24 +190,8 @@ export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type InsertTag = z.infer<typeof insertTagSchema>;
-export type InsertRoutine = z.infer<typeof insertRoutineSchema>;
-export type InsertRoutineRun = z.infer<typeof insertRoutineRunSchema>;
-export type InsertRoutineComponent = z.infer<typeof insertRoutineComponentSchema>;
-export type InsertRoutineOccurrence = z.infer<typeof insertRoutineOccurrenceSchema>;
-export type InsertRoutineTaskLink = z.infer<typeof insertRoutineTaskLinkSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
-
-// Routine with component details
-export type RoutineComponentWithTask = RoutineComponent & {
-  task: TaskWithDetails;
-};
-
-export type RoutineWithDetails = Routine & {
-  components?: RoutineComponentWithTask[];
-  runCount?: number;
-  lastRun?: RoutineRun | null;
-};
 
 // Task streaks - track consecutive completions
 export const taskStreaks = pgTable("task_streaks", {
@@ -344,7 +215,6 @@ export type TaskStreak = typeof taskStreaks.$inferSelect;
 // Custom Types for API
 export type TaskWithDetails = Task & {
   category?: Category | null;
-  routine?: Routine | null;
   parentTask?: Task | null;
   variations?: Task[];
   tags?: Tag[];

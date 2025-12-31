@@ -9,7 +9,6 @@ import { insertTaskSchema, TaskWithDetails, TaskMetric } from "@shared/schema";
 import { z } from "zod";
 import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
-import { useRoutines } from "@/hooks/use-routines";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useState, useEffect } from "react";
 import { Loader2, Plus, X, BarChart3, ArrowRightLeft } from "lucide-react";
@@ -23,7 +22,6 @@ const formSchema = insertTaskSchema.partial().extend({
   intervalValue: z.coerce.number().min(1, "Interval must be at least 1").optional(),
   categoryId: z.coerce.number().optional().nullable(),
   parentTaskId: z.coerce.number().optional().nullable(),
-  routineId: z.coerce.number().optional().nullable(),
   refractoryMinutes: z.coerce.number().min(0).optional().nullable(),
 });
 
@@ -46,7 +44,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const reassignMutation = useReassignTask();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
-  const { data: routines } = useRoutines();
   const { data: profiles } = useProfiles();
   const { data: allTasks } = useTasks();
   const queryClient = useQueryClient();
@@ -70,7 +67,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       intervalUnit: task.intervalUnit as any,
       categoryId: task.categoryId ?? undefined,
       parentTaskId: task.parentTaskId ?? undefined,
-      routineId: task.routineId ?? undefined,
       refractoryMinutes: task.refractoryMinutes ?? undefined,
     }
   });
@@ -83,7 +79,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         intervalUnit: task.intervalUnit as any,
         categoryId: task.categoryId ?? undefined,
         parentTaskId: task.parentTaskId ?? undefined,
-        routineId: task.routineId ?? undefined,
         refractoryMinutes: task.refractoryMinutes ?? undefined,
       });
       setSelectedTagIds(task.tags?.map(t => t.id) || []);
@@ -116,7 +111,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         id: task.id,
         ...data,
         parentTaskId: data.parentTaskId || null,
-        routineId: data.routineId || null,
         refractoryMinutes: data.refractoryMinutes || null,
         tagIds: selectedTagIds
       }, {
@@ -239,24 +233,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
                   <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-routine">Routine</Label>
-              <select 
-                id="edit-routine"
-                data-testid="select-edit-routine"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                {...register("routineId")}
-              >
-                <option value="">No routine</option>
-                {routines?.map(routine => (
-                  <option key={routine.id} value={routine.id}>{routine.name}</option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                Group related tasks together (e.g., Morning Routine, Leg Day).
-              </p>
             </div>
 
             {profiles && profiles.length > 1 && (

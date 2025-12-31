@@ -1,11 +1,10 @@
 import { useTasks } from "@/hooks/use-tasks";
-import { useRoutines } from "@/hooks/use-routines";
 import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
-import { Plus, SlidersHorizontal, LayoutGrid, List, Repeat } from "lucide-react";
+import { Plus, SlidersHorizontal, LayoutGrid, List } from "lucide-react";
 import { useState } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
-import { TaskWithDetails, Routine } from "@shared/schema";
+import { TaskWithDetails } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -24,43 +23,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-interface RoutineGroup {
-  routine: Routine;
-  tasks: TaskWithDetails[];
-}
-
-function groupTasksByRoutine(tasks: TaskWithDetails[], routines: Routine[] | undefined): { standalone: TaskWithDetails[]; routineGroups: RoutineGroup[] } {
-  const routineMap = new Map<number, TaskWithDetails[]>();
-  const standalone: TaskWithDetails[] = [];
-  
-  tasks.forEach(task => {
-    if (task.routineId) {
-      const existing = routineMap.get(task.routineId) || [];
-      existing.push(task);
-      routineMap.set(task.routineId, existing);
-    } else {
-      standalone.push(task);
-    }
-  });
-  
-  const routineGroups: RoutineGroup[] = [];
-  routineMap.forEach((taskList, routineId) => {
-    const routine = routines?.find(r => r.id === routineId);
-    if (routine) {
-      routineGroups.push({ routine, tasks: taskList });
-    } else {
-      standalone.push(...taskList);
-    }
-  });
-  
-  return { standalone, routineGroups };
-}
-
 export default function Dashboard() {
   const { user, isLoading: authLoading } = useAuth();
   const [filterCategory, setFilterCategory] = useState<number | undefined>();
   const { data: tasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory });
-  const { data: routines } = useRoutines();
   const { data: categories } = useCategories();
   const [createOpen, setCreateOpen] = useState(false);
   const [condensedView, setCondensedView] = useState(false);
@@ -195,7 +161,6 @@ export default function Dashboard() {
             if (section.count === 0) return null;
             
             const sectionTasks = groupedTasks[section.id];
-            const { standalone, routineGroups } = groupTasksByRoutine(sectionTasks, routines);
             
             return (
               <motion.section 
@@ -212,33 +177,7 @@ export default function Dashboard() {
                   </span>
                 </h3>
                 <div className={condensedView ? "space-y-1" : "space-y-4"}>
-                  {routineGroups.map(({ routine, tasks: routineTasks }) => (
-                    <div 
-                      key={`routine-${routine.id}`} 
-                      className="border border-border/50 rounded-xl bg-muted/30 p-3 space-y-2"
-                      data-testid={`routine-group-${routine.id}`}
-                    >
-                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2 px-1">
-                        <Repeat className="w-4 h-4" />
-                        <span>{routine.name}</span>
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                          {routineTasks.length} {routineTasks.length === 1 ? "task" : "tasks"}
-                        </span>
-                      </div>
-                      <div className={condensedView ? "space-y-1" : "space-y-3"}>
-                        {routineTasks.map(task => (
-                          <TaskCard 
-                            key={task.id} 
-                            task={task} 
-                            condensed={condensedView}
-                            expanded={expandedTaskId === task.id}
-                            onToggleExpand={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  {standalone.map(task => (
+                  {sectionTasks.map(task => (
                     <TaskCard 
                       key={task.id} 
                       task={task} 

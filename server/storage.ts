@@ -1,9 +1,9 @@
 import { 
-  users, categories, tags, tasks, taskTags, completions, routines, taskMetrics, metricValues, taskStreaks, profiles, routineTaskLinks, routineComponents, routineRuns,
+  users, categories, tags, tasks, taskTags, completions, taskMetrics, metricValues, taskStreaks, profiles,
   type User, type Category, type Tag, type Task, type TaskTag, type Completion,
-  type Routine, type TaskMetric, type MetricValue, type TaskStreak, type Profile, type RoutineTaskLink, type RoutineComponent, type RoutineRun,
-  type InsertCategory, type InsertTag, type InsertTask, type InsertRoutine,
-  type InsertTaskMetric, type InsertMetricValue, type InsertProfile, type InsertRoutineTaskLink, type InsertRoutineComponent, type InsertRoutineRun
+  type TaskMetric, type MetricValue, type TaskStreak, type Profile,
+  type InsertCategory, type InsertTag, type InsertTask,
+  type InsertTaskMetric, type InsertMetricValue, type InsertProfile
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gte, inArray, notInArray } from "drizzle-orm";
@@ -29,36 +29,6 @@ export interface IStorage {
   // Tags (profileId: null = all profiles, number = specific profile)
   getTags(userId: string, profileId?: number | null): Promise<Tag[]>;
   createTag(userId: string, tag: InsertTag): Promise<Tag>;
-  
-  // Routines (profileId: null = all profiles, number = specific profile)
-  getRoutines(userId: string, profileId?: number | null): Promise<Routine[]>;
-  getRoutine(id: number, userId: string): Promise<Routine | undefined>;
-  createRoutine(userId: string, routine: InsertRoutine): Promise<Routine>;
-  updateRoutine(id: number, userId: string, updates: Partial<InsertRoutine>): Promise<Routine>;
-  deleteRoutine(id: number, userId: string): Promise<void>;
-  getTasksByRoutine(routineId: number, userId: string): Promise<Task[]>;
-  completeFixedRoutine(routineId: number, userId: string, notes?: string): Promise<{ routine: Routine, completedTasks: Task[] }>;
-  
-  // Routine Task Links (legacy - for dynamic routines)
-  getRoutineTaskLinks(routineId: number): Promise<RoutineTaskLink[]>;
-  addTaskToRoutine(routineId: number, taskId: number, orderIndex?: number): Promise<RoutineTaskLink>;
-  removeTaskFromRoutine(routineId: number, taskId: number): Promise<void>;
-  getLinkedTasksForRoutine(routineId: number, userId: string): Promise<Task[]>;
-  getRoutinesForTask(taskId: number): Promise<Routine[]>;
-  
-  // Routine Components (new system - tasks linked with run rules)
-  getRoutineComponents(routineId: number): Promise<RoutineComponent[]>;
-  addRoutineComponent(component: InsertRoutineComponent): Promise<RoutineComponent>;
-  updateRoutineComponent(id: number, updates: Partial<InsertRoutineComponent>): Promise<RoutineComponent>;
-  removeRoutineComponent(id: number): Promise<void>;
-  getComponentTasks(routineId: number, userId: string): Promise<(RoutineComponent & { task: Task })[]>;
-  
-  // Routine Runs (tracking routine executions)
-  getRoutineRuns(routineId: number, limit?: number): Promise<RoutineRun[]>;
-  createRoutineRun(userId: string, run: InsertRoutineRun): Promise<RoutineRun>;
-  completeRoutineRun(runId: number, completedCount: number): Promise<RoutineRun>;
-  getRoutineRunCount(routineId: number): Promise<number>;
-  getEligibleTasksForRun(routineId: number, userId: string): Promise<(RoutineComponent & { task: Task })[]>;
   
   // Tasks (profileId: null = all profiles, number = specific profile)
   getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]>;
@@ -130,11 +100,6 @@ export class DatabaseStorage implements IStorage {
     const quickTag = await this.createTag(userId, { name: "Quick" });
     const outdoorsTag = await this.createTag(userId, { name: "Outdoors" });
 
-    // Create routines
-    const morningRoutine = await this.createRoutine(userId, { name: "Morning Routine", description: "Start the day right" });
-    const legDayRoutine = await this.createRoutine(userId, { name: "Leg Day", description: "Lower body workout" });
-    const weeklyChoresRoutine = await this.createRoutine(userId, { name: "Weekly Chores", description: "Keep the house clean" });
-
     // Helper to create dates in the past (deterministic based on day offset)
     const daysAgo = (days: number) => {
       const d = new Date(now);
@@ -154,7 +119,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "days",
       categoryId: healthCat.id,
-      routineId: morningRoutine.id,
       isArchived: false
     });
     for (let i = 14; i >= 0; i--) {
@@ -168,7 +132,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "days",
       categoryId: healthCat.id,
-      routineId: morningRoutine.id,
       isArchived: false
     });
     for (let i = 30; i >= 0; i--) {
@@ -186,7 +149,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "days",
       categoryId: healthCat.id,
-      routineId: morningRoutine.id,
       isArchived: false
     });
     for (let i = 4; i >= 0; i--) {
@@ -201,7 +163,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "days",
       categoryId: healthCat.id,
-      routineId: morningRoutine.id,
       isArchived: false
     });
     // Was consistent 20-30 days ago
@@ -225,7 +186,7 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "weeks",
       categoryId: householdCat.id,
-      routineId: weeklyChoresRoutine.id,
+
       isArchived: false
     });
     for (let week = 8; week >= 0; week--) {
@@ -239,7 +200,7 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "weeks",
       categoryId: householdCat.id,
-      routineId: weeklyChoresRoutine.id,
+
       isArchived: false
     });
     for (let week = 10; week >= 2; week--) {
@@ -434,14 +395,14 @@ export class DatabaseStorage implements IStorage {
       isArchived: false
     });
 
-    // Squats - Leg Day routine, frequency target 3x/week
+    // Squats - frequency target 3x/week
     const squats = await this.createTask(userId, {
       title: "Squats",
       taskType: "frequency",
       targetCount: 3,
       targetPeriod: "week",
       categoryId: exerciseCat.id,
-      routineId: legDayRoutine.id,
+
       isArchived: false
     });
 
@@ -453,7 +414,7 @@ export class DatabaseStorage implements IStorage {
       intervalUnit: "days",
       parentTaskId: squats.id,
       categoryId: exerciseCat.id,
-      routineId: legDayRoutine.id,
+
       isArchived: false
     });
     const bsWeightMetric = await this.createTaskMetric({ taskId: backSquat.id, name: "Weight", unit: "lbs", dataType: "number" });
@@ -468,7 +429,7 @@ export class DatabaseStorage implements IStorage {
       intervalUnit: "days",
       parentTaskId: squats.id,
       categoryId: exerciseCat.id,
-      routineId: legDayRoutine.id,
+
       isArchived: false
     });
     const gsWeightMetric = await this.createTaskMetric({ taskId: gobletSquat.id, name: "Weight", unit: "lbs", dataType: "number" });
@@ -482,7 +443,7 @@ export class DatabaseStorage implements IStorage {
       targetCount: 2,
       targetPeriod: "week",
       categoryId: exerciseCat.id,
-      routineId: legDayRoutine.id,
+
       isArchived: false
     });
 
@@ -586,7 +547,7 @@ export class DatabaseStorage implements IStorage {
 
     return { 
       success: true, 
-      message: "Created 25+ tasks with 90+ days of history, multiple routines, and metric tracking!" 
+      message: "Created 25+ tasks with 90+ days of history and metric tracking!" 
     };
   }
 
@@ -631,8 +592,6 @@ export class DatabaseStorage implements IStorage {
       await db.delete(tasks).where(eq(tasks.userId, userId));
     }
 
-    // Delete routines
-    await db.delete(routines).where(eq(routines.userId, userId));
 
     // Delete tags
     await db.delete(tags).where(eq(tags.userId, userId));
@@ -763,10 +722,9 @@ export class DatabaseStorage implements IStorage {
       await db.delete(tasks).where(inArray(tasks.id, taskIds));
     }
     
-    // Delete categories, tags, and routines in this profile
+    // Delete categories and tags in this profile
     await db.delete(categories).where(and(eq(categories.profileId, id), eq(categories.userId, userId)));
     await db.delete(tags).where(and(eq(tags.profileId, id), eq(tags.userId, userId)));
-    await db.delete(routines).where(and(eq(routines.profileId, id), eq(routines.userId, userId)));
     
     // Delete the profile itself
     await db.delete(profiles).where(eq(profiles.id, id));
@@ -800,10 +758,9 @@ export class DatabaseStorage implements IStorage {
       await db.delete(tasks).where(inArray(tasks.id, taskIds));
     }
     
-    // Delete categories, tags, and routines in this profile (but keep the profile itself)
+    // Delete categories and tags in this profile (but keep the profile itself)
     await db.delete(categories).where(and(eq(categories.profileId, profileId), eq(categories.userId, userId)));
     await db.delete(tags).where(and(eq(tags.profileId, profileId), eq(tags.userId, userId)));
-    await db.delete(routines).where(and(eq(routines.profileId, profileId), eq(routines.userId, userId)));
   }
 
   async deleteAllProfilesData(userId: string): Promise<void> {
@@ -862,18 +819,9 @@ export class DatabaseStorage implements IStorage {
     const [morningTag] = await db.insert(tags).values({ name: "Morning", userId, profileId }).returning();
     const [nightTag] = await db.insert(tags).values({ name: "Night", userId, profileId }).returning();
 
-    // ===== ROUTINES =====
-    const [morningRoutine] = await db.insert(routines).values({ name: "Morning Routine", description: "Start the day right", userId, profileId }).returning();
-    const [eveningRoutine] = await db.insert(routines).values({ name: "Evening Routine", description: "Wind down for the night", userId, profileId }).returning();
-    const [legDayRoutine] = await db.insert(routines).values({ name: "Leg Day", description: "Lower body workout", userId, profileId }).returning();
-    const [pushDayRoutine] = await db.insert(routines).values({ name: "Push Day", description: "Chest, shoulders, triceps", userId, profileId }).returning();
-    const [pullDayRoutine] = await db.insert(routines).values({ name: "Pull Day", description: "Back, biceps, rear delts", userId, profileId }).returning();
-    const [weeklyChoresRoutine] = await db.insert(routines).values({ name: "Weekly Chores", description: "Keep the house clean", userId, profileId }).returning();
-    const [monthlyMaintenanceRoutine] = await db.insert(routines).values({ name: "Monthly Maintenance", description: "Monthly tasks", userId, profileId }).returning();
-
     // ===== DAILY TASKS WITH STREAKS =====
     
-    // 1. Brush Teeth - Perfect 30+ day streak (morning routine)
+    // 1. Brush Teeth - Perfect 30+ day streak
     const [brushTeeth] = await db.insert(tasks).values({
       title: "Brush Teeth",
       description: "Morning and night dental hygiene",
@@ -881,7 +829,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "days",
       categoryId: healthCat.id,
-      routineId: morningRoutine.id,
       profileId,
       userId,
       isArchived: false
@@ -891,7 +838,7 @@ export class DatabaseStorage implements IStorage {
       await this.completeTaskWithStreak(brushTeeth.id, userId, brushTeeth, daysAgo(i));
     }
 
-    // 2. Take Vitamins - 15 day streak (morning routine)
+    // 2. Take Vitamins - 15 day streak
     const [takeVitamins] = await db.insert(tasks).values({
       title: "Take Vitamins",
       description: "Daily multivitamin and fish oil",
@@ -899,7 +846,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "days",
       categoryId: healthCat.id,
-      routineId: morningRoutine.id,
       profileId,
       userId,
       isArchived: false
@@ -917,7 +863,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "days",
       categoryId: healthCat.id,
-      routineId: eveningRoutine.id,
       profileId,
       userId,
       isArchived: false
@@ -955,13 +900,12 @@ export class DatabaseStorage implements IStorage {
 
     // 5. Skincare - Never done (due soon status)
     const [skincare] = await db.insert(tasks).values({
-      title: "Skincare Routine",
+      title: "Skincare",
       description: "Cleanser, toner, moisturizer",
       taskType: "interval",
       intervalValue: 1,
       intervalUnit: "days",
       categoryId: healthCat.id,
-      routineId: eveningRoutine.id,
       profileId,
       userId,
       isArchived: false
@@ -977,7 +921,7 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "weeks",
       categoryId: householdCat.id,
-      routineId: weeklyChoresRoutine.id,
+
       profileId,
       userId,
       isArchived: false
@@ -995,7 +939,7 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "weeks",
       categoryId: householdCat.id,
-      routineId: weeklyChoresRoutine.id,
+
       profileId,
       userId,
       isArchived: false
@@ -1012,7 +956,7 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "weeks",
       categoryId: householdCat.id,
-      routineId: weeklyChoresRoutine.id,
+
       profileId,
       userId,
       isArchived: false
@@ -1058,7 +1002,7 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 3,
       intervalUnit: "days",
       categoryId: exerciseCat.id,
-      routineId: legDayRoutine.id,
+
       parentTaskId: exercise.id,
       profileId,
       userId,
@@ -1089,7 +1033,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 4,
       intervalUnit: "days",
       categoryId: exerciseCat.id,
-      routineId: pushDayRoutine.id,
       parentTaskId: exercise.id,
       profileId,
       userId,
@@ -1113,7 +1056,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 3,
       intervalUnit: "days",
       categoryId: exerciseCat.id,
-      routineId: pullDayRoutine.id,
       parentTaskId: exercise.id,
       profileId,
       userId,
@@ -1170,7 +1112,7 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "months",
       categoryId: carCat.id,
-      routineId: monthlyMaintenanceRoutine.id,
+
       profileId,
       userId,
       isArchived: false
@@ -1201,7 +1143,7 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "months",
       categoryId: financeCat.id,
-      routineId: monthlyMaintenanceRoutine.id,
+
       profileId,
       userId,
       isArchived: false
@@ -1482,222 +1424,6 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(tasks.parentTaskId, id), eq(tasks.userId, userId)));
 
     return updated;
-  }
-
-  // Routines
-  async getRoutines(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Routine[]> {
-    if (profileId !== undefined && profileId !== null) {
-      return await db.select().from(routines).where(and(eq(routines.userId, userId), eq(routines.profileId, profileId)));
-    }
-    if (excludeDemo) {
-      const demoProfiles = await db.select({ id: profiles.id }).from(profiles).where(and(eq(profiles.userId, userId), eq(profiles.isDemo, true)));
-      const demoProfileIds = demoProfiles.map(p => p.id);
-      if (demoProfileIds.length > 0) {
-        return await db.select().from(routines).where(and(eq(routines.userId, userId), notInArray(routines.profileId, demoProfileIds)));
-      }
-    }
-    return await db.select().from(routines).where(eq(routines.userId, userId));
-  }
-
-  async getRoutine(id: number, userId: string): Promise<Routine | undefined> {
-    const [routine] = await db.select().from(routines).where(and(eq(routines.id, id), eq(routines.userId, userId)));
-    return routine;
-  }
-
-  async getTasksByRoutine(routineId: number, userId: string): Promise<Task[]> {
-    return await db.select().from(tasks).where(and(eq(tasks.routineId, routineId), eq(tasks.userId, userId), eq(tasks.isArchived, false)));
-  }
-
-  async createRoutine(userId: string, routine: InsertRoutine): Promise<Routine> {
-    const [newRoutine] = await db.insert(routines).values({ ...routine, userId }).returning();
-    return newRoutine;
-  }
-
-  async deleteRoutine(id: number, userId: string): Promise<void> {
-    const [routine] = await db.select().from(routines).where(eq(routines.id, id));
-    if (!routine || routine.userId !== userId) {
-      throw new Error("Routine not found or unauthorized");
-    }
-    // Clear routineId from tasks (for fixed routines)
-    await db.update(tasks).set({ routineId: null }).where(eq(tasks.routineId, id));
-    // Delete task links (for dynamic routines)
-    await db.delete(routineTaskLinks).where(eq(routineTaskLinks.routineId, id));
-    await db.delete(routines).where(eq(routines.id, id));
-  }
-
-  async updateRoutine(id: number, userId: string, updates: Partial<InsertRoutine>): Promise<Routine> {
-    const [routine] = await db.select().from(routines).where(eq(routines.id, id));
-    if (!routine || routine.userId !== userId) {
-      throw new Error("Routine not found or unauthorized");
-    }
-    const [updated] = await db.update(routines).set(updates).where(eq(routines.id, id)).returning();
-    return updated;
-  }
-
-  async completeFixedRoutine(routineId: number, userId: string, notes?: string): Promise<{ routine: Routine, completedTasks: Task[] }> {
-    const routine = await this.getRoutine(routineId, userId);
-    if (!routine) throw new Error("Routine not found");
-    if (routine.routineType !== 'fixed') throw new Error("Only fixed routines can be completed as a whole");
-
-    const now = new Date();
-    const routineTasks = await this.getTasksByRoutine(routineId, userId);
-    const completedTasks: Task[] = [];
-
-    for (const task of routineTasks) {
-      const result = await this.completeTask(task.id, now, notes, undefined, userId);
-      completedTasks.push(result.task);
-    }
-
-    const [updatedRoutine] = await db.update(routines)
-      .set({ lastRunAt: now })
-      .where(eq(routines.id, routineId))
-      .returning();
-
-    return { routine: updatedRoutine, completedTasks };
-  }
-
-  // Routine Task Links (for dynamic routines)
-  async getRoutineTaskLinks(routineId: number): Promise<RoutineTaskLink[]> {
-    return await db.select().from(routineTaskLinks)
-      .where(eq(routineTaskLinks.routineId, routineId))
-      .orderBy(routineTaskLinks.orderIndex);
-  }
-
-  async addTaskToRoutine(routineId: number, taskId: number, orderIndex?: number): Promise<RoutineTaskLink> {
-    const actualOrderIndex = orderIndex ?? 0;
-    const [link] = await db.insert(routineTaskLinks)
-      .values({ routineId, taskId, orderIndex: actualOrderIndex })
-      .returning();
-    return link;
-  }
-
-  async removeTaskFromRoutine(routineId: number, taskId: number): Promise<void> {
-    await db.delete(routineTaskLinks)
-      .where(and(eq(routineTaskLinks.routineId, routineId), eq(routineTaskLinks.taskId, taskId)));
-  }
-
-  async getLinkedTasksForRoutine(routineId: number, userId: string): Promise<Task[]> {
-    const links = await this.getRoutineTaskLinks(routineId);
-    if (links.length === 0) return [];
-    const taskIds = links.map(l => l.taskId);
-    return await db.select().from(tasks)
-      .where(and(inArray(tasks.id, taskIds), eq(tasks.userId, userId), eq(tasks.isArchived, false)));
-  }
-
-  async getRoutinesForTask(taskId: number): Promise<Routine[]> {
-    const links = await db.select().from(routineTaskLinks).where(eq(routineTaskLinks.taskId, taskId));
-    if (links.length === 0) return [];
-    const routineIds = links.map(l => l.routineId);
-    return await db.select().from(routines).where(inArray(routines.id, routineIds));
-  }
-
-  // Routine Components (new system)
-  async getRoutineComponents(routineId: number): Promise<RoutineComponent[]> {
-    return await db.select().from(routineComponents)
-      .where(eq(routineComponents.routineId, routineId))
-      .orderBy(routineComponents.orderIndex);
-  }
-
-  async addRoutineComponent(component: InsertRoutineComponent): Promise<RoutineComponent> {
-    const [newComponent] = await db.insert(routineComponents).values(component).returning();
-    return newComponent;
-  }
-
-  async updateRoutineComponent(id: number, updates: Partial<InsertRoutineComponent>): Promise<RoutineComponent> {
-    const [updated] = await db.update(routineComponents)
-      .set(updates)
-      .where(eq(routineComponents.id, id))
-      .returning();
-    return updated;
-  }
-
-  async removeRoutineComponent(id: number): Promise<void> {
-    await db.delete(routineComponents).where(eq(routineComponents.id, id));
-  }
-
-  async getComponentTasks(routineId: number, userId: string): Promise<(RoutineComponent & { task: Task })[]> {
-    const components = await this.getRoutineComponents(routineId);
-    if (components.length === 0) return [];
-    
-    const taskIds = components.map(c => c.taskId);
-    const taskList = await db.select().from(tasks)
-      .where(and(inArray(tasks.id, taskIds), eq(tasks.userId, userId), eq(tasks.isArchived, false)));
-    
-    const taskMap = new Map(taskList.map(t => [t.id, t]));
-    return components
-      .filter(c => taskMap.has(c.taskId))
-      .map(c => ({ ...c, task: taskMap.get(c.taskId)! }));
-  }
-
-  // Routine Runs
-  async getRoutineRuns(routineId: number, limit?: number): Promise<RoutineRun[]> {
-    let query = db.select().from(routineRuns)
-      .where(eq(routineRuns.routineId, routineId))
-      .orderBy(desc(routineRuns.startedAt));
-    
-    if (limit) {
-      query = query.limit(limit) as typeof query;
-    }
-    return await query;
-  }
-
-  async createRoutineRun(userId: string, run: InsertRoutineRun): Promise<RoutineRun> {
-    const [newRun] = await db.insert(routineRuns)
-      .values({ ...run, userId })
-      .returning();
-    return newRun;
-  }
-
-  async completeRoutineRun(runId: number, completedCount: number): Promise<RoutineRun> {
-    const [updated] = await db.update(routineRuns)
-      .set({ completedAt: new Date(), completedCount })
-      .where(eq(routineRuns.id, runId))
-      .returning();
-    return updated;
-  }
-
-  async getRoutineRunCount(routineId: number): Promise<number> {
-    const [result] = await db.select({ count: sql<number>`count(*)::int` })
-      .from(routineRuns)
-      .where(and(eq(routineRuns.routineId, routineId), sql`${routineRuns.completedAt} IS NOT NULL`));
-    return result?.count || 0;
-  }
-
-  async getEligibleTasksForRun(routineId: number, userId: string): Promise<(RoutineComponent & { task: Task })[]> {
-    const componentTasks = await this.getComponentTasks(routineId, userId);
-    const runCount = await this.getRoutineRunCount(routineId);
-    const nextRunNumber = runCount + 1;
-    
-    return componentTasks.filter(ct => {
-      switch (ct.ruleType) {
-        case 'always':
-          return true;
-        case 'every_n':
-          const n = ct.ruleValue || 1;
-          return nextRunNumber % n === 0;
-        case 'when_due':
-          // Check if task is due based on its own cadence
-          if (!ct.task.lastCompletedAt || !ct.task.intervalValue) return true;
-          const now = new Date();
-          const lastCompleted = new Date(ct.task.lastCompletedAt);
-          const intervalMs = this.getIntervalMs(ct.task.intervalValue, ct.task.intervalUnit || 'days');
-          const dueDate = new Date(lastCompleted.getTime() + intervalMs);
-          return now >= dueDate;
-        default:
-          return true;
-      }
-    });
-  }
-
-  private getIntervalMs(value: number, unit: string): number {
-    const msPerDay = 24 * 60 * 60 * 1000;
-    switch (unit) {
-      case 'days': return value * msPerDay;
-      case 'weeks': return value * 7 * msPerDay;
-      case 'months': return value * 30 * msPerDay;
-      case 'years': return value * 365 * msPerDay;
-      default: return value * msPerDay;
-    }
   }
 
   // Task Variations
@@ -2123,34 +1849,14 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    // Handle routine - find/create equivalent in target profile
-    let newRoutineId: number | null = null;
-    if (task.routineId) {
-      const routines = await this.getRoutines(userId);
-      const oldRoutine = routines.find(r => r.id === task.routineId);
-      if (oldRoutine) {
-        const targetRoutines = await this.getRoutines(userId, targetProfileId);
-        let existingRoutine = targetRoutines.find(r => r.name === oldRoutine.name);
-        if (!existingRoutine) {
-          existingRoutine = await this.createRoutine(userId, { 
-            name: oldRoutine.name, 
-            description: oldRoutine.description, 
-            profileId: targetProfileId 
-          });
-        }
-        newRoutineId = existingRoutine.id;
-      }
-    }
-    
     // Clear old tag associations
     await db.delete(taskTags).where(eq(taskTags.taskId, taskId));
     
-    // Update task's profileId, categoryId, routineId
+    // Update task's profileId and categoryId
     const [updatedTask] = await db.update(tasks)
       .set({ 
         profileId: targetProfileId, 
-        categoryId: newCategoryId,
-        routineId: newRoutineId
+        categoryId: newCategoryId
       })
       .where(eq(tasks.id, taskId))
       .returning();
@@ -2193,12 +1899,10 @@ export class DatabaseStorage implements IStorage {
     const sourceCategories = await this.getCategories(userId, sourceProfileId);
     const sourceTags = await this.getTags(userId, sourceProfileId);
     const sourceTasks = await this.getTasks(userId, sourceProfileId);
-    const sourceRoutines = await this.getRoutines(userId, sourceProfileId);
     
     // Maps from old IDs to new IDs
     const categoryMap = new Map<number, number>();
     const tagMap = new Map<number, number>();
-    const routineMap = new Map<number, number>();
     const taskMap = new Map<number, number>();
     
     // 1. Copy categories
@@ -2231,15 +1935,6 @@ export class DatabaseStorage implements IStorage {
       tagMap.set(tag.id, newTag.id);
     }
     
-    // 3. Copy routines
-    for (const routine of sourceRoutines) {
-      const newRoutine = await this.createRoutine(userId, { 
-        name: routine.name, 
-        description: routine.description,
-        profileId: targetProfileId 
-      });
-      routineMap.set(routine.id, newRoutine.id);
-    }
     
     // 4. Copy tasks (parent tasks first, then variations)
     const parentTasks = sourceTasks.filter(t => !t.parentTaskId);
@@ -2265,7 +1960,6 @@ export class DatabaseStorage implements IStorage {
         scheduledDates: task.scheduledDates,
         refractoryMinutes: task.refractoryMinutes,
         categoryId: task.categoryId ? categoryMap.get(task.categoryId) : null,
-        routineId: task.routineId ? routineMap.get(task.routineId) : null,
         profileId: targetProfileId,
         parentTaskId: null // Parent tasks have no parent
       }, newTagIds);
@@ -2306,7 +2000,6 @@ export class DatabaseStorage implements IStorage {
         scheduledDates: task.scheduledDates,
         refractoryMinutes: task.refractoryMinutes,
         categoryId: task.categoryId ? categoryMap.get(task.categoryId) : null,
-        routineId: task.routineId ? routineMap.get(task.routineId) : null,
         profileId: targetProfileId,
         parentTaskId: newParentId
       }, newTagIds);

@@ -97,7 +97,6 @@ export function useRegenerateDemoProfile() {
             key.startsWith('/api/tasks') ||
             key.startsWith('/api/categories') ||
             key.startsWith('/api/tags') ||
-            key.startsWith('/api/routines') ||
             key.startsWith('/api/streaks') ||
             key.startsWith('/api/calendar') ||
             key.startsWith('/api/completions') ||
@@ -129,7 +128,6 @@ export function useClearProfileData() {
             key.startsWith('/api/tasks') ||
             key.startsWith('/api/categories') ||
             key.startsWith('/api/tags') ||
-            key.startsWith('/api/routines') ||
             key.startsWith('/api/streaks') ||
             key.startsWith('/api/calendar') ||
             key.startsWith('/api/completions') ||
@@ -161,7 +159,6 @@ export function useClearAllProfilesData() {
             key.startsWith('/api/tasks') ||
             key.startsWith('/api/categories') ||
             key.startsWith('/api/tags') ||
-            key.startsWith('/api/routines') ||
             key.startsWith('/api/streaks') ||
             key.startsWith('/api/calendar') ||
             key.startsWith('/api/completions') ||
@@ -194,7 +191,6 @@ export function useImportFromProfile() {
             key.startsWith('/api/tasks') ||
             key.startsWith('/api/categories') ||
             key.startsWith('/api/tags') ||
-            key.startsWith('/api/routines') ||
             key.startsWith('/api/streaks') ||
             key.startsWith('/api/calendar') ||
             key.startsWith('/api/completions') ||
