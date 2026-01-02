@@ -108,11 +108,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
   };
 
   const handleComplete = () => {
-    if (hasMetrics) {
-      setCompleteDialogOpen(true);
-    } else {
-      completeMutation.mutate({ id: task.id });
-    }
+    setCompleteDialogOpen(true);
   };
 
   if (condensed) {
