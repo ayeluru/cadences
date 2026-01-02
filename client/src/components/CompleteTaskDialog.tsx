@@ -4,11 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TaskWithDetails, TaskMetric } from "@shared/schema";
 import { useState } from "react";
-import { Loader2, Calendar } from "lucide-react";
+import { Loader2, Calendar, Clock } from "lucide-react";
 import { useCompleteTask } from "@/hooks/use-tasks";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
-import { format } from "date-fns";
+import { format, setHours, setMinutes } from "date-fns";
 
 interface CompleteTaskDialogProps {
   open: boolean;
@@ -21,6 +21,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
   const [metricValues, setMetricValues] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState("");
   const [completedAt, setCompletedAt] = useState<Date | undefined>(undefined);
+  const [completionTime, setCompletionTime] = useState<string>("");
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const handleSubmit = () => {
@@ -29,17 +30,28 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
       value: isNaN(Number(value)) ? value : Number(value)
     }));
 
+    let finalCompletedAt: string | undefined = undefined;
+    if (completedAt) {
+      let dateWithTime = completedAt;
+      if (completionTime) {
+        const [hours, minutes] = completionTime.split(":").map(Number);
+        dateWithTime = setMinutes(setHours(completedAt, hours), minutes);
+      }
+      finalCompletedAt = dateWithTime.toISOString();
+    }
+
     completeMutation.mutate({ 
       id: task.id, 
       notes, 
       metrics,
-      completedAt: completedAt ? completedAt.toISOString() : undefined
+      completedAt: finalCompletedAt
     }, {
       onSuccess: () => {
         onOpenChange(false);
         setMetricValues({});
         setNotes("");
         setCompletedAt(undefined);
+        setCompletionTime("");
         setShowDatePicker(false);
       }
     });
@@ -54,6 +66,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
       setMetricValues({});
       setNotes("");
       setCompletedAt(undefined);
+      setCompletionTime("");
       setShowDatePicker(false);
     }
     onOpenChange(isOpen);
@@ -80,6 +93,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
                   setShowDatePicker(!showDatePicker);
                   if (showDatePicker) {
                     setCompletedAt(undefined);
+                    setCompletionTime("");
                   }
                 }}
                 data-testid="button-toggle-backdate"
@@ -88,27 +102,41 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
               </Button>
             </div>
             {showDatePicker ? (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal"
-                    data-testid="button-date-picker"
-                  >
-                    <Calendar className="mr-2 h-4 w-4" />
-                    {completedAt ? format(completedAt, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarPicker
-                    mode="single"
-                    selected={completedAt}
-                    onSelect={setCompletedAt}
-                    disabled={(date) => date > new Date() || date < new Date(task.createdAt || 0)}
-                    initialFocus
+              <div className="space-y-3">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                      data-testid="button-date-picker"
+                    >
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {completedAt ? format(completedAt, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarPicker
+                      mode="single"
+                      selected={completedAt}
+                      onSelect={setCompletedAt}
+                      disabled={(date) => date > new Date() || date < new Date(task.createdAt || 0)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="time"
+                    value={completionTime}
+                    onChange={(e) => setCompletionTime(e.target.value)}
+                    placeholder="Time (optional)"
+                    className="flex-1"
+                    data-testid="input-completion-time"
                   />
-                </PopoverContent>
-              </Popover>
+                  <span className="text-sm text-muted-foreground">(optional)</span>
+                </div>
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">Today, {format(new Date(), "PPP")}</p>
             )}
