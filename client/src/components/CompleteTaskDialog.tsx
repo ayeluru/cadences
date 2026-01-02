@@ -119,7 +119,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
                       mode="single"
                       selected={completedAt}
                       onSelect={setCompletedAt}
-                      disabled={(date) => date > new Date() || date < new Date(task.createdAt || 0)}
+                      disabled={(date) => date > new Date()}
                       initialFocus
                     />
                   </PopoverContent>
