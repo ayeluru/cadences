@@ -190,13 +190,11 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
           taskId={task.id}
           taskTitle={task.title}
         />
-        {hasMetrics && (
-          <CompleteTaskDialog 
-            open={completeDialogOpen} 
-            onOpenChange={setCompleteDialogOpen} 
-            task={task} 
-          />
-        )}
+        <CompleteTaskDialog 
+          open={completeDialogOpen} 
+          onOpenChange={setCompleteDialogOpen} 
+          task={task} 
+        />
       </>
     );
   }
@@ -399,13 +397,11 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
         taskId={task.id}
         taskTitle={task.title}
       />
-      {hasMetrics && (
-        <CompleteTaskDialog 
-          open={completeDialogOpen} 
-          onOpenChange={setCompleteDialogOpen} 
-          task={task} 
-        />
-      )}
+      <CompleteTaskDialog 
+        open={completeDialogOpen} 
+        onOpenChange={setCompleteDialogOpen} 
+        task={task} 
+      />
     </>
   );
 }
