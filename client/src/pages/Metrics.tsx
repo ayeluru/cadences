@@ -83,7 +83,24 @@ export default function MetricsPage() {
   const isLoading = tasksLoading || historyLoading;
 
   const [hiddenMetrics, setHiddenMetrics] = useState<Record<number, number[]>>({});
+  const [hiddenSeries, setHiddenSeries] = useState<Record<number, string[]>>({});
   const [timeRange, setTimeRange] = useState<TimeRange>("90d");
+
+  const toggleSeriesVisibility = (taskId: number, seriesKey: string) => {
+    setHiddenSeries(prev => {
+      const hidden = prev[taskId] || [];
+      if (hidden.includes(seriesKey)) {
+        return { ...prev, [taskId]: hidden.filter(k => k !== seriesKey) };
+      } else {
+        return { ...prev, [taskId]: [...hidden, seriesKey] };
+      }
+    });
+  };
+
+  const isSeriesVisible = (taskId: number, seriesKey: string) => {
+    const hidden = hiddenSeries[taskId] || [];
+    return !hidden.includes(seriesKey);
+  };
 
   const toggleMetricVisibility = (taskId: number, metricId: number) => {
     setHiddenMetrics(prev => {
@@ -342,7 +359,31 @@ export default function MetricsPage() {
                               borderRadius: "8px",
                             }}
                           />
-                          <Legend />
+                          <Legend 
+                            onClick={(e) => {
+                              const clickedSeries = chartSeries.find(s => s.name === e.value);
+                              if (clickedSeries) {
+                                toggleSeriesVisibility(taskId, clickedSeries.key);
+                              }
+                            }}
+                            formatter={(value, entry) => {
+                              const seriesItem = chartSeries.find(s => s.name === value);
+                              const visible = seriesItem ? isSeriesVisible(taskId, seriesItem.key) : true;
+                              return (
+                                <span 
+                                  style={{ 
+                                    color: visible ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                                    textDecoration: visible ? "none" : "line-through",
+                                    cursor: "pointer",
+                                  }}
+                                  data-testid={`legend-item-${seriesItem?.key}`}
+                                >
+                                  {value}
+                                </span>
+                              );
+                            }}
+                            wrapperStyle={{ cursor: "pointer" }}
+                          />
                           {chartSeries.map((series) => (
                             <Line 
                               key={series.key}
@@ -355,6 +396,7 @@ export default function MetricsPage() {
                               dot={{ fill: series.color, strokeWidth: 0, r: 3 }}
                               activeDot={{ r: 5 }}
                               connectNulls
+                              hide={!isSeriesVisible(taskId, series.key)}
                             />
                           ))}
                         </LineChart>
