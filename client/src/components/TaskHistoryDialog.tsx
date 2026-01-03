@@ -39,6 +39,7 @@ interface TaskHistoryDialogProps {
 export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: TaskHistoryDialogProps) {
   const { toast } = useToast();
   const [selectedMetric, setSelectedMetric] = useState<number | null>(null);
+  const [timeRange, setTimeRange] = useState<"all" | "30d" | "90d" | "1y">("all");
 
   const { data: historyData, isLoading } = useQuery<TaskHistoryData>({
     queryKey: ["/api/tasks", taskId, "history"],
@@ -76,80 +77,6 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
   });
 
   const variations = historyData?.task?.variations || [];
-  const hasVariations = variations.length > 0;
-
-  // Get unique variation IDs from completions (including null for "no variation")
-  const getVariationSeriesForMetric = (metricId: number) => {
-    if (!historyData) return [];
-    
-    const completionsWithMetric = historyData.completions.filter(c => 
-      c.metricValues.some(mv => mv.metricId === metricId)
-    );
-    
-    // Get unique variation IDs used with this metric
-    const variationIds = new Set<number | null>();
-    completionsWithMetric.forEach(c => {
-      variationIds.add(c.variationId);
-    });
-    
-    return Array.from(variationIds).map(varId => {
-      const variation = varId ? variations.find(v => v.id === varId) : null;
-      return {
-        variationId: varId,
-        name: variation?.name || (varId ? "Unknown" : "Default"),
-      };
-    });
-  };
-
-  const getMetricChartData = (metricId: number) => {
-    if (!historyData) return [];
-    
-    const metric = historyData.metrics.find(m => m.id === metricId);
-    if (!metric) return [];
-
-    const variationSeries = getVariationSeriesForMetric(metricId);
-    
-    // If no variations or only one series, return simple format
-    if (variationSeries.length <= 1) {
-      return historyData.completions
-        .filter(c => c.metricValues.some(mv => mv.metricId === metricId))
-        .map(c => {
-          const metricValue = c.metricValues.find(mv => mv.metricId === metricId);
-          return {
-            date: format(new Date(c.completedAt), "MMM d"),
-            value: metricValue?.numericValue ?? 0,
-            fullDate: format(new Date(c.completedAt), "MMM d, yyyy"),
-          };
-        })
-        .reverse();
-    }
-
-    // Multiple variations: create data points with separate keys per variation
-    const dataMap = new Map<string, any>();
-    
-    historyData.completions
-      .filter(c => c.metricValues.some(mv => mv.metricId === metricId))
-      .forEach(c => {
-        const metricValue = c.metricValues.find(mv => mv.metricId === metricId);
-        const dateKey = format(new Date(c.completedAt), "MMM d yyyy HH:mm");
-        const displayDate = format(new Date(c.completedAt), "MMM d");
-        const fullDate = format(new Date(c.completedAt), "MMM d, yyyy h:mm a");
-        
-        const varKey = c.variationId ? `var_${c.variationId}` : "var_default";
-        const variation = c.variationId ? variations.find(v => v.id === c.variationId) : null;
-        const varName = variation?.name || "Default";
-        
-        if (!dataMap.has(dateKey)) {
-          dataMap.set(dateKey, { date: displayDate, fullDate, timestamp: new Date(c.completedAt).getTime() });
-        }
-        
-        const entry = dataMap.get(dateKey)!;
-        entry[varKey] = metricValue?.numericValue ?? 0;
-        entry[`${varKey}_name`] = varName;
-      });
-
-    return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-  };
 
   const chartColors = [
     "hsl(var(--primary))",
@@ -157,7 +84,115 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
     "hsl(var(--chart-3))",
     "hsl(var(--chart-4))",
     "hsl(var(--chart-5))",
+    "hsl(var(--chart-1))",
   ];
+
+  // Filter completions by time range
+  const getFilteredCompletions = () => {
+    if (!historyData?.completions) return [];
+    
+    const now = new Date();
+    let cutoffDate: Date | null = null;
+    
+    switch (timeRange) {
+      case "30d":
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case "90d":
+        cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case "1y":
+        cutoffDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        cutoffDate = null;
+    }
+    
+    if (!cutoffDate) return historyData.completions;
+    
+    return historyData.completions.filter(c => 
+      new Date(c.completedAt) >= cutoffDate!
+    );
+  };
+
+  // Build chart series: one line per (variation) for the selected metric
+  const buildChartSeries = (metricId: number) => {
+    const filteredCompletions = getFilteredCompletions();
+    if (!filteredCompletions.length) return { series: [], dataKeys: [] };
+    
+    // Group completions by variation
+    const variationGroups = new Map<number | null, {
+      id: number | null;
+      name: string;
+      dataPoints: { timestamp: number; value: number; date: string; fullDate: string }[];
+    }>();
+    
+    filteredCompletions.forEach(c => {
+      const metricValue = c.metricValues.find(mv => mv.metricId === metricId);
+      if (!metricValue) return;
+      
+      const varId = c.variationId;
+      const variation = varId ? variations.find(v => v.id === varId) : null;
+      const varName = variation?.name || (varId ? `Variation ${varId}` : "Default");
+      
+      if (!variationGroups.has(varId)) {
+        variationGroups.set(varId, {
+          id: varId,
+          name: varName,
+          dataPoints: [],
+        });
+      }
+      
+      const group = variationGroups.get(varId)!;
+      group.dataPoints.push({
+        timestamp: new Date(c.completedAt).getTime(),
+        value: metricValue.numericValue ?? 0,
+        date: format(new Date(c.completedAt), "MMM d"),
+        fullDate: format(new Date(c.completedAt), "MMM d, yyyy h:mm a"),
+      });
+    });
+    
+    // Sort each group's data points chronologically (oldest first = left to right)
+    variationGroups.forEach(group => {
+      group.dataPoints.sort((a, b) => a.timestamp - b.timestamp);
+    });
+    
+    // Create unified timeline with all data points
+    const allTimestamps = new Set<number>();
+    variationGroups.forEach(group => {
+      group.dataPoints.forEach(dp => allTimestamps.add(dp.timestamp));
+    });
+    
+    const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+    
+    // Build chart data: each row has timestamp + value for each variation
+    const chartData = sortedTimestamps.map(ts => {
+      const row: Record<string, any> = {
+        timestamp: ts,
+        date: format(new Date(ts), "MMM d"),
+        fullDate: format(new Date(ts), "MMM d, yyyy h:mm a"),
+      };
+      
+      variationGroups.forEach((group, varId) => {
+        const key = varId !== null ? `var_${varId}` : "var_default";
+        const dp = group.dataPoints.find(d => d.timestamp === ts);
+        if (dp) {
+          row[key] = dp.value;
+        }
+      });
+      
+      return row;
+    });
+    
+    // Build series info
+    const seriesInfo = Array.from(variationGroups.entries()).map(([varId, group], idx) => ({
+      key: varId !== null ? `var_${varId}` : "var_default",
+      name: group.name,
+      color: chartColors[idx % chartColors.length],
+    }));
+    
+    return { data: chartData, series: seriesInfo };
+  };
 
   const hasMetrics = historyData?.metrics && historyData.metrics.length > 0;
   const hasCompletions = historyData?.completions && historyData.completions.length > 0;
@@ -262,7 +297,8 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
             <TabsContent value="charts" className="flex-1 min-h-0 mt-4">
               {hasMetrics && (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Metric:</span>
                     {historyData.metrics.map(metric => (
                       <Button
                         key={metric.id}
@@ -276,10 +312,32 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                     ))}
                   </div>
                   
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Time range:</span>
+                    {(["all", "30d", "90d", "1y"] as const).map(range => (
+                      <Button
+                        key={range}
+                        variant={timeRange === range ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setTimeRange(range)}
+                        data-testid={`button-range-${range}`}
+                      >
+                        {range === "all" ? "All time" : range === "30d" ? "30 days" : range === "90d" ? "90 days" : "1 year"}
+                      </Button>
+                    ))}
+                  </div>
+                  
                   {selectedMetric ? (() => {
-                    const variationSeries = getVariationSeriesForMetric(selectedMetric);
-                    const chartData = getMetricChartData(selectedMetric);
-                    const showMultipleLines = variationSeries.length > 1;
+                    const { data: chartData, series } = buildChartSeries(selectedMetric);
+                    const showLegend = series.length > 1;
+                    
+                    if (!chartData || chartData.length === 0) {
+                      return (
+                        <p className="text-center text-muted-foreground py-8">
+                          No data for the selected time range.
+                        </p>
+                      );
+                    }
                     
                     return (
                       <Card>
@@ -287,6 +345,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                           <CardTitle className="text-base flex items-center gap-2">
                             <TrendingUp className="w-4 h-4" />
                             {historyData.metrics.find(m => m.id === selectedMetric)?.name} Over Time
+                            {showLegend && <span className="text-xs text-muted-foreground ml-2">({series.length} variations)</span>}
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -311,32 +370,19 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                                     borderRadius: '8px',
                                   }}
                                 />
-                                {showMultipleLines && <Legend />}
-                                {showMultipleLines ? (
-                                  variationSeries.map((vs, idx) => {
-                                    const varKey = vs.variationId ? `var_${vs.variationId}` : "var_default";
-                                    return (
-                                      <Line 
-                                        key={varKey}
-                                        type="monotone" 
-                                        dataKey={varKey}
-                                        name={vs.name}
-                                        stroke={chartColors[idx % chartColors.length]}
-                                        strokeWidth={2}
-                                        dot={{ fill: chartColors[idx % chartColors.length] }}
-                                        connectNulls
-                                      />
-                                    );
-                                  })
-                                ) : (
+                                {showLegend && <Legend />}
+                                {series.map((s) => (
                                   <Line 
+                                    key={s.key}
                                     type="monotone" 
-                                    dataKey="value" 
-                                    stroke="hsl(var(--primary))" 
+                                    dataKey={s.key}
+                                    name={s.name}
+                                    stroke={s.color}
                                     strokeWidth={2}
-                                    dot={{ fill: 'hsl(var(--primary))' }}
+                                    dot={{ fill: s.color }}
+                                    connectNulls
                                   />
-                                )}
+                                ))}
                               </LineChart>
                             </ResponsiveContainer>
                           </div>
