@@ -145,22 +145,14 @@ export default function MetricsPage() {
       const filteredValues = filterByTimeRange(metric.values, timeRange);
       
       const series = buildVariationChartSeries(
-        filteredValues.map(v => ({
-          ...v,
-          variationId: v.variationId,
-          variationName: v.variationName,
-        })),
+        filteredValues,
         metric.metricName,
-        metric.unit
+        metric.unit,
+        colorIndex
       );
       
-      series.forEach(s => {
-        allSeries.push({
-          ...s,
-          color: CHART_COLORS[colorIndex % CHART_COLORS.length],
-        });
-        colorIndex++;
-      });
+      allSeries.push(...series);
+      colorIndex += series.length;
     });
     
     return allSeries;

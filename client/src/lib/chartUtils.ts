@@ -62,7 +62,8 @@ export function filterByTimeRange<T extends { completedAt: string }>(
 export function buildVariationChartSeries(
   values: MetricValueWithVariation[],
   metricName?: string,
-  metricUnit?: string | null
+  metricUnit?: string | null,
+  colorOffset: number = 0
 ): ChartSeries[] {
   if (!values.length) return [];
   
@@ -116,7 +117,7 @@ export function buildVariationChartSeries(
     return {
       key: varId !== null ? `var_${varId}` : "var_default",
       name,
-      color: CHART_COLORS[idx % CHART_COLORS.length],
+      color: CHART_COLORS[(colorOffset + idx) % CHART_COLORS.length],
       data: group.dataPoints,
     };
   });

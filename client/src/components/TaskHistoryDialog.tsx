@@ -123,7 +123,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
       }>;
     
     const metric = historyData?.metrics.find(m => m.id === metricId);
-    return buildVariationChartSeries(metricValues, undefined, metric?.unit);
+    return buildVariationChartSeries(metricValues, metric?.name, metric?.unit);
   };
 
   const hasMetrics = historyData?.metrics && historyData.metrics.length > 0;
