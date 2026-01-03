@@ -11,18 +11,29 @@ import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useState, useEffect } from "react";
-import { Loader2, Plus, X, BarChart3, ArrowRightLeft } from "lucide-react";
+import { Loader2, Plus, X, BarChart3, ArrowRightLeft, Clock, Calendar } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "./ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+
+const DAYS_OF_WEEK = [
+  { id: 0, label: "Sun" },
+  { id: 1, label: "Mon" },
+  { id: 2, label: "Tue" },
+  { id: 3, label: "Wed" },
+  { id: 4, label: "Thu" },
+  { id: 5, label: "Fri" },
+  { id: 6, label: "Sat" },
+];
 
 const formSchema = insertTaskSchema.partial().extend({
   intervalValue: z.coerce.number().min(1, "Interval must be at least 1").optional(),
   categoryId: z.coerce.number().optional().nullable(),
   parentTaskId: z.coerce.number().optional().nullable(),
-  refractoryMinutes: z.coerce.number().min(0).optional().nullable(),
+  targetCount: z.coerce.number().min(1).optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -37,6 +48,25 @@ interface EditTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   task: TaskWithDetails;
+}
+
+function convertMinutesToDisplay(minutes: number | null | undefined): { value: string; unit: 'minutes' | 'hours' | 'days' } {
+  if (!minutes || minutes <= 0) return { value: '', unit: 'hours' };
+  if (minutes >= 1440 && minutes % 1440 === 0) {
+    return { value: String(minutes / 1440), unit: 'days' };
+  }
+  if (minutes >= 60 && minutes % 60 === 0) {
+    return { value: String(minutes / 60), unit: 'hours' };
+  }
+  return { value: String(minutes), unit: 'minutes' };
+}
+
+function convertToMinutes(value: string, unit: 'minutes' | 'hours' | 'days'): number | null {
+  const num = Number(value);
+  if (!value || isNaN(num) || num <= 0) return null;
+  if (unit === 'hours') return num * 60;
+  if (unit === 'days') return num * 60 * 24;
+  return num;
 }
 
 export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps) {
@@ -54,6 +84,13 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const [newMetricUnit, setNewMetricUnit] = useState("");
   const [isSavingMetrics, setIsSavingMetrics] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>(task.profileId ?? undefined);
+  
+  const [taskType, setTaskType] = useState<'interval' | 'frequency' | 'scheduled'>(task.taskType as any || 'interval');
+  const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
+  const [scheduledTime, setScheduledTime] = useState("");
+  const [scheduledDaysOfMonth, setScheduledDaysOfMonth] = useState("");
+  const [refractoryValue, setRefractoryValue] = useState("");
+  const [refractoryUnit, setRefractoryUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
 
   const parentTasks = allTasks?.filter((t: TaskWithDetails) => 
     t.taskType === 'frequency' && !t.parentTaskId && t.id !== task.id
@@ -63,11 +100,13 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: task.title,
+      description: task.description,
       intervalValue: task.intervalValue ?? undefined,
       intervalUnit: task.intervalUnit as any,
       categoryId: task.categoryId ?? undefined,
       parentTaskId: task.parentTaskId ?? undefined,
-      refractoryMinutes: task.refractoryMinutes ?? undefined,
+      targetCount: task.targetCount ?? undefined,
+      targetPeriod: task.targetPeriod as any,
     }
   });
 
@@ -75,15 +114,30 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
     if (task) {
       reset({
         title: task.title,
+        description: task.description,
         intervalValue: task.intervalValue ?? undefined,
         intervalUnit: task.intervalUnit as any,
         categoryId: task.categoryId ?? undefined,
         parentTaskId: task.parentTaskId ?? undefined,
-        refractoryMinutes: task.refractoryMinutes ?? undefined,
+        targetCount: task.targetCount ?? undefined,
+        targetPeriod: task.targetPeriod as any,
       });
       setSelectedTagIds(task.tags?.map(t => t.id) || []);
       setNewMetrics([]);
       setSelectedProfileId(task.profileId ?? undefined);
+      setTaskType(task.taskType as any || 'interval');
+      
+      if (task.scheduledDaysOfWeek) {
+        setSelectedDaysOfWeek(task.scheduledDaysOfWeek.split(',').map(Number));
+      } else {
+        setSelectedDaysOfWeek([]);
+      }
+      setScheduledTime(task.scheduledTime || '');
+      setScheduledDaysOfMonth(task.scheduledDaysOfMonth || '');
+      
+      const refractoryDisplay = convertMinutesToDisplay(task.refractoryMinutes);
+      setRefractoryValue(refractoryDisplay.value);
+      setRefractoryUnit(refractoryDisplay.unit);
     }
   }, [task, reset]);
 
@@ -91,7 +145,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
     setIsSavingMetrics(true);
     
     try {
-      // If profile has changed, reassign first
       if (selectedProfileId && selectedProfileId !== task.profileId) {
         await reassignMutation.mutateAsync({ taskId: task.id, targetProfileId: selectedProfileId });
       }
@@ -107,13 +160,58 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         }
       }
 
-      updateMutation.mutate({
+      const updateData: any = {
         id: task.id,
-        ...data,
+        title: data.title,
+        description: data.description,
+        categoryId: data.categoryId || null,
         parentTaskId: data.parentTaskId || null,
-        refractoryMinutes: data.refractoryMinutes || null,
-        tagIds: selectedTagIds
-      }, {
+        tagIds: selectedTagIds,
+        taskType,
+      };
+
+      if (taskType === 'interval') {
+        updateData.intervalValue = data.intervalValue;
+        updateData.intervalUnit = data.intervalUnit;
+        updateData.targetCount = null;
+        updateData.targetPeriod = null;
+        updateData.scheduledDaysOfWeek = null;
+        updateData.scheduledDaysOfMonth = null;
+        updateData.scheduledTime = null;
+        updateData.refractoryMinutes = null;
+      } else if (taskType === 'frequency') {
+        updateData.targetCount = data.targetCount;
+        updateData.targetPeriod = data.targetPeriod;
+        updateData.refractoryMinutes = convertToMinutes(refractoryValue, refractoryUnit);
+        updateData.intervalValue = null;
+        updateData.intervalUnit = null;
+        updateData.scheduledDaysOfWeek = null;
+        updateData.scheduledDaysOfMonth = null;
+        updateData.scheduledTime = null;
+      } else if (taskType === 'scheduled') {
+        if (selectedDaysOfWeek.length > 0) {
+          updateData.scheduledDaysOfWeek = selectedDaysOfWeek.sort((a, b) => a - b).join(',');
+        } else {
+          updateData.scheduledDaysOfWeek = null;
+        }
+        if (scheduledDaysOfMonth.trim()) {
+          const daysInput = scheduledDaysOfMonth.split(',')
+            .map(d => parseInt(d.trim()))
+            .filter(d => !isNaN(d) && d >= 1 && d <= 31)
+            .sort((a, b) => a - b);
+          updateData.scheduledDaysOfMonth = daysInput.length > 0 ? daysInput.join(',') : null;
+        } else {
+          updateData.scheduledDaysOfMonth = null;
+        }
+        updateData.scheduledTime = scheduledTime.trim() || null;
+        updateData.intervalValue = null;
+        updateData.intervalUnit = null;
+        updateData.targetCount = null;
+        updateData.targetPeriod = null;
+        updateData.refractoryMinutes = null;
+      }
+
+      updateMutation.mutate(updateData, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
           setNewMetrics([]);
@@ -171,52 +269,198 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         </DialogHeader>
 
         <ScrollArea className="max-h-[70vh] pr-4">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 py-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 py-4">
             <div className="space-y-2">
               <Label htmlFor="edit-title">Task Title</Label>
               <Input id="edit-title" data-testid="input-edit-title" {...register("title")} />
             </div>
 
-            {task.taskType === 'interval' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-intervalValue">Frequency Value</Label>
-                  <Input type="number" id="edit-intervalValue" data-testid="input-edit-interval" min="1" {...register("intervalValue")} />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="edit-intervalUnit">Unit</Label>
-                  <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    data-testid="select-edit-unit"
-                    {...register("intervalUnit")}
-                  >
-                    <option value="days">Days</option>
-                    <option value="weeks">Weeks</option>
-                    <option value="months">Months</option>
-                    <option value="years">Years</option>
-                  </select>
-                </div>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description (optional)</Label>
+              <Input id="edit-description" data-testid="input-edit-description" {...register("description")} />
+            </div>
 
-            {task.taskType === 'frequency' && (
+            <div className="space-y-2">
+              <Label>Task Type</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Changing the type preserves your completion history and streaks.
+              </p>
+              <Tabs value={taskType} onValueChange={(v) => setTaskType(v as any)}>
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="interval" data-testid="tab-edit-interval">Every X Days</TabsTrigger>
+                  <TabsTrigger value="frequency" data-testid="tab-edit-frequency">X Per Week</TabsTrigger>
+                  <TabsTrigger value="scheduled" data-testid="tab-edit-scheduled">Scheduled</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="interval" className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-intervalValue">Every</Label>
+                      <Input 
+                        type="number" 
+                        id="edit-intervalValue" 
+                        data-testid="input-edit-interval"
+                        min="1" 
+                        {...register("intervalValue")} 
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-intervalUnit">Unit</Label>
+                      <select 
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        data-testid="select-edit-unit"
+                        {...register("intervalUnit")}
+                      >
+                        <option value="days">Days</option>
+                        <option value="weeks">Weeks</option>
+                        <option value="months">Months</option>
+                        <option value="years">Years</option>
+                      </select>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="frequency" className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-targetCount">Times</Label>
+                      <Input 
+                        type="number" 
+                        id="edit-targetCount" 
+                        data-testid="input-edit-target-count"
+                        min="1" 
+                        {...register("targetCount")} 
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-targetPeriod">Per</Label>
+                      <select 
+                        id="edit-targetPeriod"
+                        data-testid="select-edit-target-period"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        {...register("targetPeriod")}
+                      >
+                        <option value="week">Week</option>
+                        <option value="month">Month</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-refractoryValue">Minimum time between completions (optional)</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input 
+                        type="number" 
+                        id="edit-refractoryValue" 
+                        data-testid="input-edit-refractory-value"
+                        min="0" 
+                        placeholder="1"
+                        value={refractoryValue}
+                        onChange={(e) => setRefractoryValue(e.target.value)}
+                      />
+                      <select 
+                        id="edit-refractoryUnit"
+                        data-testid="select-edit-refractory-unit"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={refractoryUnit}
+                        onChange={(e) => setRefractoryUnit(e.target.value as any)}
+                      >
+                        <option value="minutes">Minutes</option>
+                        <option value="hours">Hours</option>
+                        <option value="days">Days</option>
+                      </select>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Prevents gaming by requiring time between completions.
+                    </p>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="scheduled" className="space-y-4 pt-4">
+                  <div className="space-y-3">
+                    <Label className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      Days of the Week
+                    </Label>
+                    <div className="flex flex-wrap gap-2">
+                      {DAYS_OF_WEEK.map((day) => (
+                        <button
+                          key={day.id}
+                          type="button"
+                          data-testid={`checkbox-edit-day-${day.id}`}
+                          onClick={() => {
+                            setSelectedDaysOfWeek(prev => 
+                              prev.includes(day.id) 
+                                ? prev.filter(d => d !== day.id) 
+                                : [...prev, day.id]
+                            );
+                          }}
+                          className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                            selectedDaysOfWeek.includes(day.id)
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background border-input hover-elevate"
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-scheduledTime" className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Preferred Time (optional)
+                    </Label>
+                    <Input 
+                      type="time" 
+                      id="edit-scheduledTime" 
+                      data-testid="input-edit-scheduled-time"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-scheduledDaysOfMonth">Specific Days of Month (optional)</Label>
+                    <Input 
+                      id="edit-scheduledDaysOfMonth" 
+                      data-testid="input-edit-days-of-month"
+                      placeholder="e.g., 1,15 for 1st and 15th"
+                      value={scheduledDaysOfMonth}
+                      onChange={(e) => setScheduledDaysOfMonth(e.target.value)}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            {parentTasks.length > 0 && taskType !== 'frequency' && (
               <div className="space-y-2">
-                <Label htmlFor="edit-refractoryMinutes">Minimum time between completions</Label>
-                <div className="flex gap-2 items-center">
-                  <Input 
-                    type="number" 
-                    id="edit-refractoryMinutes" 
-                    data-testid="input-edit-refractory"
-                    min="0" 
-                    placeholder="60"
-                    {...register("refractoryMinutes")} 
-                  />
-                  <span className="text-sm text-muted-foreground shrink-0">minutes</span>
-                </div>
+                <Label htmlFor="edit-parentTask">Counts Toward</Label>
                 <p className="text-xs text-muted-foreground">
-                  Prevents gaming by requiring time between completions to count toward the target.
+                  Link this task to a frequency-based goal
                 </p>
+                <select 
+                  id="edit-parentTask"
+                  data-testid="select-edit-parent-task"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  {...register("parentTaskId")}
+                >
+                  <option value="">None - standalone task</option>
+                  {parentTasks.map((t: TaskWithDetails) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title} ({t.targetCount}x/{t.targetPeriod})
+                    </option>
+                  ))}
+                </select>
+                {task.parentTask && (
+                  <p className="text-xs text-muted-foreground">
+                    Currently linked to: <span className="font-medium">{task.parentTask.title}</span>
+                  </p>
+                )}
               </div>
             )}
 
@@ -255,35 +499,8 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  Move this task and its history to a different profile. Tags and categories will be copied if they don't exist.
+                  Move this task and its history to a different profile.
                 </p>
-              </div>
-            )}
-
-            {parentTasks.length > 0 && (
-              <div className="space-y-2">
-                <Label htmlFor="edit-parentTask">Counts Toward</Label>
-                <p className="text-xs text-muted-foreground">
-                  Link this task to a frequency-based goal (e.g., "Exercise 3x/week")
-                </p>
-                <select 
-                  id="edit-parentTask"
-                  data-testid="select-edit-parent-task"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  {...register("parentTaskId")}
-                >
-                  <option value="">None - standalone task</option>
-                  {parentTasks.map((t: TaskWithDetails) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title} ({t.targetCount}x/{t.targetPeriod})
-                    </option>
-                  ))}
-                </select>
-                {task.parentTask && (
-                  <p className="text-xs text-muted-foreground">
-                    Currently linked to: <span className="font-medium">{task.parentTask.title}</span>
-                  </p>
-                )}
               </div>
             )}
 
@@ -331,7 +548,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
               )}
 
               <p className="text-xs text-muted-foreground">
-                Add new statistics to record when completing this task (e.g., weight, sets, reps).
+                Add new statistics to record when completing this task.
               </p>
               
               <div className="flex gap-2">

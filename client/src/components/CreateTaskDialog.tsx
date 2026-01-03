@@ -12,11 +12,12 @@ import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { useState, useEffect } from "react";
-import { Loader2, Plus, Trash2, Clock, Calendar } from "lucide-react";
+import { Loader2, Plus, Trash2, Clock, Calendar, ChevronDown } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Checkbox } from "./ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
 const DAYS_OF_WEEK = [
   { id: 0, label: "Sun" },
@@ -28,12 +29,12 @@ const DAYS_OF_WEEK = [
   { id: 6, label: "Sat" },
 ];
 
-const formSchema = insertTaskSchema.extend({
+const formSchema = insertTaskSchema.partial().extend({
+  title: z.string().min(1, "Title is required"),
   intervalValue: z.coerce.number().min(1).optional().nullable(),
   targetCount: z.coerce.number().min(1).optional().nullable(),
   categoryId: z.coerce.number().optional().nullable(),
   parentTaskId: z.coerce.number().optional().nullable(),
-  refractoryMinutes: z.coerce.number().min(0).optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema> & { tagIds: number[] };
@@ -73,6 +74,11 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
   const [scheduledTime, setScheduledTime] = useState("");
   const [scheduledDaysOfMonth, setScheduledDaysOfMonth] = useState("");
+  // Refractory period with unit
+  const [refractoryValue, setRefractoryValue] = useState<string>("");
+  const [refractoryUnit, setRefractoryUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
+  // Advanced section collapsed state
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   
   // Reset selected profile when dialog opens or current profile changes
   useEffect(() => {
@@ -122,7 +128,19 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     } else if (taskType === 'frequency') {
       taskData.targetCount = data.targetCount;
       taskData.targetPeriod = data.targetPeriod;
-      taskData.refractoryMinutes = data.refractoryMinutes || null;
+      // Convert refractory value to minutes
+      if (refractoryValue && Number(refractoryValue) > 0) {
+        const val = Number(refractoryValue);
+        if (refractoryUnit === 'hours') {
+          taskData.refractoryMinutes = val * 60;
+        } else if (refractoryUnit === 'days') {
+          taskData.refractoryMinutes = val * 60 * 24;
+        } else {
+          taskData.refractoryMinutes = val;
+        }
+      } else {
+        taskData.refractoryMinutes = null;
+      }
     } else if (taskType === 'scheduled') {
       // Scheduled task type - validate at least one schedule option is set
       const hasSchedule = selectedDaysOfWeek.length > 0 || scheduledDaysOfMonth.trim();
@@ -181,6 +199,9 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         setSelectedDaysOfWeek([]);
         setScheduledTime("");
         setScheduledDaysOfMonth("");
+        setRefractoryValue("");
+        setRefractoryUnit('hours');
+        setAdvancedOpen(false);
       }
     });
   };
@@ -323,26 +344,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                   </select>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="parentTask">Counts toward (optional)</Label>
-                <select 
-                  id="parentTask"
-                  data-testid="select-parent-task"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  {...register("parentTaskId")}
-                >
-                  <option value="">None - standalone task</option>
-                  {parentTasks.map((task: TaskWithDetails) => (
-                    <option key={task.id} value={task.id}>
-                      {task.title} ({task.targetCount}x per {task.targetPeriod})
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted-foreground">
-                  If this is a variation (e.g., "Back Squat" for "Squats"), select the parent task.
-                </p>
-              </div>
             </TabsContent>
             
             <TabsContent value="frequency" className="space-y-4 pt-4">
@@ -374,25 +375,36 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="refractoryMinutes">Minimum time between completions (optional)</Label>
-                <div className="flex gap-2 items-center">
+                <Label htmlFor="refractoryValue">Minimum time between completions (optional)</Label>
+                <div className="grid grid-cols-2 gap-2">
                   <Input 
                     type="number" 
-                    id="refractoryMinutes" 
-                    data-testid="input-refractory-minutes"
+                    id="refractoryValue" 
+                    data-testid="input-refractory-value"
                     min="0" 
-                    placeholder="60"
-                    {...register("refractoryMinutes")} 
+                    placeholder="1"
+                    value={refractoryValue}
+                    onChange={(e) => setRefractoryValue(e.target.value)}
                   />
-                  <span className="text-sm text-muted-foreground shrink-0">minutes</span>
+                  <select 
+                    id="refractoryUnit"
+                    data-testid="select-refractory-unit"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={refractoryUnit}
+                    onChange={(e) => setRefractoryUnit(e.target.value as 'minutes' | 'hours' | 'days')}
+                  >
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Hours</option>
+                    <option value="days">Days</option>
+                  </select>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Prevents gaming by requiring time between completions. E.g., 60 minutes means doing 3 squats in 3 minutes only counts as 1 completion.
+                  Prevents gaming by requiring time between completions. E.g., 1 hour means doing 3 exercises in 3 minutes only counts as 1.
                 </p>
               </div>
               
               <p className="text-xs text-muted-foreground">
-                Create variations of this task to track different ways to fulfill this goal.
+                Tip: Create variation tasks that count toward this goal to track different ways of completing it.
               </p>
             </TabsContent>
 
@@ -463,163 +475,202 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
             </TabsContent>
           </Tabs>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="category">Category</Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-auto p-0 text-xs"
-                onClick={() => setShowNewCategoryInput(!showNewCategoryInput)}
-              >
-                <Plus className="w-3 h-3 mr-1" /> New
-              </Button>
-            </div>
-            {showNewCategoryInput ? (
-              <div className="flex gap-2">
-                <Input
-                  data-testid="input-new-category"
-                  placeholder="Category name..."
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleCreateNewCategory();
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  data-testid="button-add-category"
-                  onClick={handleCreateNewCategory}
-                  disabled={createCategoryMutation.isPending || !newCategoryName.trim()}
-                >
-                  {createCategoryMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
-                </Button>
-              </div>
-            ) : (
+          {/* Counts toward - shown for interval and scheduled tasks when parent frequency tasks exist */}
+          {parentTasks.length > 0 && taskType !== 'frequency' && (
+            <div className="space-y-2">
+              <Label htmlFor="parentTask">Counts toward (optional)</Label>
               <select 
-                id="category"
-                data-testid="select-category"
+                id="parentTask"
+                data-testid="select-parent-task"
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                {...register("categoryId")}
+                {...register("parentTaskId")}
               >
-                <option value="">Select a category...</option>
-                {categories?.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                <option value="">None - standalone task</option>
+                {parentTasks.map((task: TaskWithDetails) => (
+                  <option key={task.id} value={task.id}>
+                    {task.title} ({task.targetCount}x per {task.targetPeriod})
+                  </option>
                 ))}
               </select>
-            )}
-          </div>
+              <p className="text-xs text-muted-foreground">
+                Link this task to a frequency goal. Completing it counts toward that goal's target.
+              </p>
+            </div>
+          )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Tags</Label>
+          {/* Advanced Configuration - Collapsed Section */}
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-auto p-0 text-xs"
-                onClick={() => setShowNewTagInput(!showNewTagInput)}
+                className="w-full flex items-center justify-between py-2 px-0"
+                data-testid="button-toggle-advanced"
               >
-                <Plus className="w-3 h-3 mr-1" /> New
+                <span className="text-sm font-medium">Advanced Options</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
               </Button>
-            </div>
-            {showNewTagInput && (
-              <div className="flex gap-2">
-                <Input
-                  data-testid="input-new-tag"
-                  placeholder="Tag name..."
-                  value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleCreateNewTag();
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  data-testid="button-add-tag"
-                  onClick={handleCreateNewTag}
-                  disabled={createTagMutation.isPending || !newTagName.trim()}
-                >
-                  {createTagMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
-                </Button>
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2 pt-2">
-              {tags?.map(tag => (
-                <Badge
-                  key={tag.id}
-                  variant={selectedTagIds.includes(tag.id) ? "default" : "outline"}
-                  className="cursor-pointer select-none"
-                  data-testid={`tag-${tag.id}`}
-                  onClick={() => toggleTag(tag.id)}
-                >
-                  {tag.name}
-                </Badge>
-              ))}
-              {tags?.length === 0 && !showNewTagInput && <span className="text-sm text-muted-foreground">No tags yet. Click "New" to create one.</span>}
-            </div>
-          </div>
-
-          <div className="space-y-3 border-t pt-4">
-            <Label>Track Statistics (optional)</Label>
-            <p className="text-xs text-muted-foreground">
-              Add metrics to record when completing this task (e.g., weight, sets, reps, tire pressure).
-            </p>
-            
-            <div className="flex gap-2">
-              <Input
-                placeholder="Metric name (e.g., Weight)"
-                value={newMetricName}
-                onChange={(e) => setNewMetricName(e.target.value)}
-                data-testid="input-metric-name"
-              />
-              <Input
-                placeholder="Unit (e.g., lbs)"
-                value={newMetricUnit}
-                onChange={(e) => setNewMetricUnit(e.target.value)}
-                className="w-24"
-                data-testid="input-metric-unit"
-              />
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                onClick={addMetric}
-                disabled={!newMetricName.trim()}
-                data-testid="button-add-metric"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            {metrics.length > 0 && (
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 pt-2">
               <div className="space-y-2">
-                {metrics.map((m, i) => (
-                  <div key={i} className="flex items-center justify-between bg-muted/50 rounded-md px-3 py-2">
-                    <span className="text-sm">{m.name} {m.unit && `(${m.unit})`}</span>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="category">Category</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setShowNewCategoryInput(!showNewCategoryInput)}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> New
+                  </Button>
+                </div>
+                {showNewCategoryInput ? (
+                  <div className="flex gap-2">
+                    <Input
+                      data-testid="input-new-category"
+                      placeholder="Category name..."
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleCreateNewCategory();
+                        }
+                      }}
+                    />
                     <Button
                       type="button"
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeMetric(i)}
-                      data-testid={`button-remove-metric-${i}`}
+                      size="sm"
+                      data-testid="button-add-category"
+                      onClick={handleCreateNewCategory}
+                      disabled={createCategoryMutation.isPending || !newCategoryName.trim()}
                     >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      {createCategoryMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
                     </Button>
                   </div>
-                ))}
+                ) : (
+                  <select 
+                    id="category"
+                    data-testid="select-category"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    {...register("categoryId")}
+                  >
+                    <option value="">Select a category...</option>
+                    {categories?.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
-            )}
-          </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Tags</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setShowNewTagInput(!showNewTagInput)}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> New
+                  </Button>
+                </div>
+                {showNewTagInput && (
+                  <div className="flex gap-2">
+                    <Input
+                      data-testid="input-new-tag"
+                      placeholder="Tag name..."
+                      value={newTagName}
+                      onChange={(e) => setNewTagName(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleCreateNewTag();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      data-testid="button-add-tag"
+                      onClick={handleCreateNewTag}
+                      disabled={createTagMutation.isPending || !newTagName.trim()}
+                    >
+                      {createTagMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                    </Button>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {tags?.map(tag => (
+                    <Badge
+                      key={tag.id}
+                      variant={selectedTagIds.includes(tag.id) ? "default" : "outline"}
+                      className="cursor-pointer select-none"
+                      data-testid={`tag-${tag.id}`}
+                      onClick={() => toggleTag(tag.id)}
+                    >
+                      {tag.name}
+                    </Badge>
+                  ))}
+                  {tags?.length === 0 && !showNewTagInput && <span className="text-sm text-muted-foreground">No tags yet. Click "New" to create one.</span>}
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t pt-4">
+                <Label>Track Statistics (optional)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Add metrics to record when completing this task (e.g., weight, sets, reps, tire pressure).
+                </p>
+                
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Metric name (e.g., Weight)"
+                    value={newMetricName}
+                    onChange={(e) => setNewMetricName(e.target.value)}
+                    data-testid="input-metric-name"
+                  />
+                  <Input
+                    placeholder="Unit (e.g., lbs)"
+                    value={newMetricUnit}
+                    onChange={(e) => setNewMetricUnit(e.target.value)}
+                    className="w-24"
+                    data-testid="input-metric-unit"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    onClick={addMetric}
+                    disabled={!newMetricName.trim()}
+                    data-testid="button-add-metric"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                {metrics.length > 0 && (
+                  <div className="space-y-2">
+                    {metrics.map((m, i) => (
+                      <div key={i} className="flex items-center justify-between bg-muted/50 rounded-md px-3 py-2">
+                        <span className="text-sm">{m.name} {m.unit && `(${m.unit})`}</span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => removeMetric(i)}
+                          data-testid={`button-remove-metric-${i}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
