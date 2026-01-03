@@ -308,20 +308,18 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
               </Button>
             )}
 
-            {(!isFrequencyTask || !hasVariations) && (
-              <Button 
-                onClick={handleComplete}
-                disabled={completeMutation.isPending}
-                className={cn(
-                  "rounded-full px-6 shadow-md transition-all duration-300",
-                  completeMutation.isPending ? "opacity-70" : "hover:scale-105 active:scale-95"
-                )}
-                size="sm"
-                data-testid={`button-complete-${task.id}`}
-              >
-                {completeMutation.isPending ? "Saving..." : "Done"}
-              </Button>
-            )}
+            <Button 
+              onClick={handleComplete}
+              disabled={completeMutation.isPending}
+              className={cn(
+                "rounded-full px-6 shadow-md transition-all duration-300",
+                completeMutation.isPending ? "opacity-70" : "hover:scale-105 active:scale-95"
+              )}
+              size="sm"
+              data-testid={`button-complete-${task.id}`}
+            >
+              {completeMutation.isPending ? "Saving..." : "Done"}
+            </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -337,11 +335,9 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                 <DropdownMenuItem onClick={() => setHistoryOpen(true)} data-testid={`menu-history-${task.id}`}>
                   <History className="w-4 h-4 mr-2" /> View History
                 </DropdownMenuItem>
-                {(!isFrequencyTask || !hasVariations) && (
-                  <DropdownMenuItem onClick={handleComplete} data-testid={`menu-complete-${task.id}`}>
-                    <CalendarCheck className="w-4 h-4 mr-2" /> Mark Done
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem onClick={handleComplete} data-testid={`menu-complete-${task.id}`}>
+                  <CalendarCheck className="w-4 h-4 mr-2" /> Mark Done
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
                   onClick={() => {
