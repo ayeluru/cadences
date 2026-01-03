@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { History, Calendar, Trash2, TrendingUp, Loader2, X } from "lucide-react";
+import { History, Calendar, Trash2, TrendingUp, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,13 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { TaskWithDetails, Completion, TaskMetric, MetricValue } from "@shared/schema";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { 
+  CHART_COLORS, 
+  TimeRange, 
+  filterByTimeRange, 
+  buildVariationChartSeries,
+  getChartDomain,
+} from "@/lib/chartUtils";
 
 interface CompletionWithMetrics extends Completion {
   metricValues: MetricValue[];
@@ -39,7 +46,7 @@ interface TaskHistoryDialogProps {
 export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: TaskHistoryDialogProps) {
   const { toast } = useToast();
   const [selectedMetric, setSelectedMetric] = useState<number | null>(null);
-  const [timeRange, setTimeRange] = useState<"all" | "30d" | "90d" | "1y">("all");
+  const [timeRange, setTimeRange] = useState<TimeRange>("all");
 
   const { data: historyData, isLoading } = useQuery<TaskHistoryData>({
     queryKey: ["/api/tasks", taskId, "history"],
@@ -51,7 +58,6 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
     enabled: open,
   });
 
-  // Auto-select first numeric metric when data loads
   useEffect(() => {
     if (historyData?.metrics && historyData.metrics.length > 0 && !selectedMetric) {
       const numericMetric = historyData.metrics.find(m => m.dataType === 'number');
@@ -78,100 +84,46 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
 
   const variations = historyData?.task?.variations || [];
 
-  const chartColors = [
-    "hsl(var(--primary))",
-    "hsl(var(--chart-2))",
-    "hsl(var(--chart-3))",
-    "hsl(var(--chart-4))",
-    "hsl(var(--chart-5))",
-    "hsl(var(--chart-1))",
-  ];
-
-  // Filter completions by time range
   const getFilteredCompletions = () => {
     if (!historyData?.completions) return [];
-    
-    const now = new Date();
-    let cutoffDate: Date | null = null;
-    
-    switch (timeRange) {
-      case "30d":
-        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case "90d":
-        cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        break;
-      case "1y":
-        cutoffDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        cutoffDate = null;
-    }
-    
-    if (!cutoffDate) return historyData.completions;
-    
-    return historyData.completions.filter(c => 
-      new Date(c.completedAt) >= cutoffDate!
+    return filterByTimeRange(
+      historyData.completions.map(c => ({
+        ...c,
+        completedAt: typeof c.completedAt === 'string' ? c.completedAt : new Date(c.completedAt).toISOString(),
+      })),
+      timeRange
     );
   };
 
-  // Build chart series: one line per variation for the selected metric
-  // Each series gets its own independent data array so lines connect properly
   const buildChartSeries = (metricId: number) => {
     const filteredCompletions = getFilteredCompletions();
-    if (!filteredCompletions.length) return { series: [] };
+    if (!filteredCompletions.length) return [];
     
-    // Group completions by variation
-    const variationGroups = new Map<number | null, {
-      id: number | null;
-      name: string;
-      dataPoints: { timestamp: number; value: number; date: string; fullDate: string }[];
-    }>();
+    const metricValues = filteredCompletions
+      .map(c => {
+        const mv = c.metricValues.find(m => m.metricId === metricId);
+        if (!mv || mv.numericValue === null) return null;
+        
+        const variation = c.variationId ? variations.find(v => v.id === c.variationId) : null;
+        
+        return {
+          id: mv.id,
+          value: mv.numericValue,
+          completedAt: c.completedAt,
+          variationId: c.variationId,
+          variationName: variation?.name || null,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: number;
+        value: number;
+        completedAt: string;
+        variationId: number | null;
+        variationName: string | null;
+      }>;
     
-    filteredCompletions.forEach(c => {
-      const metricValue = c.metricValues.find(mv => mv.metricId === metricId);
-      if (!metricValue) return;
-      
-      const varId = c.variationId;
-      const variation = varId ? variations.find(v => v.id === varId) : null;
-      const varName = variation?.name || (varId ? `Variation ${varId}` : "Default");
-      
-      if (!variationGroups.has(varId)) {
-        variationGroups.set(varId, {
-          id: varId,
-          name: varName,
-          dataPoints: [],
-        });
-      }
-      
-      const group = variationGroups.get(varId)!;
-      group.dataPoints.push({
-        timestamp: new Date(c.completedAt).getTime(),
-        value: metricValue.numericValue ?? 0,
-        date: format(new Date(c.completedAt), "MMM d"),
-        fullDate: format(new Date(c.completedAt), "MMM d, yyyy h:mm a"),
-      });
-    });
-    
-    // Sort each group's data points chronologically (oldest first = left to right)
-    variationGroups.forEach(group => {
-      group.dataPoints.sort((a, b) => a.timestamp - b.timestamp);
-    });
-    
-    // Build series info with its own data array per variation
-    const seriesInfo = Array.from(variationGroups.entries()).map(([varId, group], idx) => ({
-      key: varId !== null ? `var_${varId}` : "var_default",
-      name: group.name,
-      color: chartColors[idx % chartColors.length],
-      data: group.dataPoints.map(dp => ({
-        timestamp: dp.timestamp,
-        date: dp.date,
-        fullDate: dp.fullDate,
-        value: dp.value,
-      })),
-    }));
-    
-    return { series: seriesInfo };
+    const metric = historyData?.metrics.find(m => m.id === metricId);
+    return buildVariationChartSeries(metricValues, undefined, metric?.unit);
   };
 
   const hasMetrics = historyData?.metrics && historyData.metrics.length > 0;
@@ -211,7 +163,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
             <TabsContent value="timeline" className="flex-1 min-h-0 mt-4">
               <ScrollArea className="h-[400px] pr-4">
                 <div className="space-y-3">
-                  {historyData?.completions.map((completion, idx) => (
+                  {historyData?.completions.map((completion) => (
                     <Card key={completion.id} className="relative" data-testid={`completion-card-${completion.id}`}>
                       <CardContent className="pt-4">
                         <div className="flex items-start justify-between gap-4">
@@ -308,7 +260,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                   </div>
                   
                   {selectedMetric ? (() => {
-                    const { series } = buildChartSeries(selectedMetric);
+                    const series = buildChartSeries(selectedMetric);
                     const showLegend = series.length > 1;
                     
                     if (!series.length || series.every(s => s.data.length === 0)) {
@@ -319,10 +271,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                       );
                     }
 
-                    // For X axis domain calculation
-                    const allTimestamps = series.flatMap(s => s.data.map(d => d.timestamp));
-                    const minTime = Math.min(...allTimestamps);
-                    const maxTime = Math.max(...allTimestamps);
+                    const domain = getChartDomain(series);
                     
                     return (
                       <Card>
@@ -341,7 +290,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                                 <XAxis 
                                   dataKey="timestamp"
                                   type="number"
-                                  domain={[minTime, maxTime]}
+                                  domain={domain}
                                   tickFormatter={(ts) => format(new Date(ts), "MMM d")}
                                   tick={{ fontSize: 12 }}
                                   className="text-muted-foreground"
@@ -369,7 +318,9 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                                     name={s.name}
                                     stroke={s.color}
                                     strokeWidth={2}
-                                    dot={{ fill: s.color }}
+                                    dot={{ fill: s.color, strokeWidth: 0, r: 3 }}
+                                    activeDot={{ r: 5 }}
+                                    connectNulls
                                   />
                                 ))}
                               </LineChart>

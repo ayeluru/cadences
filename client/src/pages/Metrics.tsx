@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { TaskWithDetails } from "@shared/schema";
 import { useProfileContext } from "@/contexts/ProfileContext";
+import { 
+  CHART_COLORS, 
+  TimeRange, 
+  filterByTimeRange, 
+  buildVariationChartSeries,
+  getChartDomain,
+  ChartSeries,
+} from "@/lib/chartUtils";
 
 interface MetricHistory {
   metricId: number;
@@ -24,23 +32,10 @@ interface MetricHistory {
   }>;
 }
 
-interface TaskVariation {
-  id: number;
-  name: string;
-}
-
-const CHART_COLORS = [
-  "hsl(var(--primary))",
-  "hsl(142, 76%, 36%)",
-  "hsl(38, 92%, 50%)",
-  "hsl(280, 65%, 60%)",
-  "hsl(200, 90%, 50%)",
-  "hsl(350, 80%, 55%)",
-];
-
 export default function MetricsPage() {
   const { currentProfile } = useProfileContext();
   const queryParams = currentProfile?.id ? `?profileId=${currentProfile.id}` : '';
+  
   const { data: tasks, isLoading: tasksLoading } = useQuery<TaskWithDetails[]>({
     queryKey: ["/api/tasks", currentProfile?.id],
     queryFn: async () => {
@@ -58,8 +53,10 @@ export default function MetricsPage() {
     }))
   ) || [];
 
+  const metricIds = allMetrics.map(m => m.id).sort().join(',');
+
   const { data: metricsHistory, isLoading: historyLoading } = useQuery<MetricHistory[]>({
-    queryKey: ["/api/metrics/all-history"],
+    queryKey: ["/api/metrics/all-history", metricIds],
     queryFn: async () => {
       if (!allMetrics.length) return [];
       
@@ -86,6 +83,7 @@ export default function MetricsPage() {
   const isLoading = tasksLoading || historyLoading;
 
   const [hiddenMetrics, setHiddenMetrics] = useState<Record<number, number[]>>({});
+  const [timeRange, setTimeRange] = useState<TimeRange>("90d");
 
   const toggleMetricVisibility = (taskId: number, metricId: number) => {
     setHiddenMetrics(prev => {
@@ -139,83 +137,33 @@ export default function MetricsPage() {
     return metricsHistory?.filter(m => m.taskId === taskId) || [];
   };
 
-  const [timeRange, setTimeRange] = useState<"30d" | "90d" | "1y" | "all">("90d");
-
-  const filterByTimeRange = (values: MetricHistory['values']) => {
-    const now = new Date();
-    let cutoff: Date | null = null;
+  const prepareChartSeriesForTask = (taskMetrics: MetricHistory[]): ChartSeries[] => {
+    const allSeries: ChartSeries[] = [];
+    let colorIndex = 0;
     
-    if (timeRange === "30d") cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    else if (timeRange === "90d") cutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    else if (timeRange === "1y") cutoff = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-    
-    if (!cutoff) return values;
-    return values.filter(v => new Date(v.completedAt) >= cutoff);
-  };
-
-  const prepareVariationAwareChartData = (taskMetrics: MetricHistory[]) => {
-    const metricConfigs: Array<{
-      metricId: number;
-      metricName: string;
-      unit: string | null;
-      variationId: number | null;
-      variationName: string | null;
-      dataPoints: Array<{ timestamp: number; value: number; date: string }>;
-    }> = [];
-
     taskMetrics.forEach((metric) => {
-      const filteredValues = filterByTimeRange(metric.values);
-      const hasVariations = filteredValues.some(v => v.variationId);
+      const filteredValues = filterByTimeRange(metric.values, timeRange);
       
-      if (hasVariations) {
-        const variationGroups = new Map<number | null, typeof filteredValues>();
-        filteredValues.forEach(v => {
-          const varId = v.variationId ?? null;
-          if (!variationGroups.has(varId)) variationGroups.set(varId, []);
-          variationGroups.get(varId)!.push(v);
+      const series = buildVariationChartSeries(
+        filteredValues.map(v => ({
+          ...v,
+          variationId: v.variationId,
+          variationName: v.variationName,
+        })),
+        metric.metricName,
+        metric.unit
+      );
+      
+      series.forEach(s => {
+        allSeries.push({
+          ...s,
+          color: CHART_COLORS[colorIndex % CHART_COLORS.length],
         });
-        
-        variationGroups.forEach((values, varId) => {
-          const dataPoints = values
-            .map(v => ({
-              timestamp: new Date(v.completedAt).getTime(),
-              value: parseFloat(v.value) || 0,
-              date: format(new Date(v.completedAt), "MMM d, yyyy"),
-            }))
-            .sort((a, b) => a.timestamp - b.timestamp);
-          
-          const variationName = varId !== null ? (values[0]?.variationName || `Variation ${varId}`) : null;
-          
-          metricConfigs.push({
-            metricId: metric.metricId,
-            metricName: metric.metricName,
-            unit: metric.unit,
-            variationId: varId,
-            variationName,
-            dataPoints,
-          });
-        });
-      } else {
-        const dataPoints = filteredValues
-          .map(v => ({
-            timestamp: new Date(v.completedAt).getTime(),
-            value: parseFloat(v.value) || 0,
-            date: format(new Date(v.completedAt), "MMM d, yyyy"),
-          }))
-          .sort((a, b) => a.timestamp - b.timestamp);
-        
-        metricConfigs.push({
-          metricId: metric.metricId,
-          metricName: metric.metricName,
-          unit: metric.unit,
-          variationId: null,
-          variationName: null,
-          dataPoints,
-        });
-      }
+        colorIndex++;
+      });
     });
-
-    return metricConfigs;
+    
+    return allSeries;
   };
 
   return (
@@ -317,8 +265,9 @@ export default function MetricsPage() {
             
             const taskTitle = taskMetrics[0].taskTitle;
             const visibleTaskMetrics = taskMetrics.filter(m => isMetricVisible(taskId, m.metricId));
-            const chartConfigs = prepareVariationAwareChartData(visibleTaskMetrics);
-            const hasData = chartConfigs.some(c => c.dataPoints.length > 0);
+            const chartSeries = prepareChartSeriesForTask(visibleTaskMetrics);
+            const hasData = chartSeries.some(s => s.data.length > 0);
+            const domain = getChartDomain(chartSeries);
             
             return (
               <Card key={taskId} data-testid={`task-metrics-${taskId}`}>
@@ -382,7 +331,7 @@ export default function MetricsPage() {
                           <XAxis 
                             dataKey="timestamp"
                             type="number"
-                            domain={["dataMin", "dataMax"]}
+                            domain={domain}
                             tickFormatter={(ts) => format(new Date(ts), "MMM d")}
                             tick={{ fontSize: 11 }} 
                             className="text-muted-foreground"
@@ -402,35 +351,26 @@ export default function MetricsPage() {
                             }}
                           />
                           <Legend />
-                          {chartConfigs.map((config, idx) => {
-                            const lineKey = config.variationId !== null 
-                              ? `metric_${config.metricId}_var_${config.variationId}`
-                              : `metric_${config.metricId}`;
-                            const lineName = config.variationName 
-                              ? `${config.metricName}: ${config.variationName}${config.unit ? ` (${config.unit})` : ""}`
-                              : `${config.metricName}${config.unit ? ` (${config.unit})` : ""}`;
-                            
-                            return (
-                              <Line 
-                                key={lineKey}
-                                data={config.dataPoints}
-                                type="monotone" 
-                                dataKey="value"
-                                name={lineName}
-                                stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                                strokeWidth={2}
-                                dot={{ fill: CHART_COLORS[idx % CHART_COLORS.length], strokeWidth: 0, r: 3 }}
-                                activeDot={{ r: 5 }}
-                                connectNulls
-                              />
-                            );
-                          })}
+                          {chartSeries.map((series) => (
+                            <Line 
+                              key={series.key}
+                              data={series.data}
+                              type="monotone" 
+                              dataKey="value"
+                              name={series.name}
+                              stroke={series.color}
+                              strokeWidth={2}
+                              dot={{ fill: series.color, strokeWidth: 0, r: 3 }}
+                              activeDot={{ r: 5 }}
+                              connectNulls
+                            />
+                          ))}
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground mt-2 text-center">
-                    {chartConfigs.reduce((sum, c) => sum + c.dataPoints.length, 0)} data points in selected range
+                    {chartSeries.reduce((sum, s) => sum + s.data.length, 0)} data points in selected range
                   </p>
                 </CardContent>
               </Card>
