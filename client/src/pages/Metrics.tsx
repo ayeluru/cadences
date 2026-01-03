@@ -19,7 +19,14 @@ interface MetricHistory {
     id: number;
     value: string;
     completedAt: string;
+    variationId?: number | null;
+    variationName?: string;
   }>;
+}
+
+interface TaskVariation {
+  id: number;
+  name: string;
 }
 
 const CHART_COLORS = [
@@ -132,33 +139,109 @@ export default function MetricsPage() {
     return metricsHistory?.filter(m => m.taskId === taskId) || [];
   };
 
-  const prepareUnifiedChartData = (taskMetrics: MetricHistory[]) => {
-    const allDates = new Map<string, Record<string, string | number>>();
+  const [timeRange, setTimeRange] = useState<"30d" | "90d" | "1y" | "all">("90d");
+
+  const filterByTimeRange = (values: MetricHistory['values']) => {
+    const now = new Date();
+    let cutoff: Date | null = null;
     
+    if (timeRange === "30d") cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    else if (timeRange === "90d") cutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    else if (timeRange === "1y") cutoff = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    
+    if (!cutoff) return values;
+    return values.filter(v => new Date(v.completedAt) >= cutoff);
+  };
+
+  const prepareVariationAwareChartData = (taskMetrics: MetricHistory[]) => {
+    const metricConfigs: Array<{
+      metricId: number;
+      metricName: string;
+      unit: string | null;
+      variationId: number | null;
+      variationName: string | null;
+      dataPoints: Array<{ timestamp: number; value: number; date: string }>;
+    }> = [];
+
     taskMetrics.forEach((metric) => {
-      metric.values.forEach(v => {
-        const dateKey = format(new Date(v.completedAt), "MMM d");
-        const existing = allDates.get(dateKey) || {};
-        existing[`metric_${metric.metricId}`] = parseFloat(v.value) || 0;
-        existing.fullDate = format(new Date(v.completedAt), "MMM d, yyyy");
-        allDates.set(dateKey, existing);
-      });
+      const filteredValues = filterByTimeRange(metric.values);
+      const hasVariations = filteredValues.some(v => v.variationId);
+      
+      if (hasVariations) {
+        const variationGroups = new Map<number | null, typeof filteredValues>();
+        filteredValues.forEach(v => {
+          const varId = v.variationId ?? null;
+          if (!variationGroups.has(varId)) variationGroups.set(varId, []);
+          variationGroups.get(varId)!.push(v);
+        });
+        
+        variationGroups.forEach((values, varId) => {
+          const dataPoints = values
+            .map(v => ({
+              timestamp: new Date(v.completedAt).getTime(),
+              value: parseFloat(v.value) || 0,
+              date: format(new Date(v.completedAt), "MMM d, yyyy"),
+            }))
+            .sort((a, b) => a.timestamp - b.timestamp);
+          
+          const variationName = varId !== null ? (values[0]?.variationName || `Variation ${varId}`) : null;
+          
+          metricConfigs.push({
+            metricId: metric.metricId,
+            metricName: metric.metricName,
+            unit: metric.unit,
+            variationId: varId,
+            variationName,
+            dataPoints,
+          });
+        });
+      } else {
+        const dataPoints = filteredValues
+          .map(v => ({
+            timestamp: new Date(v.completedAt).getTime(),
+            value: parseFloat(v.value) || 0,
+            date: format(new Date(v.completedAt), "MMM d, yyyy"),
+          }))
+          .sort((a, b) => a.timestamp - b.timestamp);
+        
+        metricConfigs.push({
+          metricId: metric.metricId,
+          metricName: metric.metricName,
+          unit: metric.unit,
+          variationId: null,
+          variationName: null,
+          dataPoints,
+        });
+      }
     });
-    
-    return Array.from(allDates.entries())
-      .map(([date, values]) => ({ date, ...values }))
-      .slice(-30);
+
+    return metricConfigs;
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-foreground mb-2">
-          Metrics
-        </h1>
-        <p className="text-muted-foreground">
-          Track trends across all your custom metrics. Toggle individual metrics on/off per task.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-display font-bold text-foreground mb-2">
+            Metrics
+          </h1>
+          <p className="text-muted-foreground">
+            Track trends across all your custom metrics. Toggle individual metrics on/off per task.
+          </p>
+        </div>
+        <div className="flex gap-1" data-testid="time-range-filter">
+          {(["30d", "90d", "1y", "all"] as const).map((range) => (
+            <Button
+              key={range}
+              variant={timeRange === range ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTimeRange(range)}
+              data-testid={`time-range-${range}`}
+            >
+              {range === "all" ? "All" : range}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
@@ -233,8 +316,9 @@ export default function MetricsPage() {
             if (taskMetrics.length === 0) return null;
             
             const taskTitle = taskMetrics[0].taskTitle;
-            const chartData = prepareUnifiedChartData(taskMetrics);
             const visibleTaskMetrics = taskMetrics.filter(m => isMetricVisible(taskId, m.metricId));
+            const chartConfigs = prepareVariationAwareChartData(visibleTaskMetrics);
+            const hasData = chartConfigs.some(c => c.dataPoints.length > 0);
             
             return (
               <Card key={taskId} data-testid={`task-metrics-${taskId}`}>
@@ -286,20 +370,23 @@ export default function MetricsPage() {
                     <div className="h-48 flex items-center justify-center text-muted-foreground">
                       <p>Select at least one metric to display the chart</p>
                     </div>
-                  ) : chartData.length === 0 ? (
+                  ) : !hasData ? (
                     <div className="h-48 flex items-center justify-center text-muted-foreground">
-                      <p>No data points recorded yet</p>
+                      <p>No data points in selected time range</p>
                     </div>
                   ) : (
                     <div className="h-64">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData}>
+                        <LineChart>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                           <XAxis 
-                            dataKey="date" 
+                            dataKey="timestamp"
+                            type="number"
+                            domain={["dataMin", "dataMax"]}
+                            tickFormatter={(ts) => format(new Date(ts), "MMM d")}
                             tick={{ fontSize: 11 }} 
                             className="text-muted-foreground"
-                            interval="preserveStartEnd"
+                            allowDuplicatedCategory={false}
                           />
                           <YAxis 
                             tick={{ fontSize: 11 }} 
@@ -307,6 +394,7 @@ export default function MetricsPage() {
                             width={50}
                           />
                           <Tooltip 
+                            labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy")}
                             contentStyle={{ 
                               backgroundColor: "hsl(var(--card))", 
                               border: "1px solid hsl(var(--border))",
@@ -314,17 +402,24 @@ export default function MetricsPage() {
                             }}
                           />
                           <Legend />
-                          {visibleTaskMetrics.map((metric, idx) => {
-                            const originalIdx = taskMetrics.findIndex(m => m.metricId === metric.metricId);
+                          {chartConfigs.map((config, idx) => {
+                            const lineKey = config.variationId !== null 
+                              ? `metric_${config.metricId}_var_${config.variationId}`
+                              : `metric_${config.metricId}`;
+                            const lineName = config.variationName 
+                              ? `${config.metricName}: ${config.variationName}${config.unit ? ` (${config.unit})` : ""}`
+                              : `${config.metricName}${config.unit ? ` (${config.unit})` : ""}`;
+                            
                             return (
                               <Line 
-                                key={metric.metricId}
+                                key={lineKey}
+                                data={config.dataPoints}
                                 type="monotone" 
-                                dataKey={`metric_${metric.metricId}`}
-                                name={`${metric.metricName}${metric.unit ? ` (${metric.unit})` : ""}`}
-                                stroke={CHART_COLORS[originalIdx % CHART_COLORS.length]}
+                                dataKey="value"
+                                name={lineName}
+                                stroke={CHART_COLORS[idx % CHART_COLORS.length]}
                                 strokeWidth={2}
-                                dot={{ fill: CHART_COLORS[originalIdx % CHART_COLORS.length], strokeWidth: 0, r: 3 }}
+                                dot={{ fill: CHART_COLORS[idx % CHART_COLORS.length], strokeWidth: 0, r: 3 }}
                                 activeDot={{ r: 5 }}
                                 connectNulls
                               />
@@ -335,7 +430,7 @@ export default function MetricsPage() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground mt-2 text-center">
-                    {taskMetrics.reduce((sum, m) => sum + m.values.length, 0)} total data points
+                    {chartConfigs.reduce((sum, c) => sum + c.dataPoints.length, 0)} data points in selected range
                   </p>
                 </CardContent>
               </Card>

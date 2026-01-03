@@ -63,7 +63,7 @@ export interface IStorage {
   
   // Metric Values
   getMetricValues(completionId: number): Promise<MetricValue[]>;
-  getMetricHistory(metricId: number, limit?: number): Promise<{value: number | string, completedAt: Date}[]>;
+  getMetricHistory(metricId: number, limit?: number): Promise<{id: number, value: number | string, completedAt: Date, variationId: number | null, variationName: string | null}[]>;
 
   // Task Tags helpers
   getTaskTags(taskId: number): Promise<Tag[]>;
@@ -1659,11 +1659,13 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(metricValues).where(eq(metricValues.completionId, completionId));
   }
 
-  async getMetricHistory(metricId: number, limit: number = 50): Promise<{value: number | string, completedAt: Date}[]> {
+  async getMetricHistory(metricId: number, limit: number = 50): Promise<{id: number, value: number | string, completedAt: Date, variationId: number | null, variationName: string | null}[]> {
     const result = await db.select({
+      id: metricValues.id,
       numericValue: metricValues.numericValue,
       textValue: metricValues.textValue,
       completedAt: completions.completedAt,
+      variationId: completions.variationId,
     })
     .from(metricValues)
     .innerJoin(completions, eq(metricValues.completionId, completions.id))
@@ -1671,9 +1673,22 @@ export class DatabaseStorage implements IStorage {
     .orderBy(desc(completions.completedAt))
     .limit(limit);
     
+    // Get variation names for any completions with variationId
+    const variationIds = result.filter(r => r.variationId !== null).map(r => r.variationId as number);
+    const uniqueVariationIds = Array.from(new Set(variationIds));
+    
+    let variationMap = new Map<number, string>();
+    if (uniqueVariationIds.length > 0) {
+      const variationsData = await db.select().from(taskVariations).where(inArray(taskVariations.id, uniqueVariationIds));
+      variationsData.forEach(v => variationMap.set(v.id, v.name));
+    }
+    
     return result.map(r => ({
+      id: r.id,
       value: r.numericValue !== null ? r.numericValue : (r.textValue || ''),
       completedAt: r.completedAt,
+      variationId: r.variationId,
+      variationName: r.variationId ? variationMap.get(r.variationId) || null : null,
     }));
   }
 

@@ -115,10 +115,11 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
     );
   };
 
-  // Build chart series: one line per (variation) for the selected metric
+  // Build chart series: one line per variation for the selected metric
+  // Each series gets its own independent data array so lines connect properly
   const buildChartSeries = (metricId: number) => {
     const filteredCompletions = getFilteredCompletions();
-    if (!filteredCompletions.length) return { series: [], dataKeys: [] };
+    if (!filteredCompletions.length) return { series: [] };
     
     // Group completions by variation
     const variationGroups = new Map<number | null, {
@@ -157,41 +158,20 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
       group.dataPoints.sort((a, b) => a.timestamp - b.timestamp);
     });
     
-    // Create unified timeline with all data points
-    const allTimestamps = new Set<number>();
-    variationGroups.forEach(group => {
-      group.dataPoints.forEach(dp => allTimestamps.add(dp.timestamp));
-    });
-    
-    const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
-    
-    // Build chart data: each row has timestamp + value for each variation
-    const chartData = sortedTimestamps.map(ts => {
-      const row: Record<string, any> = {
-        timestamp: ts,
-        date: format(new Date(ts), "MMM d"),
-        fullDate: format(new Date(ts), "MMM d, yyyy h:mm a"),
-      };
-      
-      variationGroups.forEach((group, varId) => {
-        const key = varId !== null ? `var_${varId}` : "var_default";
-        const dp = group.dataPoints.find(d => d.timestamp === ts);
-        if (dp) {
-          row[key] = dp.value;
-        }
-      });
-      
-      return row;
-    });
-    
-    // Build series info
+    // Build series info with its own data array per variation
     const seriesInfo = Array.from(variationGroups.entries()).map(([varId, group], idx) => ({
       key: varId !== null ? `var_${varId}` : "var_default",
       name: group.name,
       color: chartColors[idx % chartColors.length],
+      data: group.dataPoints.map(dp => ({
+        timestamp: dp.timestamp,
+        date: dp.date,
+        fullDate: dp.fullDate,
+        value: dp.value,
+      })),
     }));
     
-    return { data: chartData, series: seriesInfo };
+    return { series: seriesInfo };
   };
 
   const hasMetrics = historyData?.metrics && historyData.metrics.length > 0;
@@ -328,16 +308,21 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                   </div>
                   
                   {selectedMetric ? (() => {
-                    const { data: chartData, series } = buildChartSeries(selectedMetric);
+                    const { series } = buildChartSeries(selectedMetric);
                     const showLegend = series.length > 1;
                     
-                    if (!chartData || chartData.length === 0) {
+                    if (!series.length || series.every(s => s.data.length === 0)) {
                       return (
                         <p className="text-center text-muted-foreground py-8">
                           No data for the selected time range.
                         </p>
                       );
                     }
+
+                    // For X axis domain calculation
+                    const allTimestamps = series.flatMap(s => s.data.map(d => d.timestamp));
+                    const minTime = Math.min(...allTimestamps);
+                    const maxTime = Math.max(...allTimestamps);
                     
                     return (
                       <Card>
@@ -351,19 +336,23 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                         <CardContent>
                           <div className="h-64">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={chartData}>
+                              <LineChart>
                                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                                 <XAxis 
-                                  dataKey="date" 
+                                  dataKey="timestamp"
+                                  type="number"
+                                  domain={[minTime, maxTime]}
+                                  tickFormatter={(ts) => format(new Date(ts), "MMM d")}
                                   tick={{ fontSize: 12 }}
                                   className="text-muted-foreground"
+                                  allowDuplicatedCategory={false}
                                 />
                                 <YAxis 
                                   tick={{ fontSize: 12 }}
                                   className="text-muted-foreground"
                                 />
                                 <Tooltip 
-                                  labelFormatter={(_, payload) => payload[0]?.payload?.fullDate}
+                                  labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy h:mm a")}
                                   contentStyle={{
                                     backgroundColor: 'hsl(var(--card))',
                                     border: '1px solid hsl(var(--border))',
@@ -374,13 +363,13 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                                 {series.map((s) => (
                                   <Line 
                                     key={s.key}
+                                    data={s.data}
                                     type="monotone" 
-                                    dataKey={s.key}
+                                    dataKey="value"
                                     name={s.name}
                                     stroke={s.color}
                                     strokeWidth={2}
                                     dot={{ fill: s.color }}
-                                    connectNulls
                                   />
                                 ))}
                               </LineChart>
