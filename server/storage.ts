@@ -1001,26 +1001,57 @@ export class DatabaseStorage implements IStorage {
     const [strengthRepsMetric] = await db.insert(taskMetrics).values({ taskId: strengthTraining.id, name: "Reps", unit: "", dataType: "number" }).returning();
     
     // Generate 1 year of strength training data with progressive overload per variation
-    const strengthBaseWeights = { [benchVar.id]: 95, [squatVar.id]: 135, [deadliftVar.id]: 185, [ohpVar.id]: 65 };
+    // Each session is a different day with unique timestamps
+    const strengthBaseWeights: Record<number, number> = { 
+      [benchVar.id]: 95, 
+      [squatVar.id]: 135, 
+      [deadliftVar.id]: 185, 
+      [ohpVar.id]: 65 
+    };
+    
+    // Create a realistic training schedule: Mon/Wed/Fri with varying hour/minute offsets
+    const weeklySchedule = [
+      { day: 0, hour: 6, minute: 30 },  // Monday 6:30am
+      { day: 2, hour: 17, minute: 45 }, // Wednesday 5:45pm  
+      { day: 4, hour: 7, minute: 15 },  // Friday 7:15am
+    ];
+    
+    // Use seeded random for consistent demo data across regenerations
+    const seededRandom = (seed: number) => {
+      const x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    };
+    
     for (let week = 52; week >= 0; week--) {
-      // 3 sessions per week with rotating exercises
-      for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
-        const sessionDay = week * 7 + dayOffset * 2;
+      for (let schedIdx = 0; schedIdx < weeklySchedule.length; schedIdx++) {
+        const schedule = weeklySchedule[schedIdx];
+        const sessionDay = week * 7 + schedule.day;
         if (sessionDay > 365) continue;
         
-        const varIndex = (week + dayOffset) % strengthVariations.length;
-        const variation = strengthVariations[varIndex];
-        const baseWeight = strengthBaseWeights[variation.id];
-        const progressWeight = baseWeight + Math.floor((52 - week) * 1.5); // ~1.5 lbs per week progress
-        const reps = 5 + (dayOffset % 3);
+        // Deterministic skip based on week/day (not random, so variation assignment stays stable)
+        const skipSeed = week * 10 + schedIdx;
+        if (sessionDay > 7 && seededRandom(skipSeed) < 0.12) continue;
         
-        await this.completeTaskWithStreak(strengthTraining.id, userId, strengthTraining, daysAgo(sessionDay, dayOffset + 6));
+        // Derive variation deterministically from week and schedule index
+        const varIdx = (week * 3 + schedIdx) % strengthVariations.length;
+        const variation = strengthVariations[varIdx];
+        const baseWeight = strengthBaseWeights[variation.id];
+        const progressWeight = baseWeight + Math.floor((52 - week) * 1.5);
+        const reps = 5 + (schedIdx % 3);
+        
+        // Create unique timestamp with specific hour and minute
+        const completionDate = new Date(now);
+        completionDate.setDate(completionDate.getDate() - sessionDay);
+        completionDate.setHours(schedule.hour, schedule.minute, 0, 0);
+        
+        await this.completeTaskWithStreak(strengthTraining.id, userId, strengthTraining, completionDate);
         const comp = await db.select().from(completions).where(eq(completions.taskId, strengthTraining.id)).orderBy(desc(completions.completedAt)).limit(1);
         if (comp[0]) {
-          // Update completion with variation
           await db.update(completions).set({ variationId: variation.id }).where(eq(completions.id, comp[0].id));
+          // Add slight variation to weights for realism
+          const weightVariation = Math.floor(seededRandom(sessionDay * 100 + varIdx) * 10);
           await db.insert(metricValues).values([
-            { completionId: comp[0].id, metricId: strengthWeightMetric.id, numericValue: progressWeight + (dayOffset % 2) * 5 },
+            { completionId: comp[0].id, metricId: strengthWeightMetric.id, numericValue: progressWeight + weightVariation },
             { completionId: comp[0].id, metricId: strengthRepsMetric.id, numericValue: reps },
           ]);
         }
@@ -1052,31 +1083,55 @@ export class DatabaseStorage implements IStorage {
     const [runDurationMetric] = await db.insert(taskMetrics).values({ taskId: running.id, name: "Duration", unit: "min", dataType: "number" }).returning();
     
     // Generate 1 year of running data with seasonal variation
+    // Running schedule: Tue/Thu/Sat with unique hour/minute offsets
+    const runScheduleItems = [
+      { day: 1, hour: 6, minute: 15 },   // Tuesday 6:15am
+      { day: 3, hour: 18, minute: 30 },  // Thursday 6:30pm  
+      { day: 5, hour: 8, minute: 0 },    // Saturday 8:00am
+    ];
+    
+    // Reuse seeded random for consistent demo data
+    const runSeededRandom = (seed: number) => {
+      const x = Math.sin(seed + 1000) * 10000;
+      return x - Math.floor(x);
+    };
+    
     for (let week = 52; week >= 0; week--) {
-      // 3-4 runs per week
-      const runsThisWeek = 3 + (week % 3 === 0 ? 1 : 0);
-      for (let runNum = 0; runNum < runsThisWeek; runNum++) {
-        const sessionDay = week * 7 + runNum * 2;
+      for (let schedIdx = 0; schedIdx < runScheduleItems.length; schedIdx++) {
+        const schedule = runScheduleItems[schedIdx];
+        const sessionDay = week * 7 + schedule.day;
         if (sessionDay > 365) continue;
         
-        const varIndex = runNum % runVariations.length;
-        const variation = runVariations[varIndex];
+        // Deterministic skip based on week/day
+        const skipSeed = week * 10 + schedIdx + 500;
+        if (sessionDay > 7 && runSeededRandom(skipSeed) < 0.10) continue;
         
-        // Base distances by run type
+        // Assign run type based on schedule index: Easy (Tue), Tempo/Intervals (Thu), Long (Sat)
+        let variation: typeof easyRunVar;
         let baseDistance: number;
-        switch (variation.id) {
-          case easyRunVar.id: baseDistance = 3.5; break;
-          case tempoRunVar.id: baseDistance = 5; break;
-          case longRunVar.id: baseDistance = 8 + (52 - week) * 0.1; break;
-          case intervalsVar.id: baseDistance = 4; break;
-          default: baseDistance = 4;
+        if (schedIdx === 0) {
+          variation = easyRunVar;
+          baseDistance = 3.5;
+        } else if (schedIdx === 1) {
+          variation = week % 2 === 0 ? tempoRunVar : intervalsVar;
+          baseDistance = variation.id === tempoRunVar.id ? 5 : 4;
+        } else {
+          variation = longRunVar;
+          baseDistance = 8 + (52 - week) * 0.1;
         }
         
-        const distance = baseDistance + (Math.random() * 0.5 - 0.25);
+        // Deterministic distance variation
+        const distanceVariation = (runSeededRandom(sessionDay * 100 + schedIdx) * 0.5) - 0.25;
+        const distance = baseDistance + distanceVariation;
         const pace = variation.id === tempoRunVar.id || variation.id === intervalsVar.id ? 7.5 : 9;
         const duration = distance * pace;
         
-        await this.completeTaskWithStreak(running.id, userId, running, daysAgo(sessionDay, runNum + 7));
+        // Create unique timestamp with specific hour and minute
+        const completionDate = new Date(now);
+        completionDate.setDate(completionDate.getDate() - sessionDay);
+        completionDate.setHours(schedule.hour, schedule.minute, 0, 0);
+        
+        await this.completeTaskWithStreak(running.id, userId, running, completionDate);
         const comp = await db.select().from(completions).where(eq(completions.taskId, running.id)).orderBy(desc(completions.completedAt)).limit(1);
         if (comp[0]) {
           await db.update(completions).set({ variationId: variation.id }).where(eq(completions.id, comp[0].id));

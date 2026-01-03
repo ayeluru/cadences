@@ -292,13 +292,14 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                                   type="number"
                                   domain={domain}
                                   tickFormatter={(ts) => format(new Date(ts), "MMM d")}
-                                  tick={{ fontSize: 12 }}
+                                  tick={{ fontSize: 11 }}
                                   className="text-muted-foreground"
                                   allowDuplicatedCategory={false}
                                 />
                                 <YAxis 
-                                  tick={{ fontSize: 12 }}
+                                  tick={{ fontSize: 11 }}
                                   className="text-muted-foreground"
+                                  width={50}
                                 />
                                 <Tooltip 
                                   labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy h:mm a")}
