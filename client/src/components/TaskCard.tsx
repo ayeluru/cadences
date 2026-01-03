@@ -166,11 +166,9 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                   </div>
                 )}
                 <div className="flex gap-2 pt-2">
-                  {(!isFrequencyTask || !hasVariations) && (
-                    <Button size="sm" onClick={(e) => { e.stopPropagation(); handleComplete(); }}>
-                      <CheckCircle2 className="w-4 h-4 mr-1" /> Done
-                    </Button>
-                  )}
+                  <Button size="sm" onClick={(e) => { e.stopPropagation(); handleComplete(); }}>
+                    <CheckCircle2 className="w-4 h-4 mr-1" /> Done
+                  </Button>
                   <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditOpen(true); }}>
                     <Edit2 className="w-4 h-4 mr-1" /> Edit
                   </Button>
@@ -401,9 +399,9 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                   );
                 })}
               </div>
-              {task.variationStats && task.variationStats.length > 0 && (
+              {task.variationStats && task.variationStats.some(s => s.count > 0) && (
                 <div className="mt-2 text-xs text-muted-foreground">
-                  Total completions with variations: {task.variationStats.reduce((sum, s) => sum + s.count, 0)}
+                  Completions by variation: {task.variationStats.filter(s => s.count > 0).map(s => `${s.name}: ${s.count}`).join(', ')}
                 </div>
               )}
             </motion.div>
