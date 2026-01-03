@@ -2,8 +2,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TaskWithDetails, TaskMetric } from "@shared/schema";
-import { useState } from "react";
+import { TaskWithDetails, TaskMetric, TaskVariation } from "@shared/schema";
+import { useState, useEffect } from "react";
 import { Loader2, Calendar, Clock } from "lucide-react";
 import { useCompleteTask } from "@/hooks/use-tasks";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -23,6 +23,17 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
   const [completedAt, setCompletedAt] = useState<Date | undefined>(undefined);
   const [completionTime, setCompletionTime] = useState<string>("");
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedVariationId, setSelectedVariationId] = useState<number | undefined>(undefined);
+  const [variations, setVariations] = useState<TaskVariation[]>([]);
+
+  useEffect(() => {
+    if (open && task.id) {
+      fetch(`/api/tasks/${task.id}/variations`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => setVariations(data || []))
+        .catch(() => setVariations([]));
+    }
+  }, [open, task.id]);
 
   const handleSubmit = () => {
     const metrics = Object.entries(metricValues).map(([metricId, value]) => ({
@@ -44,7 +55,8 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
       id: task.id, 
       notes, 
       metrics,
-      completedAt: finalCompletedAt
+      completedAt: finalCompletedAt,
+      variationId: selectedVariationId
     }, {
       onSuccess: () => {
         onOpenChange(false);
@@ -53,6 +65,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
         setCompletedAt(undefined);
         setCompletionTime("");
         setShowDatePicker(false);
+        setSelectedVariationId(undefined);
       }
     });
   };
@@ -68,6 +81,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
       setCompletedAt(undefined);
       setCompletionTime("");
       setShowDatePicker(false);
+      setSelectedVariationId(undefined);
     }
     onOpenChange(isOpen);
   };
@@ -141,6 +155,27 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
               <p className="text-sm text-muted-foreground">Today, {format(new Date(), "PPP")}</p>
             )}
           </div>
+
+          {variations.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="variation">Which variation?</Label>
+              <select
+                id="variation"
+                data-testid="select-variation"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={selectedVariationId ?? ""}
+                onChange={(e) => setSelectedVariationId(e.target.value ? Number(e.target.value) : undefined)}
+              >
+                <option value="">No specific variation</option>
+                {variations.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Select which variation you performed (optional).
+              </p>
+            </div>
+          )}
 
           {task.metrics?.map((metric: TaskMetric) => (
             <div key={metric.id} className="space-y-2">

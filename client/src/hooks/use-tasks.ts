@@ -177,18 +177,20 @@ export function useCompleteTask() {
       id, 
       notes, 
       completedAt,
-      metrics 
+      metrics,
+      variationId
     }: { 
       id: number; 
       notes?: string; 
       completedAt?: string;
       metrics?: { metricId: number; value: number | string }[];
+      variationId?: number;
     }) => {
       const url = buildUrl(api.tasks.complete.path, { id });
       const res = await fetch(url, {
         method: api.tasks.complete.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes, completedAt, metrics }),
+        body: JSON.stringify({ notes, completedAt, metrics, variationId }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to complete task");

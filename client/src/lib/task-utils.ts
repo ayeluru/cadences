@@ -4,9 +4,6 @@ export type CadenceMagnitude = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export function filterTasksByCadence(tasks: TaskWithDetails[], magnitude: CadenceMagnitude): TaskWithDetails[] {
   return tasks.filter(task => {
-    // Skip variations - they should only appear under their parent task
-    if (task.parentTaskId) return false;
-    
     // Handle frequency-based tasks
     if (task.taskType === 'frequency') {
       // Show frequency tasks in weekly view since they're typically weekly targets

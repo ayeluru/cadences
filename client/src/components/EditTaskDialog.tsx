@@ -5,13 +5,13 @@ import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateTask, useTasks, useReassignTask } from "@/hooks/use-tasks";
-import { insertTaskSchema, TaskWithDetails, TaskMetric } from "@shared/schema";
+import { insertTaskSchema, TaskWithDetails, TaskMetric, TaskVariation } from "@shared/schema";
 import { z } from "zod";
 import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useState, useEffect } from "react";
-import { Loader2, Plus, X, BarChart3, ArrowRightLeft, Clock, Calendar } from "lucide-react";
+import { Loader2, Plus, X, BarChart3, ArrowRightLeft, Clock, Calendar, Layers } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
@@ -32,7 +32,6 @@ const DAYS_OF_WEEK = [
 const formSchema = insertTaskSchema.partial().extend({
   intervalValue: z.coerce.number().min(1, "Interval must be at least 1").optional(),
   categoryId: z.coerce.number().optional().nullable(),
-  parentTaskId: z.coerce.number().optional().nullable(),
   targetCount: z.coerce.number().min(1).optional().nullable(),
 });
 
@@ -91,10 +90,9 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const [scheduledDaysOfMonth, setScheduledDaysOfMonth] = useState("");
   const [refractoryValue, setRefractoryValue] = useState("");
   const [refractoryUnit, setRefractoryUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
-
-  const parentTasks = allTasks?.filter((t: TaskWithDetails) => 
-    t.taskType === 'frequency' && !t.parentTaskId && t.id !== task.id
-  ) || [];
+  const [variations, setVariations] = useState<TaskVariation[]>([]);
+  const [newVariationName, setNewVariationName] = useState("");
+  const [isLoadingVariations, setIsLoadingVariations] = useState(false);
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -104,7 +102,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       intervalValue: task.intervalValue ?? undefined,
       intervalUnit: task.intervalUnit as any,
       categoryId: task.categoryId ?? undefined,
-      parentTaskId: task.parentTaskId ?? undefined,
       targetCount: task.targetCount ?? undefined,
       targetPeriod: task.targetPeriod as any,
     }
@@ -118,7 +115,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         intervalValue: task.intervalValue ?? undefined,
         intervalUnit: task.intervalUnit as any,
         categoryId: task.categoryId ?? undefined,
-        parentTaskId: task.parentTaskId ?? undefined,
         targetCount: task.targetCount ?? undefined,
         targetPeriod: task.targetPeriod as any,
       });
@@ -138,8 +134,61 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       const refractoryDisplay = convertMinutesToDisplay(task.refractoryMinutes);
       setRefractoryValue(refractoryDisplay.value);
       setRefractoryUnit(refractoryDisplay.unit);
+      
+      loadVariations();
     }
   }, [task, reset]);
+
+  const loadVariations = async () => {
+    if (!task.id) return;
+    setIsLoadingVariations(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/variations`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setVariations(data || []);
+      }
+    } catch (error) {
+      console.error('Failed to load variations:', error);
+    } finally {
+      setIsLoadingVariations(false);
+    }
+  };
+
+  const addVariation = async () => {
+    if (!newVariationName.trim()) return;
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/variations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newVariationName.trim() }),
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const newVar = await res.json();
+        setVariations(prev => [...prev, newVar]);
+        setNewVariationName("");
+        toast({ title: "Variation added", description: `"${newVar.name}" added to this task.` });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to add variation", variant: "destructive" });
+    }
+  };
+
+  const deleteVariation = async (variationId: number) => {
+    try {
+      const res = await fetch(`/api/variations/${variationId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setVariations(prev => prev.filter(v => v.id !== variationId));
+        toast({ title: "Variation removed", description: "Variation deleted from this task." });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to delete variation", variant: "destructive" });
+    }
+  };
 
   const onSubmit = async (data: FormValues) => {
     setIsSavingMetrics(true);
@@ -165,7 +214,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         title: data.title,
         description: data.description,
         categoryId: data.categoryId || null,
-        parentTaskId: data.parentTaskId || null,
         tagIds: selectedTagIds,
         taskType,
       };
@@ -437,32 +485,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
               </Tabs>
             </div>
 
-            {parentTasks.length > 0 && taskType !== 'frequency' && (
-              <div className="space-y-2">
-                <Label htmlFor="edit-parentTask">Counts Toward</Label>
-                <p className="text-xs text-muted-foreground">
-                  Link this task to a frequency-based goal
-                </p>
-                <select 
-                  id="edit-parentTask"
-                  data-testid="select-edit-parent-task"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  {...register("parentTaskId")}
-                >
-                  <option value="">None - standalone task</option>
-                  {parentTasks.map((t: TaskWithDetails) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title} ({t.targetCount}x/{t.targetPeriod})
-                    </option>
-                  ))}
-                </select>
-                {task.parentTask && (
-                  <p className="text-xs text-muted-foreground">
-                    Currently linked to: <span className="font-medium">{task.parentTask.title}</span>
-                  </p>
-                )}
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="edit-category">Category</Label>
@@ -518,6 +540,65 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
                     {tag.name}
                   </Badge>
                 ))}
+              </div>
+            </div>
+
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                <Label>Variations</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Add different ways to complete this task. When completing, you can select which variation you performed.
+              </p>
+              
+              {isLoadingVariations ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading variations...
+                </div>
+              ) : variations.length > 0 ? (
+                <div className="space-y-2">
+                  {variations.map((v) => (
+                    <div key={v.id} className="flex items-center justify-between bg-muted/50 rounded-md px-3 py-2">
+                      <span className="text-sm">{v.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        data-testid={`button-delete-variation-${v.id}`}
+                        onClick={() => deleteVariation(v.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Add variation (e.g., Goblet Squat)"
+                  value={newVariationName}
+                  onChange={(e) => setNewVariationName(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addVariation();
+                    }
+                  }}
+                  data-testid="input-new-variation"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={addVariation}
+                  disabled={!newVariationName.trim()}
+                  data-testid="button-add-variation"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
             </div>
 

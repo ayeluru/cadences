@@ -57,9 +57,6 @@ export default function Dashboard() {
   };
 
   tasks?.forEach(task => {
-    // Skip variations - they appear nested under their parent
-    if (task.parentTaskId) return;
-    
     const status = task.status || 'later'; // Default fallback
     if (groupedTasks[status]) {
       groupedTasks[status].push(task);

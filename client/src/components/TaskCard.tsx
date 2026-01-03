@@ -40,7 +40,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
   const isFrequencyTask = task.taskType === 'frequency';
   const hasVariations = task.variations && task.variations.length > 0;
   const hasMetrics = task.metrics && task.metrics.length > 0;
-  const isVariation = !!task.parentTaskId;
+  const isVariation = false; // Variations are now selected during completion, not as child tasks
 
   const getStatusColor = (status: string | undefined) => {
     switch (status) {
@@ -380,11 +380,32 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
               className="mt-4 space-y-3"
             >
               <p className="text-sm text-muted-foreground font-medium">
-                Complete any of these to count toward your goal:
+                Variations you can choose from when completing:
               </p>
-              {task.variations?.map(variation => (
-                <TaskCard key={variation.id} task={variation as TaskWithDetails} showVariations={false} />
-              ))}
+              <div className="flex flex-wrap gap-2">
+                {task.variations?.map(variation => {
+                  const stats = task.variationStats?.find(s => s.variationId === variation.id);
+                  return (
+                    <Badge 
+                      key={variation.id} 
+                      variant="outline"
+                      className="px-3 py-1"
+                    >
+                      {variation.name}
+                      {stats && stats.count > 0 && (
+                        <span className="ml-2 text-muted-foreground text-xs">
+                          ({stats.count}x)
+                        </span>
+                      )}
+                    </Badge>
+                  );
+                })}
+              </div>
+              {task.variationStats && task.variationStats.length > 0 && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Total completions with variations: {task.variationStats.reduce((sum, s) => sum + s.count, 0)}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

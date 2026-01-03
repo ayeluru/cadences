@@ -34,7 +34,6 @@ const formSchema = insertTaskSchema.partial().extend({
   intervalValue: z.coerce.number().min(1).optional().nullable(),
   targetCount: z.coerce.number().min(1).optional().nullable(),
   categoryId: z.coerce.number().optional().nullable(),
-  parentTaskId: z.coerce.number().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema> & { tagIds: number[] };
@@ -87,10 +86,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     }
   }, [open, currentProfile?.id]);
 
-  const parentTasks = allTasks?.filter((t: TaskWithDetails) => 
-    t.taskType === 'frequency' && !t.parentTaskId
-  ) || [];
-
   const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -101,7 +96,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       taskType: 'interval',
       targetCount: null,
       targetPeriod: 'week',
-      parentTaskId: null,
       refractoryMinutes: null,
     }
   });
@@ -118,7 +112,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       taskType,
       categoryId: data.categoryId || undefined,
       tagIds: selectedTagIds,
-      parentTaskId: data.parentTaskId || undefined,
       profileId: selectedProfileId,
     };
 
@@ -188,7 +181,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
           taskType: 'interval',
           targetCount: null,
           targetPeriod: 'week',
-          parentTaskId: null,
           refractoryMinutes: null,
         });
         setSelectedTagIds([]);
@@ -475,28 +467,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
             </TabsContent>
           </Tabs>
 
-          {/* Counts toward - shown for interval and scheduled tasks when parent frequency tasks exist */}
-          {parentTasks.length > 0 && taskType !== 'frequency' && (
-            <div className="space-y-2">
-              <Label htmlFor="parentTask">Counts toward (optional)</Label>
-              <select 
-                id="parentTask"
-                data-testid="select-parent-task"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                {...register("parentTaskId")}
-              >
-                <option value="">None - standalone task</option>
-                {parentTasks.map((task: TaskWithDetails) => (
-                  <option key={task.id} value={task.id}>
-                    {task.title} ({task.targetCount}x per {task.targetPeriod})
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                Link this task to a frequency goal. Completing it counts toward that goal's target.
-              </p>
-            </div>
-          )}
 
           {/* Advanced Configuration - Collapsed Section */}
           <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
