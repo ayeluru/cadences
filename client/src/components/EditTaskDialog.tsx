@@ -605,12 +605,12 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
             <div className="space-y-3 border-t pt-4">
               <div className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
-                <Label>Statistics to Track</Label>
+                <Label>Metrics to Track</Label>
               </div>
               
               {task.metrics && task.metrics.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">Existing statistics:</p>
+                  <p className="text-xs text-muted-foreground">Existing metrics:</p>
                   {task.metrics.map((metric: TaskMetric) => (
                     <div key={metric.id} className="flex items-center justify-between bg-muted/50 rounded-md px-3 py-2">
                       <span className="text-sm">{metric.name} {metric.unit && `(${metric.unit})`}</span>
@@ -629,12 +629,12 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
               )}
 
               <p className="text-xs text-muted-foreground">
-                Add new statistics to record when completing this task.
+                Add metrics to record when completing this task.
               </p>
               
               <div className="flex gap-2">
                 <Input
-                  placeholder="Stat name (e.g., Weight)"
+                  placeholder="Metric name (e.g., Weight)"
                   value={newMetricName}
                   onChange={(e) => setNewMetricName(e.target.value)}
                   data-testid="input-new-metric-name"
@@ -660,7 +660,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
               
               {newMetrics.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">New statistics to add:</p>
+                  <p className="text-xs text-muted-foreground">New metrics to add:</p>
                   {newMetrics.map((m, i) => (
                     <div key={i} className="flex items-center justify-between bg-accent/30 rounded-md px-3 py-2">
                       <span className="text-sm">{m.name} {m.unit && `(${m.unit})`}</span>

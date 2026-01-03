@@ -30,8 +30,10 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
   const [newVariationName, setNewVariationName] = useState("");
   const [localVariations, setLocalVariations] = useState<TaskVariation[]>([]);
 
-  // Use variations from task payload, merged with any newly added local variations
-  const variations = [...(task.variations || []), ...localVariations];
+  // Use variations from task payload, merged with any newly added local variations (avoiding duplicates)
+  const taskVariationIds = new Set((task.variations || []).map(v => v.id));
+  const uniqueLocalVariations = localVariations.filter(v => !taskVariationIds.has(v.id));
+  const variations = [...(task.variations || []), ...uniqueLocalVariations];
 
   const addVariationMutation = useMutation({
     mutationFn: async (name: string) => {
