@@ -390,19 +390,18 @@ export default function UserGuide() {
               <div className="p-2 rounded-lg bg-primary/10">
                 <Zap className="w-5 h-5 text-primary" />
               </div>
-              Variations & "Counts Toward"
+              Task Variations
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-2 pb-4 space-y-4">
             <p className="text-muted-foreground">
-              Some tasks have multiple ways to complete them. For example, "Exercise 3x/week" could be satisfied by doing different workouts.
+              Some tasks have multiple ways to complete them. Add variations to track which specific method you used each time.
             </p>
             <Card className="bg-muted/50">
               <CardContent className="pt-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Target className="w-5 h-5 text-primary" />
-                  <span className="font-medium">Exercise</span>
-                  <Badge variant="secondary" className="text-xs">Goal: 3x/week</Badge>
+                  <span className="font-medium">Squats</span>
                 </div>
                 <div className="ml-6 space-y-2 border-l-2 border-primary/30 pl-4">
                   <div className="flex items-center gap-2">
@@ -417,14 +416,14 @@ export default function UserGuide() {
                   </div>
                   <div className="flex items-center gap-2">
                     <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">Running</span>
+                    <span className="text-sm">Front Squat</span>
                     <Badge variant="outline" className="text-xs">Variation</Badge>
                   </div>
                 </div>
               </CardContent>
             </Card>
             <p className="text-sm text-muted-foreground">
-              Completing any variation counts toward the parent goal. Use the "Counts Toward" setting when creating or editing a task to link it to a frequency-based goal.
+              When completing a task with variations, you can select which variation you performed. Add variations in the Advanced Options when creating or editing any task type.
             </p>
           </AccordionContent>
         </AccordionItem>

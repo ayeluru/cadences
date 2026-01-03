@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCreateTask, useTasks } from "@/hooks/use-tasks";
+import { useQueryClient } from "@tanstack/react-query";
 import { insertTaskSchema, InsertTask, TaskWithDetails } from "@shared/schema";
 import { z } from "zod";
 import { useCategories, useCreateCategory } from "@/hooks/use-categories";
@@ -12,7 +13,7 @@ import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { useState, useEffect } from "react";
-import { Loader2, Plus, Trash2, Clock, Calendar, ChevronDown } from "lucide-react";
+import { Loader2, Plus, Trash2, Clock, Calendar, ChevronDown, Layers } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Checkbox } from "./ui/checkbox";
@@ -51,6 +52,7 @@ interface CreateTaskDialogProps {
 
 export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const createMutation = useCreateTask();
   const createCategoryMutation = useCreateCategory();
   const createTagMutation = useCreateTag();
@@ -78,6 +80,9 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const [refractoryUnit, setRefractoryUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
   // Advanced section collapsed state
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Variations state
+  const [variations, setVariations] = useState<string[]>([]);
+  const [newVariationName, setNewVariationName] = useState("");
   
   // Reset selected profile when dialog opens or current profile changes
   useEffect(() => {
@@ -172,6 +177,26 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
             });
           }
         }
+        if (variations.length > 0 && newTask?.id) {
+          let variationErrors = 0;
+          for (const variationName of variations) {
+            try {
+              const res = await fetch(`/api/tasks/${newTask.id}/variations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: variationName }),
+                credentials: 'include'
+              });
+              if (!res.ok) variationErrors++;
+            } catch {
+              variationErrors++;
+            }
+          }
+          if (variationErrors > 0) {
+            toast({ title: "Warning", description: `${variationErrors} variation(s) failed to save`, variant: "destructive" });
+          }
+          queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
+        }
         onOpenChange(false);
         reset({
           intervalValue: 1,
@@ -194,8 +219,24 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         setRefractoryValue("");
         setRefractoryUnit('hours');
         setAdvancedOpen(false);
+        setVariations([]);
+        setNewVariationName("");
       }
     });
+  };
+
+  const addVariation = () => {
+    if (!newVariationName.trim()) return;
+    if (variations.includes(newVariationName.trim())) {
+      toast({ title: "Duplicate", description: "This variation already exists", variant: "destructive" });
+      return;
+    }
+    setVariations(prev => [...prev, newVariationName.trim()]);
+    setNewVariationName("");
+  };
+
+  const removeVariation = (name: string) => {
+    setVariations(prev => prev.filter(v => v !== name));
   };
 
   const handleCreateNewCategory = () => {
@@ -244,8 +285,41 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     setMetrics(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleDialogClose = (isOpen: boolean) => {
+    if (!isOpen) {
+      setVariations([]);
+      setNewVariationName("");
+      setMetrics([]);
+      setNewMetricName("");
+      setNewMetricUnit("");
+      setSelectedTagIds([]);
+      setShowNewCategoryInput(false);
+      setNewCategoryName("");
+      setShowNewTagInput(false);
+      setNewTagName("");
+      setTaskType('interval');
+      setSelectedDaysOfWeek([]);
+      setScheduledTime("");
+      setScheduledDaysOfMonth("");
+      setRefractoryValue("");
+      setRefractoryUnit('hours');
+      setAdvancedOpen(false);
+      reset({
+        intervalValue: 1,
+        intervalUnit: 'days',
+        categoryId: null,
+        tagIds: [],
+        taskType: 'interval',
+        targetCount: null,
+        targetPeriod: 'week',
+        refractoryMinutes: null,
+      });
+    }
+    onOpenChange(isOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogClose}>
       <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Task</DialogTitle>
@@ -395,9 +469,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                 </p>
               </div>
               
-              <p className="text-xs text-muted-foreground">
-                Tip: Create variation tasks that count toward this goal to track different ways of completing it.
-              </p>
             </TabsContent>
 
             <TabsContent value="scheduled" className="space-y-4 pt-4">
@@ -639,11 +710,65 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                   </div>
                 )}
               </div>
+
+              <div className="space-y-3 border-t pt-4">
+                <Label className="flex items-center gap-2">
+                  <Layers className="w-4 h-4" />
+                  Variations (optional)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Add variations to track different ways of completing this task. When completing, you can select which variation you did.
+                </p>
+                
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Variation name (e.g., Goblet Squat)"
+                    value={newVariationName}
+                    onChange={(e) => setNewVariationName(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addVariation();
+                      }
+                    }}
+                    data-testid="input-variation-name"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    onClick={addVariation}
+                    disabled={!newVariationName.trim()}
+                    data-testid="button-add-variation"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                {variations.length > 0 && (
+                  <div className="space-y-2">
+                    {variations.map((v, i) => (
+                      <div key={i} className="flex items-center justify-between bg-muted/50 rounded-md px-3 py-2">
+                        <span className="text-sm">{v}</span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => removeVariation(v)}
+                          data-testid={`button-remove-variation-${i}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CollapsibleContent>
           </Collapsible>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
+            <Button type="button" variant="outline" onClick={() => handleDialogClose(false)} data-testid="button-cancel">
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending} data-testid="button-create-task">
