@@ -974,133 +974,159 @@ export class DatabaseStorage implements IStorage {
     }).returning();
     await db.insert(taskTags).values([{ taskId: walkDogLong.id, tagId: outdoorsTag.id }, { taskId: walkDogLong.id, tagId: weekendTag.id }]);
 
-    // ===== FREQUENCY TASKS WITH VARIATIONS =====
+    // ===== EXERCISE WITH VARIATIONS (LONG TERM DATA - 1 YEAR+) =====
     
-    // 10. Exercise 4x/week - Parent frequency task with refractory period
-    const [exercise] = await db.insert(tasks).values({
-      title: "Exercise",
-      description: "Any workout counts toward weekly goal",
-      taskType: "frequency",
-      targetCount: 4,
-      targetPeriod: "week",
-      refractoryMinutes: 480, // 8 hours minimum between workouts
-      categoryId: exerciseCat.id,
-      profileId,
-      userId,
-      isArchived: false
-    }).returning();
-    
-    // Exercise variations (linked to parent)
-    const [backSquat] = await db.insert(tasks).values({
-      title: "Back Squat",
-      description: "3x8 with progressive overload",
-      taskType: "interval",
-      intervalValue: 3,
-      intervalUnit: "days",
-      categoryId: exerciseCat.id,
-
-      parentTaskId: exercise.id,
-      profileId,
-      userId,
-      isArchived: false
-    }).returning();
-    const [squatWeightMetric] = await db.insert(taskMetrics).values({ taskId: backSquat.id, name: "Weight", unit: "lbs", dataType: "number" }).returning();
-    const [squatRepsMetric] = await db.insert(taskMetrics).values({ taskId: backSquat.id, name: "Reps", unit: "", dataType: "number" }).returning();
-    const [squatRPEMetric] = await db.insert(taskMetrics).values({ taskId: backSquat.id, name: "RPE", unit: "", dataType: "number" }).returning();
-    
-    // Squat completions with progressive overload metrics
-    for (let session = 8; session >= 0; session--) {
-      const baseWeight = 135 + (8 - session) * 5;
-      await this.completeTaskWithStreak(backSquat.id, userId, backSquat, daysAgo(session * 3 + 1, 2));
-      const comp = await db.select().from(completions).where(eq(completions.taskId, backSquat.id)).orderBy(desc(completions.completedAt)).limit(1);
-      if (comp[0]) {
-        await db.insert(metricValues).values([
-          { completionId: comp[0].id, metricId: squatWeightMetric.id, numericValue: baseWeight },
-          { completionId: comp[0].id, metricId: squatRepsMetric.id, numericValue: 8 - (session % 2) },
-          { completionId: comp[0].id, metricId: squatRPEMetric.id, numericValue: 7 + (session % 3) },
-        ]);
-      }
-    }
-
-    const [benchPress] = await db.insert(tasks).values({
-      title: "Bench Press",
-      description: "3x5 strength focus",
-      taskType: "interval",
-      intervalValue: 4,
-      intervalUnit: "days",
-      categoryId: exerciseCat.id,
-      parentTaskId: exercise.id,
-      profileId,
-      userId,
-      isArchived: false
-    }).returning();
-    const [benchWeightMetric] = await db.insert(taskMetrics).values({ taskId: benchPress.id, name: "Weight", unit: "lbs", dataType: "number" }).returning();
-    for (let session = 6; session >= 0; session--) {
-      await this.completeTaskWithStreak(benchPress.id, userId, benchPress, daysAgo(session * 4 + 2, 3));
-      const comp = await db.select().from(completions).where(eq(completions.taskId, benchPress.id)).orderBy(desc(completions.completedAt)).limit(1);
-      if (comp[0]) {
-        await db.insert(metricValues).values([
-          { completionId: comp[0].id, metricId: benchWeightMetric.id, numericValue: 95 + (6 - session) * 5 },
-        ]);
-      }
-    }
-
-    const [pullUps] = await db.insert(tasks).values({
-      title: "Pull-ups",
-      description: "3 sets to failure",
-      taskType: "interval",
-      intervalValue: 3,
-      intervalUnit: "days",
-      categoryId: exerciseCat.id,
-      parentTaskId: exercise.id,
-      profileId,
-      userId,
-      isArchived: false
-    }).returning();
-    const [pullUpRepsMetric] = await db.insert(taskMetrics).values({ taskId: pullUps.id, name: "Total Reps", unit: "", dataType: "number" }).returning();
-    for (let session = 7; session >= 0; session--) {
-      await this.completeTaskWithStreak(pullUps.id, userId, pullUps, daysAgo(session * 3, 4));
-      const comp = await db.select().from(completions).where(eq(completions.taskId, pullUps.id)).orderBy(desc(completions.completedAt)).limit(1);
-      if (comp[0]) {
-        await db.insert(metricValues).values([
-          { completionId: comp[0].id, metricId: pullUpRepsMetric.id, numericValue: 18 + (7 - session) },
-        ]);
-      }
-    }
-
-    const [running] = await db.insert(tasks).values({
-      title: "Running",
-      description: "Cardio session",
+    // 10. Strength Training - Task with inline variations for different exercises
+    const [strengthTraining] = await db.insert(tasks).values({
+      title: "Strength Training",
+      description: "Track weight lifted across different exercises",
       taskType: "interval",
       intervalValue: 2,
       intervalUnit: "days",
       categoryId: exerciseCat.id,
-      parentTaskId: exercise.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    
+    // Create variations for strength training (inline variations, not child tasks)
+    const [benchVar] = await db.insert(taskVariations).values({ taskId: strengthTraining.id, name: "Bench Press" }).returning();
+    const [squatVar] = await db.insert(taskVariations).values({ taskId: strengthTraining.id, name: "Back Squat" }).returning();
+    const [deadliftVar] = await db.insert(taskVariations).values({ taskId: strengthTraining.id, name: "Deadlift" }).returning();
+    const [ohpVar] = await db.insert(taskVariations).values({ taskId: strengthTraining.id, name: "Overhead Press" }).returning();
+    const strengthVariations = [benchVar, squatVar, deadliftVar, ohpVar];
+    
+    // Create metrics for strength training
+    const [strengthWeightMetric] = await db.insert(taskMetrics).values({ taskId: strengthTraining.id, name: "Weight", unit: "lbs", dataType: "number" }).returning();
+    const [strengthRepsMetric] = await db.insert(taskMetrics).values({ taskId: strengthTraining.id, name: "Reps", unit: "", dataType: "number" }).returning();
+    
+    // Generate 1 year of strength training data with progressive overload per variation
+    const strengthBaseWeights = { [benchVar.id]: 95, [squatVar.id]: 135, [deadliftVar.id]: 185, [ohpVar.id]: 65 };
+    for (let week = 52; week >= 0; week--) {
+      // 3 sessions per week with rotating exercises
+      for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
+        const sessionDay = week * 7 + dayOffset * 2;
+        if (sessionDay > 365) continue;
+        
+        const varIndex = (week + dayOffset) % strengthVariations.length;
+        const variation = strengthVariations[varIndex];
+        const baseWeight = strengthBaseWeights[variation.id];
+        const progressWeight = baseWeight + Math.floor((52 - week) * 1.5); // ~1.5 lbs per week progress
+        const reps = 5 + (dayOffset % 3);
+        
+        await this.completeTaskWithStreak(strengthTraining.id, userId, strengthTraining, daysAgo(sessionDay, dayOffset + 6));
+        const comp = await db.select().from(completions).where(eq(completions.taskId, strengthTraining.id)).orderBy(desc(completions.completedAt)).limit(1);
+        if (comp[0]) {
+          // Update completion with variation
+          await db.update(completions).set({ variationId: variation.id }).where(eq(completions.id, comp[0].id));
+          await db.insert(metricValues).values([
+            { completionId: comp[0].id, metricId: strengthWeightMetric.id, numericValue: progressWeight + (dayOffset % 2) * 5 },
+            { completionId: comp[0].id, metricId: strengthRepsMetric.id, numericValue: reps },
+          ]);
+        }
+      }
+    }
+    
+    // 11. Running - Long term cardio data with variations for different run types
+    const [running] = await db.insert(tasks).values({
+      title: "Running",
+      description: "Track running workouts",
+      taskType: "interval",
+      intervalValue: 2,
+      intervalUnit: "days",
+      categoryId: exerciseCat.id,
       profileId,
       userId,
       isArchived: false
     }).returning();
     await db.insert(taskTags).values([{ taskId: running.id, tagId: outdoorsTag.id }]);
+    
+    // Create variations for running
+    const [easyRunVar] = await db.insert(taskVariations).values({ taskId: running.id, name: "Easy Run" }).returning();
+    const [tempoRunVar] = await db.insert(taskVariations).values({ taskId: running.id, name: "Tempo Run" }).returning();
+    const [longRunVar] = await db.insert(taskVariations).values({ taskId: running.id, name: "Long Run" }).returning();
+    const [intervalsVar] = await db.insert(taskVariations).values({ taskId: running.id, name: "Intervals" }).returning();
+    const runVariations = [easyRunVar, tempoRunVar, longRunVar, intervalsVar];
+    
     const [runDistanceMetric] = await db.insert(taskMetrics).values({ taskId: running.id, name: "Distance", unit: "miles", dataType: "number" }).returning();
     const [runDurationMetric] = await db.insert(taskMetrics).values({ taskId: running.id, name: "Duration", unit: "min", dataType: "number" }).returning();
-    const [runPaceMetric] = await db.insert(taskMetrics).values({ taskId: running.id, name: "Pace", unit: "min/mi", dataType: "text" }).returning();
-    for (let session = 10; session >= 0; session--) {
-      await this.completeTaskWithStreak(running.id, userId, running, daysAgo(session * 2 + 1, 1));
-      const comp = await db.select().from(completions).where(eq(completions.taskId, running.id)).orderBy(desc(completions.completedAt)).limit(1);
+    
+    // Generate 1 year of running data with seasonal variation
+    for (let week = 52; week >= 0; week--) {
+      // 3-4 runs per week
+      const runsThisWeek = 3 + (week % 3 === 0 ? 1 : 0);
+      for (let runNum = 0; runNum < runsThisWeek; runNum++) {
+        const sessionDay = week * 7 + runNum * 2;
+        if (sessionDay > 365) continue;
+        
+        const varIndex = runNum % runVariations.length;
+        const variation = runVariations[varIndex];
+        
+        // Base distances by run type
+        let baseDistance: number;
+        switch (variation.id) {
+          case easyRunVar.id: baseDistance = 3.5; break;
+          case tempoRunVar.id: baseDistance = 5; break;
+          case longRunVar.id: baseDistance = 8 + (52 - week) * 0.1; break;
+          case intervalsVar.id: baseDistance = 4; break;
+          default: baseDistance = 4;
+        }
+        
+        const distance = baseDistance + (Math.random() * 0.5 - 0.25);
+        const pace = variation.id === tempoRunVar.id || variation.id === intervalsVar.id ? 7.5 : 9;
+        const duration = distance * pace;
+        
+        await this.completeTaskWithStreak(running.id, userId, running, daysAgo(sessionDay, runNum + 7));
+        const comp = await db.select().from(completions).where(eq(completions.taskId, running.id)).orderBy(desc(completions.completedAt)).limit(1);
+        if (comp[0]) {
+          await db.update(completions).set({ variationId: variation.id }).where(eq(completions.id, comp[0].id));
+          await db.insert(metricValues).values([
+            { completionId: comp[0].id, metricId: runDistanceMetric.id, numericValue: Math.round(distance * 10) / 10 },
+            { completionId: comp[0].id, metricId: runDurationMetric.id, numericValue: Math.round(duration) },
+          ]);
+        }
+      }
+    }
+    
+    // 12. Body Weight - Daily tracking over 1 year to show weight trend
+    const [bodyWeight] = await db.insert(tasks).values({
+      title: "Weigh In",
+      description: "Daily weight tracking",
+      taskType: "interval",
+      intervalValue: 1,
+      intervalUnit: "days",
+      categoryId: healthCat.id,
+      profileId,
+      userId,
+      isArchived: false
+    }).returning();
+    await db.insert(taskTags).values([{ taskId: bodyWeight.id, tagId: morningTag.id }, { taskId: bodyWeight.id, tagId: quickTag.id }]);
+    const [weightMetric] = await db.insert(taskMetrics).values({ taskId: bodyWeight.id, name: "Weight", unit: "lbs", dataType: "number" }).returning();
+    
+    // Generate 1 year of weight data with gradual change and daily fluctuation
+    const startWeight = 185;
+    const targetWeightLoss = 15; // Lose 15 lbs over the year
+    for (let day = 365; day >= 0; day--) {
+      // Skip some days randomly (not every day is logged)
+      if (day > 0 && Math.random() < 0.15) continue;
+      
+      const progress = (365 - day) / 365;
+      const trendWeight = startWeight - (targetWeightLoss * progress);
+      const dailyFluctuation = (Math.random() - 0.5) * 2; // +/- 1 lb daily fluctuation
+      const weight = trendWeight + dailyFluctuation;
+      
+      await this.completeTaskWithStreak(bodyWeight.id, userId, bodyWeight, daysAgo(day, 0));
+      const comp = await db.select().from(completions).where(eq(completions.taskId, bodyWeight.id)).orderBy(desc(completions.completedAt)).limit(1);
       if (comp[0]) {
-        const distance = 2.5 + (10 - session) * 0.2 + (session % 3) * 0.3;
-        const duration = distance * 9 + (session % 5);
         await db.insert(metricValues).values([
-          { completionId: comp[0].id, metricId: runDistanceMetric.id, numericValue: Math.round(distance * 10) / 10 },
-          { completionId: comp[0].id, metricId: runDurationMetric.id, numericValue: Math.round(duration) },
-          { completionId: comp[0].id, metricId: runPaceMetric.id, textValue: `${Math.floor(duration/distance)}:${String(Math.round((duration/distance % 1) * 60)).padStart(2, '0')}` },
+          { completionId: comp[0].id, metricId: weightMetric.id, numericValue: Math.round(weight * 10) / 10 },
         ]);
       }
     }
 
-    // ===== MONTHLY TASKS =====
+    // ===== MONTHLY TASKS (EXTENDED TO 1 YEAR) =====
     
-    // 11. Check Tire Pressure - Monthly with metrics
+    // 13. Check Tire Pressure - Monthly with metrics (1 year of data)
     const [tirePressure] = await db.insert(tasks).values({
       title: "Check Tire Pressure",
       description: "Ensure all tires are at correct PSI",
@@ -1108,7 +1134,6 @@ export class DatabaseStorage implements IStorage {
       intervalValue: 1,
       intervalUnit: "months",
       categoryId: carCat.id,
-
       profileId,
       userId,
       isArchived: false
@@ -1118,15 +1143,15 @@ export class DatabaseStorage implements IStorage {
     const [frontRightMetric] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Front Right", unit: "psi", dataType: "number" }).returning();
     const [rearLeftMetric] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Rear Left", unit: "psi", dataType: "number" }).returning();
     const [rearRightMetric] = await db.insert(taskMetrics).values({ taskId: tirePressure.id, name: "Rear Right", unit: "psi", dataType: "number" }).returning();
-    for (let month = 3; month >= 0; month--) {
+    for (let month = 12; month >= 0; month--) {
       await this.completeTaskWithStreak(tirePressure.id, userId, tirePressure, daysAgo(month * 30 + 2));
       const comp = await db.select().from(completions).where(eq(completions.taskId, tirePressure.id)).orderBy(desc(completions.completedAt)).limit(1);
       if (comp[0]) {
         await db.insert(metricValues).values([
-          { completionId: comp[0].id, metricId: frontLeftMetric.id, numericValue: 32 + (month % 2) },
+          { completionId: comp[0].id, metricId: frontLeftMetric.id, numericValue: 32 + (month % 3) },
           { completionId: comp[0].id, metricId: frontRightMetric.id, numericValue: 33 - (month % 2) },
-          { completionId: comp[0].id, metricId: rearLeftMetric.id, numericValue: 31 + month },
-          { completionId: comp[0].id, metricId: rearRightMetric.id, numericValue: 32 },
+          { completionId: comp[0].id, metricId: rearLeftMetric.id, numericValue: 31 + (month % 4) },
+          { completionId: comp[0].id, metricId: rearRightMetric.id, numericValue: 32 + ((12 - month) % 2) },
         ]);
       }
     }
@@ -1209,7 +1234,7 @@ export class DatabaseStorage implements IStorage {
     }).returning();
     await db.insert(taskTags).values([{ taskId: drinkWater.id, tagId: quickTag.id }]);
 
-    // 17. Read - 3x per week (frequency task)
+    // 17. Read - 3x per week (frequency task with book variations - 1 year)
     const [read] = await db.insert(tasks).values({
       title: "Read for 30 Minutes",
       description: "Reading books or articles",
@@ -1222,17 +1247,41 @@ export class DatabaseStorage implements IStorage {
       isArchived: false
     }).returning();
     await db.insert(taskTags).values([{ taskId: read.id, tagId: nightTag.id }]);
+    
+    // Create variations for different book types
+    const [fictionVar] = await db.insert(taskVariations).values({ taskId: read.id, name: "Fiction" }).returning();
+    const [nonFictionVar] = await db.insert(taskVariations).values({ taskId: read.id, name: "Non-Fiction" }).returning();
+    const [technicalVar] = await db.insert(taskVariations).values({ taskId: read.id, name: "Technical" }).returning();
+    const readVariations = [fictionVar, nonFictionVar, technicalVar];
+    
     const [pagesReadMetric] = await db.insert(taskMetrics).values({ taskId: read.id, name: "Pages Read", unit: "", dataType: "number" }).returning();
-    const [bookTitleMetric] = await db.insert(taskMetrics).values({ taskId: read.id, name: "Book Title", unit: "", dataType: "text" }).returning();
-    const bookTitles = ["Atomic Habits", "Deep Work", "The Psychology of Money", "Thinking Fast and Slow"];
-    for (let i = 12; i >= 0; i--) {
-      if (i % 2 === 0 || i % 3 === 0) {
-        await this.completeTaskWithStreak(read.id, userId, read, daysAgo(i, 5));
+    
+    // Generate 1 year of reading data
+    for (let week = 52; week >= 0; week--) {
+      // 2-3 reading sessions per week
+      const sessionsThisWeek = 2 + (week % 3 === 0 ? 1 : 0);
+      for (let session = 0; session < sessionsThisWeek; session++) {
+        const sessionDay = week * 7 + session * 2 + 1;
+        if (sessionDay > 365) continue;
+        
+        const varIndex = (week + session) % readVariations.length;
+        const variation = readVariations[varIndex];
+        
+        // Pages vary by book type
+        let basePages: number;
+        switch (variation.id) {
+          case fictionVar.id: basePages = 30 + Math.floor(Math.random() * 20); break;
+          case nonFictionVar.id: basePages = 20 + Math.floor(Math.random() * 15); break;
+          case technicalVar.id: basePages = 10 + Math.floor(Math.random() * 10); break;
+          default: basePages = 20;
+        }
+        
+        await this.completeTaskWithStreak(read.id, userId, read, daysAgo(sessionDay, 21));
         const comp = await db.select().from(completions).where(eq(completions.taskId, read.id)).orderBy(desc(completions.completedAt)).limit(1);
         if (comp[0]) {
+          await db.update(completions).set({ variationId: variation.id }).where(eq(completions.id, comp[0].id));
           await db.insert(metricValues).values([
-            { completionId: comp[0].id, metricId: pagesReadMetric.id, numericValue: 15 + (i * 3) % 25 },
-            { completionId: comp[0].id, metricId: bookTitleMetric.id, textValue: bookTitles[i % 4] },
+            { completionId: comp[0].id, metricId: pagesReadMetric.id, numericValue: basePages },
           ]);
         }
       }
