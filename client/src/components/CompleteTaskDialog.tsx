@@ -2,8 +2,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TaskWithDetails, TaskMetric, TaskVariation } from "@shared/schema";
-import { useState, useEffect } from "react";
+import { TaskWithDetails, TaskMetric } from "@shared/schema";
+import { useState } from "react";
 import { Loader2, Calendar, Clock } from "lucide-react";
 import { useCompleteTask } from "@/hooks/use-tasks";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -24,16 +24,9 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
   const [completionTime, setCompletionTime] = useState<string>("");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedVariationId, setSelectedVariationId] = useState<number | undefined>(undefined);
-  const [variations, setVariations] = useState<TaskVariation[]>([]);
 
-  useEffect(() => {
-    if (open && task.id) {
-      fetch(`/api/tasks/${task.id}/variations`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => setVariations(data || []))
-        .catch(() => setVariations([]));
-    }
-  }, [open, task.id]);
+  // Use variations directly from task payload instead of fetching separately
+  const variations = task.variations || [];
 
   const handleSubmit = () => {
     const metrics = Object.entries(metricValues).map(([metricId, value]) => ({

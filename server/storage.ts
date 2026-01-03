@@ -593,6 +593,11 @@ export class DatabaseStorage implements IStorage {
         inArray(taskTags.taskId, taskIds)
       );
 
+      // Delete task variations
+      await db.delete(taskVariations).where(
+        inArray(taskVariations.taskId, taskIds)
+      );
+
       // Delete streaks
       await db.delete(taskStreaks).where(eq(taskStreaks.userId, userId));
 
@@ -705,6 +710,7 @@ export class DatabaseStorage implements IStorage {
         await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
       }
       await db.delete(completions).where(inArray(completions.taskId, taskIds));
+      await db.delete(taskVariations).where(inArray(taskVariations.taskId, taskIds));
       await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
       await db.delete(taskTags).where(inArray(taskTags.taskId, taskIds));
       await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
@@ -741,6 +747,7 @@ export class DatabaseStorage implements IStorage {
         await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
       }
       await db.delete(completions).where(inArray(completions.taskId, taskIds));
+      await db.delete(taskVariations).where(inArray(taskVariations.taskId, taskIds));
       await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
       await db.delete(taskTags).where(inArray(taskTags.taskId, taskIds));
       await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
@@ -1383,6 +1390,9 @@ export class DatabaseStorage implements IStorage {
 
     // Delete task tags
     await db.delete(taskTags).where(inArray(taskTags.taskId, allTaskIds));
+
+    // Delete task variations
+    await db.delete(taskVariations).where(inArray(taskVariations.taskId, allTaskIds));
 
     // Delete streaks for these tasks
     await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, allTaskIds));
