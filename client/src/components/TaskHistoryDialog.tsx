@@ -136,7 +136,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                       <CardContent className="pt-4">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
                               <span className="font-medium">
                                 {format(new Date(completion.completedAt), "EEEE, MMMM d, yyyy")}
@@ -144,6 +144,11 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                               <span className="text-sm text-muted-foreground">
                                 {format(new Date(completion.completedAt), "h:mm a")}
                               </span>
+                              {completion.variationId && historyData?.task?.variations && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {historyData.task.variations.find(v => v.id === completion.variationId)?.name || "Unknown variation"}
+                                </Badge>
+                              )}
                             </div>
                             
                             {completion.notes && (
