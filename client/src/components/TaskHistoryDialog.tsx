@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { TaskWithDetails, Completion, TaskMetric, MetricValue } from "@shared/schema";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 
 interface CompletionWithMetrics extends Completion {
@@ -75,24 +75,89 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
     },
   });
 
+  const variations = historyData?.task?.variations || [];
+  const hasVariations = variations.length > 0;
+
+  // Get unique variation IDs from completions (including null for "no variation")
+  const getVariationSeriesForMetric = (metricId: number) => {
+    if (!historyData) return [];
+    
+    const completionsWithMetric = historyData.completions.filter(c => 
+      c.metricValues.some(mv => mv.metricId === metricId)
+    );
+    
+    // Get unique variation IDs used with this metric
+    const variationIds = new Set<number | null>();
+    completionsWithMetric.forEach(c => {
+      variationIds.add(c.variationId);
+    });
+    
+    return Array.from(variationIds).map(varId => {
+      const variation = varId ? variations.find(v => v.id === varId) : null;
+      return {
+        variationId: varId,
+        name: variation?.name || (varId ? "Unknown" : "Default"),
+      };
+    });
+  };
+
   const getMetricChartData = (metricId: number) => {
     if (!historyData) return [];
     
     const metric = historyData.metrics.find(m => m.id === metricId);
     if (!metric) return [];
+
+    const variationSeries = getVariationSeriesForMetric(metricId);
     
-    return historyData.completions
+    // If no variations or only one series, return simple format
+    if (variationSeries.length <= 1) {
+      return historyData.completions
+        .filter(c => c.metricValues.some(mv => mv.metricId === metricId))
+        .map(c => {
+          const metricValue = c.metricValues.find(mv => mv.metricId === metricId);
+          return {
+            date: format(new Date(c.completedAt), "MMM d"),
+            value: metricValue?.numericValue ?? 0,
+            fullDate: format(new Date(c.completedAt), "MMM d, yyyy"),
+          };
+        })
+        .reverse();
+    }
+
+    // Multiple variations: create data points with separate keys per variation
+    const dataMap = new Map<string, any>();
+    
+    historyData.completions
       .filter(c => c.metricValues.some(mv => mv.metricId === metricId))
-      .map(c => {
+      .forEach(c => {
         const metricValue = c.metricValues.find(mv => mv.metricId === metricId);
-        return {
-          date: format(new Date(c.completedAt), "MMM d"),
-          value: metricValue?.numericValue ?? 0,
-          fullDate: format(new Date(c.completedAt), "MMM d, yyyy"),
-        };
-      })
-      .reverse();
+        const dateKey = format(new Date(c.completedAt), "MMM d yyyy HH:mm");
+        const displayDate = format(new Date(c.completedAt), "MMM d");
+        const fullDate = format(new Date(c.completedAt), "MMM d, yyyy h:mm a");
+        
+        const varKey = c.variationId ? `var_${c.variationId}` : "var_default";
+        const variation = c.variationId ? variations.find(v => v.id === c.variationId) : null;
+        const varName = variation?.name || "Default";
+        
+        if (!dataMap.has(dateKey)) {
+          dataMap.set(dateKey, { date: displayDate, fullDate, timestamp: new Date(c.completedAt).getTime() });
+        }
+        
+        const entry = dataMap.get(dateKey)!;
+        entry[varKey] = metricValue?.numericValue ?? 0;
+        entry[`${varKey}_name`] = varName;
+      });
+
+    return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
   };
+
+  const chartColors = [
+    "hsl(var(--primary))",
+    "hsl(var(--chart-2))",
+    "hsl(var(--chart-3))",
+    "hsl(var(--chart-4))",
+    "hsl(var(--chart-5))",
+  ];
 
   const hasMetrics = historyData?.metrics && historyData.metrics.length > 0;
   const hasCompletions = historyData?.completions && historyData.completions.length > 0;
@@ -211,49 +276,74 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                     ))}
                   </div>
                   
-                  {selectedMetric ? (
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4" />
-                          {historyData.metrics.find(m => m.id === selectedMetric)?.name} Over Time
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-64">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={getMetricChartData(selectedMetric)}>
-                              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                              <XAxis 
-                                dataKey="date" 
-                                tick={{ fontSize: 12 }}
-                                className="text-muted-foreground"
-                              />
-                              <YAxis 
-                                tick={{ fontSize: 12 }}
-                                className="text-muted-foreground"
-                              />
-                              <Tooltip 
-                                labelFormatter={(_, payload) => payload[0]?.payload?.fullDate}
-                                contentStyle={{
-                                  backgroundColor: 'hsl(var(--card))',
-                                  border: '1px solid hsl(var(--border))',
-                                  borderRadius: '8px',
-                                }}
-                              />
-                              <Line 
-                                type="monotone" 
-                                dataKey="value" 
-                                stroke="hsl(var(--primary))" 
-                                strokeWidth={2}
-                                dot={{ fill: 'hsl(var(--primary))' }}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : (
+                  {selectedMetric ? (() => {
+                    const variationSeries = getVariationSeriesForMetric(selectedMetric);
+                    const chartData = getMetricChartData(selectedMetric);
+                    const showMultipleLines = variationSeries.length > 1;
+                    
+                    return (
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <TrendingUp className="w-4 h-4" />
+                            {historyData.metrics.find(m => m.id === selectedMetric)?.name} Over Time
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                                <XAxis 
+                                  dataKey="date" 
+                                  tick={{ fontSize: 12 }}
+                                  className="text-muted-foreground"
+                                />
+                                <YAxis 
+                                  tick={{ fontSize: 12 }}
+                                  className="text-muted-foreground"
+                                />
+                                <Tooltip 
+                                  labelFormatter={(_, payload) => payload[0]?.payload?.fullDate}
+                                  contentStyle={{
+                                    backgroundColor: 'hsl(var(--card))',
+                                    border: '1px solid hsl(var(--border))',
+                                    borderRadius: '8px',
+                                  }}
+                                />
+                                {showMultipleLines && <Legend />}
+                                {showMultipleLines ? (
+                                  variationSeries.map((vs, idx) => {
+                                    const varKey = vs.variationId ? `var_${vs.variationId}` : "var_default";
+                                    return (
+                                      <Line 
+                                        key={varKey}
+                                        type="monotone" 
+                                        dataKey={varKey}
+                                        name={vs.name}
+                                        stroke={chartColors[idx % chartColors.length]}
+                                        strokeWidth={2}
+                                        dot={{ fill: chartColors[idx % chartColors.length] }}
+                                        connectNulls
+                                      />
+                                    );
+                                  })
+                                ) : (
+                                  <Line 
+                                    type="monotone" 
+                                    dataKey="value" 
+                                    stroke="hsl(var(--primary))" 
+                                    strokeWidth={2}
+                                    dot={{ fill: 'hsl(var(--primary))' }}
+                                  />
+                                )}
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })() : (
                     <p className="text-center text-muted-foreground py-8">
                       Select a metric above to view its trend over time.
                     </p>
