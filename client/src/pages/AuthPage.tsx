@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2 } from "lucide-react";
+import { SiReplit } from "react-icons/si";
 
 export default function AuthPage() {
   const handleLogin = () => {
@@ -11,14 +12,14 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-4xl font-display font-bold text-foreground">Maintain</h1>
-          <p className="text-lg text-muted-foreground">Your personal maintenance assistant.</p>
+          <h1 className="text-4xl font-display font-bold text-foreground">Cadences</h1>
+          <p className="text-lg text-muted-foreground">Track recurring tasks and build better habits.</p>
         </div>
 
         <Card className="border-2 border-primary/10 shadow-xl shadow-primary/5">
           <CardHeader>
             <CardTitle>Welcome</CardTitle>
-            <CardDescription>Sign in to start tracking your maintenance tasks.</CardDescription>
+            <CardDescription>Sign in with your Replit account to get started.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-3">
@@ -35,9 +36,13 @@ export default function AuthPage() {
               ))}
             </div>
 
-            <Button onClick={handleLogin} className="w-full text-lg py-6 shadow-lg shadow-primary/25" size="lg">
-              Get Started
+            <Button onClick={handleLogin} className="w-full text-lg py-6 shadow-lg shadow-primary/25" size="lg" data-testid="button-login">
+              <SiReplit className="mr-2 h-5 w-5" />
+              Continue with Replit
             </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              New users will have an account created automatically
+            </p>
           </CardContent>
         </Card>
       </div>
