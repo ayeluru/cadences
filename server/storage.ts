@@ -74,6 +74,9 @@ export interface IStorage {
   
   // Profile Import
   importTasksFromProfile(sourceProfileId: number, targetProfileId: number, userId: string): Promise<{ tasksCreated: number, categoriesCreated: number, tagsCreated: number }>;
+  
+  // Account Management
+  deleteAllUserData(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2023,6 +2026,48 @@ export class DatabaseStorage implements IStorage {
       categoriesCreated: categoryMap.size,
       tagsCreated: tagMap.size
     };
+  }
+  
+  async deleteAllUserData(userId: string): Promise<void> {
+    // Delete in order respecting foreign key constraints
+    // First, get all tasks for this user
+    const userTasks = await db.select().from(tasks).where(eq(tasks.userId, userId));
+    const taskIds = userTasks.map(t => t.id);
+    
+    if (taskIds.length > 0) {
+      // Get all completions for these tasks
+      const taskCompletions = await db.select().from(completions).where(inArray(completions.taskId, taskIds));
+      const completionIds = taskCompletions.map(c => c.id);
+      
+      // Delete metric values for these completions
+      if (completionIds.length > 0) {
+        await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
+      }
+      
+      // Delete completions
+      await db.delete(completions).where(inArray(completions.taskId, taskIds));
+      
+      // Delete task tags
+      await db.delete(taskTags).where(inArray(taskTags.taskId, taskIds));
+      
+      // Delete task metrics
+      await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
+      
+      // Delete task streaks
+      await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
+      
+      // Delete tasks
+      await db.delete(tasks).where(eq(tasks.userId, userId));
+    }
+    
+    // Delete categories
+    await db.delete(categories).where(eq(categories.userId, userId));
+    
+    // Delete tags
+    await db.delete(tags).where(eq(tags.userId, userId));
+    
+    // Delete profiles
+    await db.delete(profiles).where(eq(profiles.userId, userId));
   }
 }
 
