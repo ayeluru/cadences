@@ -1,7 +1,7 @@
 import { 
-  users, categories, tags, tasks, taskTags, completions, taskMetrics, metricValues, taskStreaks, profiles,
+  users, categories, tags, tasks, taskTags, completions, taskMetrics, metricValues, taskStreaks, profiles, taskVariations,
   type User, type Category, type Tag, type Task, type TaskTag, type Completion,
-  type TaskMetric, type MetricValue, type TaskStreak, type Profile,
+  type TaskMetric, type MetricValue, type TaskStreak, type Profile, type TaskVariation,
   type InsertCategory, type InsertTag, type InsertTask,
   type InsertTaskMetric, type InsertMetricValue, type InsertProfile
 } from "@shared/schema";
@@ -33,12 +33,17 @@ export interface IStorage {
   // Tasks (profileId: null = all profiles, number = specific profile)
   getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]>;
   getTask(id: number): Promise<Task | undefined>;
-  getTaskVariations(parentId: number): Promise<Task[]>;
   createTask(userId: string, task: InsertTask, tagIds?: number[], metrics?: InsertTaskMetric[]): Promise<Task>;
   updateTask(id: number, updates: Partial<InsertTask>, tagIds?: number[], metrics?: InsertTaskMetric[]): Promise<Task>;
   deleteTask(id: number): Promise<void>;
   deleteTaskWithCascade(id: number, userId: string): Promise<void>;
   archiveTask(id: number, userId: string): Promise<Task>;
+  
+  // Task Variations (dropdown options for completing a task)
+  getTaskVariations(taskId: number): Promise<TaskVariation[]>;
+  createTaskVariation(taskId: number, name: string): Promise<TaskVariation>;
+  deleteTaskVariation(variationId: number): Promise<void>;
+  getVariationStats(taskId: number): Promise<{ variationId: number; name: string; count: number; percentage: number }[]>;
   
   // Task Metrics
   getTaskMetrics(taskId: number): Promise<TaskMetric[]>;
@@ -48,7 +53,7 @@ export interface IStorage {
   deleteTaskMetrics(taskId: number): Promise<void>;
   
   // Completions
-  completeTask(taskId: number, completedAt?: Date, notes?: string, metricData?: {metricId: number, value: number | string}[], userId?: string): Promise<{task: Task, completion: Completion, streak?: TaskStreak}>;
+  completeTask(taskId: number, completedAt?: Date, notes?: string, metricData?: {metricId: number, value: number | string}[], userId?: string, variationId?: number): Promise<{task: Task, completion: Completion, streak?: TaskStreak}>;
   getCompletions(taskId: number): Promise<Completion[]>;
   getCompletionWithMetrics(completionId: number): Promise<{completion: Completion, metrics: MetricValue[]} | undefined>;
   getAllCompletions(userId: string): Promise<Completion[]>;
@@ -603,7 +608,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(categories).where(eq(categories.userId, userId));
   }
 
-  // Helper method to complete task and update streak
+  // Helper method to complete task and update streak (used for seeding demo data)
   private async completeTaskWithStreak(
     taskId: number, 
     userId: string, 
@@ -617,7 +622,6 @@ export class DatabaseStorage implements IStorage {
       taskId,
       completedAt,
       notes,
-      parentTaskId: task.parentTaskId || null,
     }).returning();
 
     // Add metric values if provided
@@ -640,26 +644,8 @@ export class DatabaseStorage implements IStorage {
         .where(eq(tasks.id, taskId));
     }
 
-    // If this is a variation, also update parent task's lastCompletedAt (only if more recent)
-    if (task.parentTaskId) {
-      const parentTask = await this.getTask(task.parentTaskId);
-      if (!parentTask?.lastCompletedAt || completedAt > parentTask.lastCompletedAt) {
-        await db.update(tasks)
-          .set({ lastCompletedAt: completedAt })
-          .where(eq(tasks.id, task.parentTaskId));
-      }
-    }
-
     // Update streak
     await this.updateTaskStreak(taskId, userId, task, completedAt);
-    
-    // Also update parent task streak if this is a variation
-    if (task.parentTaskId) {
-      const parentTask = await this.getTask(task.parentTaskId);
-      if (parentTask) {
-        await this.updateTaskStreak(task.parentTaskId, userId, parentTask, completedAt);
-      }
-    }
   }
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -1429,9 +1415,34 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // Task Variations
-  async getTaskVariations(parentId: number): Promise<Task[]> {
-    return await db.select().from(tasks).where(and(eq(tasks.parentTaskId, parentId), eq(tasks.isArchived, false)));
+  // Task Variations (dropdown options for completing a task)
+  async getTaskVariations(taskId: number): Promise<TaskVariation[]> {
+    return await db.select().from(taskVariations).where(eq(taskVariations.taskId, taskId));
+  }
+
+  async createTaskVariation(taskId: number, name: string): Promise<TaskVariation> {
+    const [variation] = await db.insert(taskVariations).values({ taskId, name }).returning();
+    return variation;
+  }
+
+  async deleteTaskVariation(variationId: number): Promise<void> {
+    await db.delete(taskVariations).where(eq(taskVariations.id, variationId));
+  }
+
+  async getVariationStats(taskId: number): Promise<{ variationId: number; name: string; count: number; percentage: number }[]> {
+    const variations = await this.getTaskVariations(taskId);
+    if (variations.length === 0) return [];
+
+    const taskCompletions = await this.getCompletions(taskId);
+    const totalWithVariation = taskCompletions.filter(c => c.variationId !== null).length;
+    
+    const stats = variations.map(v => {
+      const count = taskCompletions.filter(c => c.variationId === v.id).length;
+      const percentage = totalWithVariation > 0 ? Math.round((count / totalWithVariation) * 100) : 0;
+      return { variationId: v.id, name: v.name, count, percentage };
+    });
+    
+    return stats.sort((a, b) => b.count - a.count);
   }
 
   // Task Metrics
@@ -1463,17 +1474,18 @@ export class DatabaseStorage implements IStorage {
     completedAt: Date = new Date(), 
     notes?: string,
     metricData?: {metricId: number, value: number | string}[],
-    userId?: string
+    userId?: string,
+    variationId?: number
   ): Promise<{task: Task, completion: Completion, streak?: TaskStreak}> {
-    // Get the task to check if it's a variation
+    // Get the task
     const task = await this.getTask(taskId);
     
-    // Add completion record
+    // Add completion record with variationId if specified
     const [completion] = await db.insert(completions).values({
       taskId,
       completedAt,
       notes,
-      parentTaskId: task?.parentTaskId || null,
+      variationId: variationId || null,
     }).returning();
 
     // Add metric values if provided
@@ -1494,25 +1506,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tasks.id, taskId))
       .returning();
 
-    // If this is a variation, also update parent task's lastCompletedAt
-    if (task?.parentTaskId) {
-      await db.update(tasks)
-        .set({ lastCompletedAt: completedAt })
-        .where(eq(tasks.id, task.parentTaskId));
-    }
-
     // Update streak if userId provided
     let streak: TaskStreak | undefined;
     if (userId && task) {
       streak = await this.updateTaskStreak(taskId, userId, task, completedAt);
-      
-      // Also update parent task streak if this is a variation
-      if (task.parentTaskId) {
-        const parentTask = await this.getTask(task.parentTaskId);
-        if (parentTask) {
-          await this.updateTaskStreak(task.parentTaskId, userId, parentTask, completedAt);
-        }
-      }
     }
 
     return { task: updatedTask, completion, streak };

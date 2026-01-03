@@ -83,14 +83,8 @@ async function enrichTask(task: any, userId: string) {
   if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
     const { start, end } = getPeriodBounds(task.targetPeriod);
     
-    // Get completions for this task (and its variations) in the current period
-    let allCompletions = await storage.getCompletionsInPeriod(task.id, start, end);
-    
-    // Also count completions from variations
-    for (const variation of variations) {
-      const varCompletions = await storage.getCompletionsInPeriod(variation.id, start, end);
-      allCompletions = [...allCompletions, ...varCompletions];
-    }
+    // Get completions for this task in the current period
+    const allCompletions = await storage.getCompletionsInPeriod(task.id, start, end);
     
     // Apply refractory period filter if set
     const validCompletions = filterCompletionsWithRefractory(allCompletions, task.refractoryMinutes);
@@ -280,13 +274,17 @@ async function enrichTask(task: any, userId: string) {
 
   // Get streak data
   const streak = await storage.getTaskStreak(task.id, userId);
+  
+  // Get variation stats if task has variations
+  const variationStats = variations.length > 0 ? await storage.getVariationStats(task.id) : [];
 
   return {
     ...task,
     category,
     tags: taskTags,
     metrics: taskMetrics,
-    variations: variations,
+    variations,
+    variationStats,
     status,
     nextDue: nextDue.toISOString(),
     daysUntilDue,
@@ -438,10 +436,11 @@ export async function registerRoutes(
     const input = api.tasks.complete.input.optional().parse(req.body) || {};
     const completedAt = input.completedAt ? new Date(input.completedAt) : new Date();
     
-    // Parse metric data if provided
+    // Parse metric data and variation if provided
     const metricData = (req.body.metrics || []) as {metricId: number, value: number | string}[];
+    const variationId = req.body.variationId ? Number(req.body.variationId) : undefined;
     
-    const { task: updated, completion, streak } = await storage.completeTask(taskId, completedAt, input.notes, metricData, userId);
+    const { task: updated, completion, streak } = await storage.completeTask(taskId, completedAt, input.notes, metricData, userId, variationId);
     const enriched = await enrichTask(updated, userId);
     res.json({ ...enriched, lastCompletion: completion, streak });
   });
@@ -627,9 +626,50 @@ export async function registerRoutes(
 
   // Task Variations
   app.get("/api/tasks/:id/variations", requireAuth, async (req: any, res) => {
-    const parentId = Number(req.params.id);
-    const variationsList = await storage.getTaskVariations(parentId);
+    const taskId = Number(req.params.id);
+    const variationsList = await storage.getTaskVariations(taskId);
     res.json(variationsList);
+  });
+
+  app.post("/api/tasks/:id/variations", requireAuth, async (req: any, res) => {
+    const taskId = Number(req.params.id);
+    const userId = req.user.claims.sub;
+    const { name } = req.body;
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: "Variation name is required" });
+    }
+    
+    const task = await storage.getTask(taskId);
+    if (!task || task.userId !== userId) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    
+    const variation = await storage.createTaskVariation(taskId, name.trim());
+    res.status(201).json(variation);
+  });
+
+  app.delete("/api/variations/:id", requireAuth, async (req: any, res) => {
+    const variationId = Number(req.params.id);
+    const userId = req.user.claims.sub;
+    
+    // Get the variation to find its parent task
+    const allTasks = await storage.getTasks(userId);
+    let foundTask = null;
+    for (const task of allTasks) {
+      const variations = await storage.getTaskVariations(task.id);
+      if (variations.some(v => v.id === variationId)) {
+        foundTask = task;
+        break;
+      }
+    }
+    
+    if (!foundTask || foundTask.userId !== userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    
+    await storage.deleteTaskVariation(variationId);
+    res.json({ success: true });
   });
 
   // Task completions history

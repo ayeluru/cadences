@@ -94,8 +94,8 @@ export const completions = pgTable("completions", {
   taskId: integer("task_id").references(() => tasks.id).notNull(),
   completedAt: timestamp("completed_at").defaultNow().notNull(),
   notes: text("notes"),
-  // For variations - which parent task this completion counts toward
-  parentTaskId: integer("parent_task_id"),
+  // Which variation was used for this completion (optional)
+  variationId: integer("variation_id"),
 });
 
 // Store actual metric values recorded during completion
@@ -105,6 +105,14 @@ export const metricValues = pgTable("metric_values", {
   metricId: integer("metric_id").references(() => taskMetrics.id).notNull(),
   numericValue: real("numeric_value"),
   textValue: text("text_value"),
+});
+
+// Task variations - different ways to complete a task (e.g., Goblet Squats, Back Squats for a "Squats" task)
+export const taskVariations = pgTable("task_variations", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => tasks.id).notNull(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Relations
@@ -134,11 +142,16 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   user: one(users, { fields: [tasks.userId], references: [users.id] }),
   profile: one(profiles, { fields: [tasks.profileId], references: [profiles.id] }),
   category: one(categories, { fields: [tasks.categoryId], references: [categories.id] }),
-  parentTask: one(tasks, { fields: [tasks.parentTaskId], references: [tasks.id], relationName: "variations" }),
-  variations: many(tasks, { relationName: "variations" }),
+  parentTask: one(tasks, { fields: [tasks.parentTaskId], references: [tasks.id], relationName: "childTasks" }),
+  childTasks: many(tasks, { relationName: "childTasks" }),
   tags: many(taskTags),
   completions: many(completions),
   metrics: many(taskMetrics),
+  variations: many(taskVariations),
+}));
+
+export const taskVariationsRelations = relations(taskVariations, ({ one }) => ({
+  task: one(tasks, { fields: [taskVariations.taskId], references: [tasks.id] }),
 }));
 
 export const tagsRelations = relations(tags, ({ one, many }) => ({
@@ -175,6 +188,7 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, userI
 export const insertTaskMetricSchema = createInsertSchema(taskMetrics).omit({ id: true });
 export const insertCompletionSchema = createInsertSchema(completions).omit({ id: true, completedAt: true });
 export const insertMetricValueSchema = createInsertSchema(metricValues).omit({ id: true });
+export const insertTaskVariationSchema = createInsertSchema(taskVariations).omit({ id: true, createdAt: true });
 
 // Types
 export type Profile = typeof profiles.$inferSelect;
@@ -185,6 +199,7 @@ export type TaskTag = typeof taskTags.$inferSelect;
 export type TaskMetric = typeof taskMetrics.$inferSelect;
 export type Completion = typeof completions.$inferSelect;
 export type MetricValue = typeof metricValues.$inferSelect;
+export type TaskVariation = typeof taskVariations.$inferSelect;
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -192,6 +207,7 @@ export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type InsertTag = z.infer<typeof insertTagSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
+export type InsertTaskVariation = z.infer<typeof insertTaskVariationSchema>;
 
 // Task streaks - track consecutive completions
 export const taskStreaks = pgTable("task_streaks", {
@@ -216,9 +232,9 @@ export type TaskStreak = typeof taskStreaks.$inferSelect;
 export type TaskWithDetails = Task & {
   category?: Category | null;
   parentTask?: Task | null;
-  variations?: Task[];
   tags?: Tag[];
   metrics?: TaskMetric[];
+  variations?: TaskVariation[];
   urgency?: number;
   status?: 'overdue' | 'due_soon' | 'later' | 'never_done';
   nextDue?: string;
@@ -228,4 +244,6 @@ export type TaskWithDetails = Task & {
   targetProgress?: number; // percentage 0-100
   // Streak data
   streak?: TaskStreak | null;
+  // Variation stats - which variations have been used and how often
+  variationStats?: { variationId: number; name: string; count: number; percentage: number }[];
 };
