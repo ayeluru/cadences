@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyAuth, unauthorized } from './auth';
-import { storage, enrichTask } from './task-utils';
-import { supabaseAdmin } from './supabase';
+import { verifyAuth, unauthorized } from './auth.js';
+import { storage, enrichTask } from './task-utils.js';
+import { supabaseAdmin } from './supabase.js';
 import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay } from 'date-fns';
 
 // ---------------------------------------------------------------------------

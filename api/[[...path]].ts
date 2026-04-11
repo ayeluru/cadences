@@ -32,7 +32,7 @@ import {
   tasksIdReassign,
   tasksIdVariations,
   variationsId,
-} from './_lib/all-handlers';
+} from './_lib/all-handlers.js';
 
 type Handler = (req: VercelRequest, res: VercelResponse) => any;
 

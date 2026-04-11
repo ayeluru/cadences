@@ -1,6 +1,6 @@
 import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
-import type { Task } from '../../shared/schema';
-import { DatabaseStorage } from './storage';
+import type { Task } from '../../shared/schema.js';
+import { DatabaseStorage } from './storage.js';
 
 const storage = new DatabaseStorage();
 

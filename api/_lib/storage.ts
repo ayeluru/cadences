@@ -4,11 +4,11 @@ import {
   type TaskMetric, type MetricValue, type TaskStreak, type Profile, type TaskVariation,
   type InsertCategory, type InsertTag, type InsertTask,
   type InsertTaskMetric, type InsertMetricValue, type InsertProfile
-} from "../../shared/schema";
+} from "../../shared/schema.js";
 
 // User type from Supabase auth (no longer using custom users table)
 export type User = { id: string; email?: string };
-import { db } from "./db";
+import { db } from "./db.js";
 import { eq, desc, sql, and, gte, lte, inArray, notInArray } from "drizzle-orm";
 
 export interface IStorage {
