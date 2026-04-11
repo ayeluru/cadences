@@ -1,37 +1,37 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-import authUserHandler from './_auth/user';
-import calendarEnhancedHandler from './_calendar/enhanced';
-import categoriesIndexHandler from './_categories/index';
-import categoriesIdHandler from './_categories/[id]';
-import clearDataHandler from './_misc/clear-data';
-import completionsIdHandler from './_completions/[id]';
-import completionsCalendarHandler from './_completions/calendar';
-import metricsIdHandler from './_metrics/[id]';
-import metricsIdHistoryHandler from './_metrics/[id]/history';
-import profilesIndexHandler from './_profiles/index';
-import profilesDefaultHandler from './_profiles/default';
-import profilesDemoHandler from './_profiles/demo';
-import profilesAllDataHandler from './_profiles/all/data';
-import profilesIdHandler from './_profiles/[id]';
-import profilesIdDataHandler from './_profiles/[id]/data';
-import profilesIdDemoSeedHandler from './_profiles/[id]/demo-seed';
-import profilesIdImportSourceHandler from './_profiles/[id]/import/[sourceId]';
-import statsIndexHandler from './_stats/index';
-import streaksIndexHandler from './_streaks/index';
-import tagsIndexHandler from './_tags/index';
-import tasksIndexHandler from './_tasks/index';
-import tasksMigrateHandler from './_tasks/migrate';
-import tasksIdHandler from './_tasks/[id]';
-import tasksIdArchiveHandler from './_tasks/[id]/archive';
-import tasksIdCascadeHandler from './_tasks/[id]/cascade';
-import tasksIdCompleteHandler from './_tasks/[id]/complete';
-import tasksIdCompletionsHandler from './_tasks/[id]/completions';
-import tasksIdHistoryHandler from './_tasks/[id]/history';
-import tasksIdMetricsHandler from './_tasks/[id]/metrics';
-import tasksIdReassignHandler from './_tasks/[id]/reassign';
-import tasksIdVariationsHandler from './_tasks/[id]/variations';
-import variationsIdHandler from './_variations/[id]';
+import authUserHandler from './_lib/handlers/auth-user';
+import calendarEnhancedHandler from './_lib/handlers/calendar-enhanced';
+import categoriesIndexHandler from './_lib/handlers/categories-index';
+import categoriesIdHandler from './_lib/handlers/categories-id';
+import clearDataHandler from './_lib/handlers/clear-data';
+import completionsIdHandler from './_lib/handlers/completions-id';
+import completionsCalendarHandler from './_lib/handlers/completions-calendar';
+import metricsIdHandler from './_lib/handlers/metrics-id';
+import metricsIdHistoryHandler from './_lib/handlers/metrics-id-history';
+import profilesIndexHandler from './_lib/handlers/profiles-index';
+import profilesDefaultHandler from './_lib/handlers/profiles-default';
+import profilesDemoHandler from './_lib/handlers/profiles-demo';
+import profilesAllDataHandler from './_lib/handlers/profiles-all-data';
+import profilesIdHandler from './_lib/handlers/profiles-id';
+import profilesIdDataHandler from './_lib/handlers/profiles-id-data';
+import profilesIdDemoSeedHandler from './_lib/handlers/profiles-id-demo-seed';
+import profilesIdImportSourceHandler from './_lib/handlers/profiles-id-import-sourceId';
+import statsIndexHandler from './_lib/handlers/stats-index';
+import streaksIndexHandler from './_lib/handlers/streaks-index';
+import tagsIndexHandler from './_lib/handlers/tags-index';
+import tasksIndexHandler from './_lib/handlers/tasks-index';
+import tasksMigrateHandler from './_lib/handlers/tasks-migrate';
+import tasksIdHandler from './_lib/handlers/tasks-id';
+import tasksIdArchiveHandler from './_lib/handlers/tasks-id-archive';
+import tasksIdCascadeHandler from './_lib/handlers/tasks-id-cascade';
+import tasksIdCompleteHandler from './_lib/handlers/tasks-id-complete';
+import tasksIdCompletionsHandler from './_lib/handlers/tasks-id-completions';
+import tasksIdHistoryHandler from './_lib/handlers/tasks-id-history';
+import tasksIdMetricsHandler from './_lib/handlers/tasks-id-metrics';
+import tasksIdReassignHandler from './_lib/handlers/tasks-id-reassign';
+import tasksIdVariationsHandler from './_lib/handlers/tasks-id-variations';
+import variationsIdHandler from './_lib/handlers/variations-id';
 
 type Handler = (req: VercelRequest, res: VercelResponse) => any;
 
@@ -42,28 +42,15 @@ interface Route {
 }
 
 const routes: Route[] = [
-  // Auth
   { pattern: /^auth\/user$/, handler: authUserHandler, params: [] },
-
-  // Calendar
   { pattern: /^calendar\/enhanced$/, handler: calendarEnhancedHandler, params: [] },
-
-  // Categories
   { pattern: /^categories$/, handler: categoriesIndexHandler, params: [] },
   { pattern: /^categories\/(\d+)$/, handler: categoriesIdHandler, params: ['id'] },
-
-  // Clear data
   { pattern: /^clear-data$/, handler: clearDataHandler, params: [] },
-
-  // Completions
   { pattern: /^completions\/calendar$/, handler: completionsCalendarHandler, params: [] },
   { pattern: /^completions\/(\d+)$/, handler: completionsIdHandler, params: ['id'] },
-
-  // Metrics
   { pattern: /^metrics\/(\d+)\/history$/, handler: metricsIdHistoryHandler, params: ['id'] },
   { pattern: /^metrics\/(\d+)$/, handler: metricsIdHandler, params: ['id'] },
-
-  // Profiles (specific routes before parameterized)
   { pattern: /^profiles\/default$/, handler: profilesDefaultHandler, params: [] },
   { pattern: /^profiles\/demo$/, handler: profilesDemoHandler, params: [] },
   { pattern: /^profiles\/all\/data$/, handler: profilesAllDataHandler, params: [] },
@@ -72,17 +59,9 @@ const routes: Route[] = [
   { pattern: /^profiles\/(\d+)\/data$/, handler: profilesIdDataHandler, params: ['id'] },
   { pattern: /^profiles\/(\d+)$/, handler: profilesIdHandler, params: ['id'] },
   { pattern: /^profiles$/, handler: profilesIndexHandler, params: [] },
-
-  // Stats
   { pattern: /^stats$/, handler: statsIndexHandler, params: [] },
-
-  // Streaks
   { pattern: /^streaks$/, handler: streaksIndexHandler, params: [] },
-
-  // Tags
   { pattern: /^tags$/, handler: tagsIndexHandler, params: [] },
-
-  // Tasks (specific routes before parameterized)
   { pattern: /^tasks\/migrate$/, handler: tasksMigrateHandler, params: [] },
   { pattern: /^tasks\/(\d+)\/archive$/, handler: tasksIdArchiveHandler, params: ['id'] },
   { pattern: /^tasks\/(\d+)\/cascade$/, handler: tasksIdCascadeHandler, params: ['id'] },
@@ -94,8 +73,6 @@ const routes: Route[] = [
   { pattern: /^tasks\/(\d+)\/variations$/, handler: tasksIdVariationsHandler, params: ['id'] },
   { pattern: /^tasks\/(\d+)$/, handler: tasksIdHandler, params: ['id'] },
   { pattern: /^tasks$/, handler: tasksIndexHandler, params: [] },
-
-  // Variations
   { pattern: /^variations\/(\d+)$/, handler: variationsIdHandler, params: ['id'] },
 ];
 
