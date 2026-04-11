@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyAuth, unauthorized } from './_lib/auth';
-import { storage } from './_lib/task-utils';
+import { verifyAuth, unauthorized } from '../_lib/auth';
+import { storage } from '../_lib/task-utils';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'DELETE') {
