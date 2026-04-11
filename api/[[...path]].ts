@@ -78,8 +78,9 @@ const routes: Route[] = [
 ];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const pathSegments = req.query.path;
-  const path = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments || '';
+  // Parse path from URL, stripping /api/ prefix
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  const path = url.pathname.replace(/^\/api\//, '');
 
   for (const route of routes) {
     const match = path.match(route.pattern);
