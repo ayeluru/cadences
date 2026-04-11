@@ -2201,7 +2201,10 @@ export class DatabaseStorage implements IStorage {
       
       // Delete task streaks
       await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
-      
+
+      // Delete task variations
+      await db.delete(taskVariations).where(inArray(taskVariations.taskId, taskIds));
+
       // Delete tasks
       await db.delete(tasks).where(eq(tasks.userId, userId));
     }
