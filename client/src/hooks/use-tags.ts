@@ -3,6 +3,16 @@ import { api } from "@shared/routes";
 import { InsertTag } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useProfileContext } from "@/contexts/ProfileContext";
+import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabase";
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    return { Authorization: `Bearer ${session.access_token}` };
+  }
+  return {};
+}
 
 export function useTags() {
   const { currentProfile, isAggregatedView } = useProfileContext();
@@ -13,7 +23,8 @@ export function useTags() {
     queryFn: async () => {
       const url = new URL(api.tags.list.path, window.location.origin);
       if (profileId) url.searchParams.append("profileId", profileId.toString());
-      const res = await fetch(url.toString(), { credentials: "include" });
+      const headers = await getAuthHeaders();
+      const res = await fetch(url.toString(), { headers });
       if (!res.ok) throw new Error("Failed to fetch tags");
       return api.tags.list.responses[200].parse(await res.json());
     },
@@ -30,14 +41,8 @@ export function useCreateTag() {
     mutationFn: async (data: Omit<InsertTag, 'profileId'> & { profileId?: number | null }) => {
       const profileId = data.profileId ?? currentProfile?.id;
       if (!profileId) throw new Error("No profile selected");
-      
-      const res = await fetch(api.tags.create.path, {
-        method: api.tags.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, profileId }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to create tag");
+
+      const res = await apiRequest(api.tags.create.method, api.tags.create.path, { ...data, profileId });
       return api.tags.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {

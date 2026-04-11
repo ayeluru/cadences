@@ -91,8 +91,7 @@ export default function Settings() {
   const [tagsOpen, setTagsOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   
-  const [firstName, setFirstName] = useState(user?.firstName || "");
-  const [lastName, setLastName] = useState(user?.lastName || "");
+  // User profile is managed by Supabase Auth
 
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,11 +134,7 @@ export default function Settings() {
     });
   };
 
-  const handleUpdateProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateUserMutation.mutate({ firstName, lastName });
-  };
-
+  
   const hasDemoProfile = profiles?.some(p => p.isDemo) ?? false;
 
   return (
@@ -169,48 +164,18 @@ export default function Settings() {
             <CardContent className="space-y-6">
               <div className="flex items-start gap-4">
                 <Avatar className="w-16 h-16">
-                  <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
                   <AvatarFallback className="text-lg">
-                    {user?.firstName?.[0]}{user?.lastName?.[0]}
+                    {user?.email?.[0]?.toUpperCase() || "U"}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                  <p className="font-medium">{user?.firstName} {user?.lastName}</p>
+                  <p className="font-medium">{user?.email?.split("@")[0] || "User"}</p>
                   <p className="text-sm text-muted-foreground">{user?.email || "No email"}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "Unknown"}
+                    Member since {user?.created_at ? new Date(user.created_at).toLocaleDateString() : "Unknown"}
                   </p>
                 </div>
               </div>
-
-              <form onSubmit={handleUpdateProfile} className="space-y-4 max-w-md">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      placeholder="First name"
-                      data-testid="input-first-name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      placeholder="Last name"
-                      data-testid="input-last-name"
-                    />
-                  </div>
-                </div>
-                <Button type="submit" disabled={updateUserMutation.isPending} data-testid="button-update-profile">
-                  {updateUserMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Update Profile
-                </Button>
-              </form>
 
               <div className="pt-4 border-t space-y-4">
                 <div className="flex gap-3">

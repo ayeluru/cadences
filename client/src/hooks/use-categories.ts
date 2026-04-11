@@ -3,6 +3,16 @@ import { api } from "@shared/routes";
 import { InsertCategory } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useProfileContext } from "@/contexts/ProfileContext";
+import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabase";
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    return { Authorization: `Bearer ${session.access_token}` };
+  }
+  return {};
+}
 
 export function useCategories() {
   const { currentProfile, isAggregatedView } = useProfileContext();
@@ -13,7 +23,8 @@ export function useCategories() {
     queryFn: async () => {
       const url = new URL(api.categories.list.path, window.location.origin);
       if (profileId) url.searchParams.append("profileId", profileId.toString());
-      const res = await fetch(url.toString(), { credentials: "include" });
+      const headers = await getAuthHeaders();
+      const res = await fetch(url.toString(), { headers });
       if (!res.ok) throw new Error("Failed to fetch categories");
       return api.categories.list.responses[200].parse(await res.json());
     },
@@ -30,14 +41,8 @@ export function useCreateCategory() {
     mutationFn: async (data: Omit<InsertCategory, 'profileId'> & { profileId?: number | null }) => {
       const profileId = data.profileId ?? currentProfile?.id;
       if (!profileId) throw new Error("No profile selected");
-      
-      const res = await fetch(api.categories.create.path, {
-        method: api.categories.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, profileId }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to create category");
+
+      const res = await apiRequest(api.categories.create.method, api.categories.create.path, { ...data, profileId });
       return api.categories.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
@@ -56,11 +61,7 @@ export function useDeleteCategory() {
 
   return useMutation({
     mutationFn: async (categoryId: number) => {
-      const res = await fetch(`/api/categories/${categoryId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to delete category");
+      const res = await apiRequest("DELETE", `/api/categories/${categoryId}`);
       return res.json();
     },
     onSuccess: () => {

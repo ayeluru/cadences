@@ -1,11 +1,53 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2 } from "lucide-react";
-import { SiReplit } from "react-icons/si";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { CheckCircle2, Mail, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
-  const handleLogin = () => {
-    window.location.href = "/api/login";
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const { toast } = useToast();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      if (mode === "signup") {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+
+        if (error) throw error;
+
+        toast({
+          title: "Check your email",
+          description: "We sent you a confirmation link to complete your signup.",
+        });
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) throw error;
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -18,8 +60,12 @@ export default function AuthPage() {
 
         <Card className="border-2 border-primary/10 shadow-xl shadow-primary/5">
           <CardHeader>
-            <CardTitle>Welcome</CardTitle>
-            <CardDescription>Sign in with your Replit account to get started.</CardDescription>
+            <CardTitle>{mode === "signin" ? "Welcome back" : "Create account"}</CardTitle>
+            <CardDescription>
+              {mode === "signin"
+                ? "Sign in to your account to continue."
+                : "Create an account to get started."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-3">
@@ -36,13 +82,57 @@ export default function AuthPage() {
               ))}
             </div>
 
-            <Button onClick={handleLogin} className="w-full text-lg py-6 shadow-lg shadow-primary/25" size="lg" data-testid="button-login">
-              <SiReplit className="mr-2 h-5 w-5" />
-              Continue with Replit
-            </Button>
-            <p className="text-xs text-center text-muted-foreground">
-              New users will have an account created automatically
-            </p>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full text-lg py-6 shadow-lg shadow-primary/25"
+                size="lg"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                ) : (
+                  <Mail className="mr-2 h-5 w-5" />
+                )}
+                {mode === "signin" ? "Sign In" : "Sign Up"}
+              </Button>
+            </form>
+
+            <div className="text-center">
+              <button
+                type="button"
+                className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+              >
+                {mode === "signin"
+                  ? "Don't have an account? Sign up"
+                  : "Already have an account? Sign in"}
+              </button>
+            </div>
           </CardContent>
         </Card>
       </div>

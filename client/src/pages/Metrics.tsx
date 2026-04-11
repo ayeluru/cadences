@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { TaskWithDetails } from "@shared/schema";
 import { useProfileContext } from "@/contexts/ProfileContext";
+import { supabase } from "@/lib/supabase";
 import { 
   CHART_COLORS, 
   TimeRange, 
@@ -39,7 +40,9 @@ export default function MetricsPage() {
   const { data: tasks, isLoading: tasksLoading } = useQuery<TaskWithDetails[]>({
     queryKey: ["/api/tasks", currentProfile?.id],
     queryFn: async () => {
-      const res = await fetch(`/api/tasks${queryParams}`, { credentials: "include" });
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: HeadersInit = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch(`/api/tasks${queryParams}`, { headers });
       if (!res.ok) throw new Error("Failed to fetch tasks");
       return res.json();
     },
@@ -60,8 +63,10 @@ export default function MetricsPage() {
     queryFn: async () => {
       if (!allMetrics.length) return [];
       
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: HeadersInit = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
       const historyPromises = allMetrics.map(async (metric) => {
-        const res = await fetch(`/api/metrics/${metric.id}/history?limit=100`);
+        const res = await fetch(`/api/metrics/${metric.id}/history?limit=100`, { headers });
         if (!res.ok) return null;
         const values = await res.json();
         return {

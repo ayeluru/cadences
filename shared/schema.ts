@@ -2,16 +2,16 @@ import { pgTable, text, serial, integer, boolean, timestamp, varchar, real } fro
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { users } from "./models/auth";
 
-export * from "./models/auth";
+// Note: Users are managed by Supabase Auth (auth.users table)
+// userId columns reference Supabase user IDs (UUIDs as strings)
 
 // Profiles - allow users to organize tasks into different contexts (Work, Personal, Exercise, Demo)
 export const profiles = pgTable("profiles", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull(), // URL-friendly identifier
-  userId: varchar("user_id").references(() => users.id).notNull(),
+  userId: varchar("user_id").notNull(),
   isDemo: boolean("is_demo").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -20,14 +20,14 @@ export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   parentId: integer("parent_id"),
-  userId: varchar("user_id").references(() => users.id).notNull(),
+  userId: varchar("user_id").notNull(),
   profileId: integer("profile_id").references(() => profiles.id),
 });
 
 export const tags = pgTable("tags", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
+  userId: varchar("user_id").notNull(),
   profileId: integer("profile_id").references(() => profiles.id),
 });
 
@@ -69,7 +69,7 @@ export const tasks = pgTable("tasks", {
   
   lastCompletedAt: timestamp("last_completed_at"),
   categoryId: integer("category_id").references(() => categories.id),
-  userId: varchar("user_id").references(() => users.id).notNull(),
+  userId: varchar("user_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   isArchived: boolean("is_archived").default(false),
 });
@@ -115,23 +115,14 @@ export const taskVariations = pgTable("task_variations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Relations
-export const profilesRelations = relations(profiles, ({ one, many }) => ({
-  user: one(users, { fields: [profiles.userId], references: [users.id] }),
+// Relations (users managed by Supabase Auth, no ORM relation needed)
+export const profilesRelations = relations(profiles, ({ many }) => ({
   tasks: many(tasks),
   categories: many(categories),
   tags: many(tags),
-}));
-
-export const usersRelations = relations(users, ({ many }) => ({
-  tasks: many(tasks),
-  categories: many(categories),
-  tags: many(tags),
-  profiles: many(profiles),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
-  user: one(users, { fields: [categories.userId], references: [users.id] }),
   profile: one(profiles, { fields: [categories.profileId], references: [profiles.id] }),
   parent: one(categories, { fields: [categories.parentId], references: [categories.id], relationName: "subcategories" }),
   subcategories: many(categories, { relationName: "subcategories" }),
@@ -139,7 +130,6 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
-  user: one(users, { fields: [tasks.userId], references: [users.id] }),
   profile: one(profiles, { fields: [tasks.profileId], references: [profiles.id] }),
   category: one(categories, { fields: [tasks.categoryId], references: [categories.id] }),
   parentTask: one(tasks, { fields: [tasks.parentTaskId], references: [tasks.id], relationName: "childTasks" }),
@@ -155,7 +145,6 @@ export const taskVariationsRelations = relations(taskVariations, ({ one }) => ({
 }));
 
 export const tagsRelations = relations(tags, ({ one, many }) => ({
-  user: one(users, { fields: [tags.userId], references: [users.id] }),
   profile: one(profiles, { fields: [tags.profileId], references: [profiles.id] }),
   tasks: many(taskTags),
 }));
@@ -213,7 +202,7 @@ export type InsertTaskVariation = z.infer<typeof insertTaskVariationSchema>;
 export const taskStreaks = pgTable("task_streaks", {
   id: serial("id").primaryKey(),
   taskId: integer("task_id").references(() => tasks.id).notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
+  userId: varchar("user_id").notNull(),
   currentStreak: integer("current_streak").default(0).notNull(),
   longestStreak: integer("longest_streak").default(0).notNull(),
   lastCompletedAt: timestamp("last_completed_at"),
@@ -223,7 +212,6 @@ export const taskStreaks = pgTable("task_streaks", {
 
 export const taskStreaksRelations = relations(taskStreaks, ({ one }) => ({
   task: one(tasks, { fields: [taskStreaks.taskId], references: [tasks.id] }),
-  user: one(users, { fields: [taskStreaks.userId], references: [users.id] }),
 }));
 
 export type TaskStreak = typeof taskStreaks.$inferSelect;

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useProfileContext } from "@/contexts/ProfileContext";
+import { supabase } from "@/lib/supabase";
 import { differenceInDays } from "date-fns";
 
 interface StreakData {
@@ -56,7 +57,10 @@ export default function Stats() {
     queryKey: ['/api/streaks', currentProfile?.id],
     queryFn: async () => {
       const queryParams = currentProfile?.id ? `?profileId=${currentProfile.id}` : '';
-      const res = await fetch(`/api/streaks${queryParams}`, { credentials: "include" });
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/streaks${queryParams}`, {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
       if (!res.ok) throw new Error("Failed to fetch streaks");
       return res.json();
     },

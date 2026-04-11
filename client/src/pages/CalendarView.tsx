@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface EnhancedCalendarDay {
@@ -52,7 +53,9 @@ export default function CalendarView() {
   const { data: calendarData, isLoading } = useQuery<EnhancedCalendarDay[]>({
     queryKey: ["/api/calendar/enhanced", startDate, endDate, isAggregatedView ? "all" : currentProfile?.id],
     queryFn: async () => {
-      const res = await fetch(`/api/calendar/enhanced?${buildQueryParams()}`);
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: HeadersInit = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch(`/api/calendar/enhanced?${buildQueryParams()}`, { headers });
       if (!res.ok) throw new Error("Failed to fetch calendar data");
       return res.json();
     },

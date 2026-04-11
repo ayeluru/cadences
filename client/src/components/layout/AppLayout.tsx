@@ -98,10 +98,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="p-4 border-t border-border/50">
           <div className="flex items-center gap-3 px-4 py-3 mb-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-              {user?.firstName?.[0] || user?.email?.[0] || "U"}
+              {user?.email?.[0]?.toUpperCase() || "U"}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.firstName || "User"}</p>
+              <p className="text-sm font-medium truncate">{user?.email?.split("@")[0] || "User"}</p>
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
           </div>

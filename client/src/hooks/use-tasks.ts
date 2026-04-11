@@ -3,6 +3,16 @@ import { api, buildUrl } from "@shared/routes";
 import { InsertTask } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useProfileContext } from "@/contexts/ProfileContext";
+import { apiRequest } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabase";
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    return { Authorization: `Bearer ${session.access_token}` };
+  }
+  return {};
+}
 
 export function useTasks(filters?: { search?: string; categoryId?: number; tagId?: number }) {
   const { currentProfile, isAggregatedView } = useProfileContext();
@@ -17,7 +27,8 @@ export function useTasks(filters?: { search?: string; categoryId?: number; tagId
       if (filters?.categoryId) url.searchParams.append("categoryId", filters.categoryId.toString());
       if (filters?.tagId) url.searchParams.append("tagId", filters.tagId.toString());
 
-      const res = await fetch(url.toString(), { credentials: "include" });
+      const headers = await getAuthHeaders();
+      const res = await fetch(url.toString(), { headers });
       if (!res.ok) throw new Error("Failed to fetch tasks");
       return api.tasks.list.responses[200].parse(await res.json());
     },
@@ -30,7 +41,8 @@ export function useTask(id: number) {
     queryKey: [api.tasks.get.path, id],
     queryFn: async () => {
       const url = buildUrl(api.tasks.get.path, { id });
-      const res = await fetch(url, { credentials: "include" });
+      const headers = await getAuthHeaders();
+      const res = await fetch(url, { headers });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("Failed to fetch task");
       return api.tasks.get.responses[200].parse(await res.json());
@@ -48,17 +60,8 @@ export function useCreateTask() {
     mutationFn: async (data: Omit<InsertTask, 'profileId'> & { tagIds?: number[]; profileId?: number | null }) => {
       const profileId = data.profileId ?? currentProfile?.id;
       if (!profileId) throw new Error("No profile selected");
-      
-      const res = await fetch(api.tasks.create.path, {
-        method: api.tasks.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, profileId }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to create task");
-      }
+
+      const res = await apiRequest(api.tasks.create.method, api.tasks.create.path, { ...data, profileId });
       return api.tasks.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
@@ -79,13 +82,7 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: number } & Partial<InsertTask> & { tagIds?: number[] }) => {
       const url = buildUrl(api.tasks.update.path, { id });
-      const res = await fetch(url, {
-        method: api.tasks.update.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to update task");
+      const res = await apiRequest(api.tasks.update.method, url, updates);
       return api.tasks.update.responses[200].parse(await res.json());
     },
     onSuccess: () => {
@@ -106,8 +103,7 @@ export function useDeleteTask() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.tasks.delete.path, { id });
-      const res = await fetch(url, { method: api.tasks.delete.method, credentials: "include" });
-      if (!res.ok) throw new Error("Failed to delete task");
+      await apiRequest(api.tasks.delete.method, url);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
@@ -123,11 +119,7 @@ export function useDeleteTaskWithCascade() {
 
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`/api/tasks/${id}/cascade`, { 
-        method: "DELETE", 
-        credentials: "include" 
-      });
-      if (!res.ok) throw new Error("Failed to delete task");
+      const res = await apiRequest("DELETE", `/api/tasks/${id}/cascade`);
       return res.json();
     },
     onSuccess: () => {
@@ -150,11 +142,7 @@ export function useArchiveTask() {
 
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`/api/tasks/${id}/archive`, { 
-        method: "POST", 
-        credentials: "include" 
-      });
-      if (!res.ok) throw new Error("Failed to archive task");
+      const res = await apiRequest("POST", `/api/tasks/${id}/archive`);
       return res.json();
     },
     onSuccess: () => {
@@ -173,27 +161,21 @@ export function useCompleteTask() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ 
-      id, 
-      notes, 
+    mutationFn: async ({
+      id,
+      notes,
       completedAt,
       metrics,
       variationId
-    }: { 
-      id: number; 
-      notes?: string; 
+    }: {
+      id: number;
+      notes?: string;
       completedAt?: string;
       metrics?: { metricId: number; value: number | string }[];
       variationId?: number;
     }) => {
       const url = buildUrl(api.tasks.complete.path, { id });
-      const res = await fetch(url, {
-        method: api.tasks.complete.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes, completedAt, metrics, variationId }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to complete task");
+      const res = await apiRequest(api.tasks.complete.method, url, { notes, completedAt, metrics, variationId });
       return res.json();
     },
     onSuccess: () => {
@@ -213,16 +195,7 @@ export function useReassignTask() {
 
   return useMutation({
     mutationFn: async ({ taskId, targetProfileId }: { taskId: number; targetProfileId: number }) => {
-      const res = await fetch(`/api/tasks/${taskId}/reassign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetProfileId }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to reassign task");
-      }
+      const res = await apiRequest("POST", `/api/tasks/${taskId}/reassign`, { targetProfileId });
       return res.json();
     },
     onSuccess: () => {
@@ -244,16 +217,7 @@ export function useMigrateTasks() {
 
   return useMutation({
     mutationFn: async ({ taskIds, targetProfileId }: { taskIds: number[]; targetProfileId: number }) => {
-      const res = await fetch("/api/tasks/migrate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskIds, targetProfileId }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to migrate tasks");
-      }
+      const res = await apiRequest("POST", "/api/tasks/migrate", { taskIds, targetProfileId });
       return res.json();
     },
     onSuccess: (_, variables) => {

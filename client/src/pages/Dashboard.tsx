@@ -88,7 +88,7 @@ export default function Dashboard() {
             Dashboard
           </h2>
           <p className="text-muted-foreground mt-1">
-            Welcome back, {user?.firstName}. You have {groupedTasks.overdue.length} urgent tasks.
+            Welcome back. You have {groupedTasks.overdue.length} urgent tasks.
           </p>
         </div>
 
