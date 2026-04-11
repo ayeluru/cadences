@@ -425,7 +425,7 @@ export async function profilesDemo(req: VercelRequest, res: VercelResponse) {
     const existingProfiles = await storage.getProfiles(user.id);
     const demoProfile = existingProfiles.find(p => p.isDemo);
     if (demoProfile) {
-      return res.status(400).json({ success: false, message: 'Demo profile already exists.', profile: demoProfile });
+      return res.status(200).json({ success: true, message: 'Demo profile already exists.', profile: demoProfile });
     }
 
     const profile = await storage.createProfile(user.id, { name: 'Demo', slug: 'demo', isDemo: true });
