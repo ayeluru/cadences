@@ -10,6 +10,7 @@ if (!process.env.DATABASE_URL) {
 const client = postgres(process.env.DATABASE_URL, {
   prepare: false, // Required for Supabase transaction pooler
   max: 1, // Limit connections in serverless
+  ssl: 'require',
 });
 
 export const db = drizzle(client, { schema });
