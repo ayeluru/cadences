@@ -570,8 +570,9 @@ export async function profilesIdDemoSeed(req: VercelRequest, res: VercelResponse
     await storage.seedDemoProfile(user.id, profileId);
     return res.json({ success: true, message: 'Demo data regenerated successfully', profile });
   } catch (error) {
-    console.error('Error regenerating demo data:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('Error regenerating demo data:', msg, error);
+    return res.status(500).json({ error: 'Internal server error', details: msg });
   }
 }
 

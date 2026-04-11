@@ -77,6 +77,8 @@ const routes: Route[] = [
   { pattern: /^variations\/(\d+)$/, handler: variationsId, params: ['id'] },
 ];
 
+export const config = { maxDuration: 60 };
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Parse path from URL, stripping /api/ prefix
   const url = new URL(req.url || '', `http://${req.headers.host}`);
