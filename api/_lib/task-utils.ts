@@ -1,8 +1,18 @@
 import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
-import type { Task } from '../../shared/schema.js';
+import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
 
 const storage = new DatabaseStorage();
+
+export interface BatchData {
+  categories: Category[];
+  tagsMap: Map<number, Tag[]>;
+  metricsMap: Map<number, TaskMetric[]>;
+  variationsMap: Map<number, TaskVariation[]>;
+  streaksMap: Map<number, TaskStreak>;
+  completionsInPeriodMap: Map<number, Completion[]>;
+  completionsMap: Map<number, Completion[]>;
+}
 
 // Get period boundaries for frequency-based tasks
 export function getPeriodBounds(period: string): { start: Date, end: Date } {
@@ -61,13 +71,13 @@ export function filterCompletionsWithRefractory(completions: any[], refractoryMi
   return filtered;
 }
 
-// Helper to calculate task details
-export async function enrichTask(task: any, userId: string) {
-  const categories = await storage.getCategories(userId);
-  const category = task.categoryId ? categories.find(c => c.id === task.categoryId) : null;
-  const taskTags = await storage.getTaskTags(task.id);
-  const taskMetrics = await storage.getTaskMetrics(task.id);
-  const variations = await storage.getTaskVariations(task.id);
+// Helper to calculate task details — accepts optional pre-fetched BatchData to avoid N+1 queries
+export async function enrichTask(task: any, userId: string, batch?: BatchData) {
+  const categoriesList = batch ? batch.categories : await storage.getCategories(userId);
+  const category = task.categoryId ? categoriesList.find(c => c.id === task.categoryId) : null;
+  const taskTags = batch ? (batch.tagsMap.get(task.id) || []) : await storage.getTaskTags(task.id);
+  const taskMetrics = batch ? (batch.metricsMap.get(task.id) || []) : await storage.getTaskMetrics(task.id);
+  const variations = batch ? (batch.variationsMap.get(task.id) || []) : await storage.getTaskVariations(task.id);
 
   let nextDue = new Date();
   let completionsThisPeriod = 0;
@@ -76,7 +86,9 @@ export async function enrichTask(task: any, userId: string) {
   // Handle frequency-based tasks differently
   if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
     const { start, end } = getPeriodBounds(task.targetPeriod);
-    const allCompletions = await storage.getCompletionsInPeriod(task.id, start, end);
+    const allCompletions = batch
+      ? (batch.completionsInPeriodMap.get(task.id) || [])
+      : await storage.getCompletionsInPeriod(task.id, start, end);
     const validCompletions = filterCompletionsWithRefractory(allCompletions, task.refractoryMinutes);
 
     completionsThisPeriod = validCompletions.length;
@@ -252,12 +264,22 @@ export async function enrichTask(task: any, userId: string) {
   }
 
   // Get streak data
-  const streak = await storage.getTaskStreak(task.id, userId);
+  const streak = batch ? batch.streaksMap.get(task.id) : await storage.getTaskStreak(task.id, userId);
 
   // Get variation stats if there are variations
   let variationStats: any[] = [];
   if (variations.length > 0) {
-    variationStats = await storage.getVariationStats(task.id);
+    if (batch?.completionsMap) {
+      const taskCompletions = batch.completionsMap.get(task.id) || [];
+      const totalWithVariation = taskCompletions.filter(c => c.variationId !== null).length;
+      variationStats = variations.map(v => {
+        const count = taskCompletions.filter(c => c.variationId === v.id).length;
+        const percentage = totalWithVariation > 0 ? Math.round((count / totalWithVariation) * 100) : 0;
+        return { variationId: v.id, name: v.name, count, percentage };
+      }).sort((a, b) => b.count - a.count);
+    } else {
+      variationStats = await storage.getVariationStats(task.id);
+    }
   }
 
   return {
@@ -279,6 +301,58 @@ export async function enrichTask(task: any, userId: string) {
       lastCompletedAt: streak.lastCompletedAt,
     } : null,
   };
+}
+
+// Batch-enrich multiple tasks with ~8 queries total instead of ~6N
+export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> {
+  if (tasks.length === 0) return [];
+
+  const taskIds = tasks.map(t => t.id);
+
+  const [categories, tagsMap, metricsMap, variationsMap, streaksMap] = await Promise.all([
+    storage.getCategories(userId),
+    storage.getTaskTagsBatch(taskIds),
+    storage.getTaskMetricsBatch(taskIds),
+    storage.getTaskVariationsBatch(taskIds),
+    storage.getTaskStreaksBatch(taskIds, userId),
+  ]);
+
+  // Batch-fetch completions for frequency tasks, grouped by period type
+  const completionsInPeriodMap = new Map<number, Completion[]>();
+  const periodGroups = new Map<string, number[]>();
+  for (const task of tasks) {
+    if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
+      if (!periodGroups.has(task.targetPeriod)) periodGroups.set(task.targetPeriod, []);
+      periodGroups.get(task.targetPeriod)!.push(task.id);
+    }
+  }
+  await Promise.all(
+    Array.from(periodGroups.entries()).map(async ([period, ids]) => {
+      const { start, end } = getPeriodBounds(period);
+      const batchResult = await storage.getCompletionsInPeriodBatch(ids, start, end);
+      batchResult.forEach((comps, taskId) => {
+        completionsInPeriodMap.set(taskId, comps);
+      });
+    })
+  );
+
+  // Batch-fetch all completions for tasks that have variations (for stats)
+  const tasksWithVariationIds = taskIds.filter(id => (variationsMap.get(id) || []).length > 0);
+  const completionsMap = tasksWithVariationIds.length > 0
+    ? await storage.getCompletionsBatch(tasksWithVariationIds)
+    : new Map<number, Completion[]>();
+
+  const batch: BatchData = {
+    categories,
+    tagsMap,
+    metricsMap,
+    variationsMap,
+    streaksMap,
+    completionsInPeriodMap,
+    completionsMap,
+  };
+
+  return Promise.all(tasks.map(task => enrichTask(task, userId, batch)));
 }
 
 export { storage };

@@ -2218,6 +2218,95 @@ export class DatabaseStorage implements IStorage {
     // Delete profiles
     await db.delete(profiles).where(eq(profiles.userId, userId));
   }
+
+  // Batch query methods — fetch data for many tasks in a single DB round-trip
+
+  async getTaskTagsBatch(taskIds: number[]): Promise<Map<number, Tag[]>> {
+    if (taskIds.length === 0) return new Map();
+    const result = await db.select({ taskId: taskTags.taskId, tag: tags })
+      .from(taskTags)
+      .innerJoin(tags, eq(taskTags.tagId, tags.id))
+      .where(inArray(taskTags.taskId, taskIds));
+    const map = new Map<number, Tag[]>();
+    for (const row of result) {
+      if (!map.has(row.taskId)) map.set(row.taskId, []);
+      map.get(row.taskId)!.push(row.tag);
+    }
+    return map;
+  }
+
+  async getTaskMetricsBatch(taskIds: number[]): Promise<Map<number, TaskMetric[]>> {
+    if (taskIds.length === 0) return new Map();
+    const result = await db.select().from(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
+    const map = new Map<number, TaskMetric[]>();
+    for (const row of result) {
+      if (!map.has(row.taskId)) map.set(row.taskId, []);
+      map.get(row.taskId)!.push(row);
+    }
+    return map;
+  }
+
+  async getTaskVariationsBatch(taskIds: number[]): Promise<Map<number, TaskVariation[]>> {
+    if (taskIds.length === 0) return new Map();
+    const result = await db.select().from(taskVariations).where(inArray(taskVariations.taskId, taskIds));
+    const map = new Map<number, TaskVariation[]>();
+    for (const row of result) {
+      if (!map.has(row.taskId)) map.set(row.taskId, []);
+      map.get(row.taskId)!.push(row);
+    }
+    return map;
+  }
+
+  async getTaskStreaksBatch(taskIds: number[], userId: string): Promise<Map<number, TaskStreak>> {
+    if (taskIds.length === 0) return new Map();
+    const result = await db.select().from(taskStreaks)
+      .where(and(inArray(taskStreaks.taskId, taskIds), eq(taskStreaks.userId, userId)));
+    const map = new Map<number, TaskStreak>();
+    for (const row of result) {
+      map.set(row.taskId, row);
+    }
+    return map;
+  }
+
+  async getCompletionsInPeriodBatch(taskIds: number[], startDate: Date, endDate: Date): Promise<Map<number, Completion[]>> {
+    if (taskIds.length === 0) return new Map();
+    const result = await db.select().from(completions)
+      .where(and(
+        inArray(completions.taskId, taskIds),
+        gte(completions.completedAt, startDate),
+        lte(completions.completedAt, endDate)
+      ))
+      .orderBy(desc(completions.completedAt));
+    const map = new Map<number, Completion[]>();
+    for (const row of result) {
+      if (!map.has(row.taskId)) map.set(row.taskId, []);
+      map.get(row.taskId)!.push(row);
+    }
+    return map;
+  }
+
+  async getCompletionsBatch(taskIds: number[]): Promise<Map<number, Completion[]>> {
+    if (taskIds.length === 0) return new Map();
+    const result = await db.select().from(completions)
+      .where(inArray(completions.taskId, taskIds))
+      .orderBy(desc(completions.completedAt));
+    const map = new Map<number, Completion[]>();
+    for (const row of result) {
+      if (!map.has(row.taskId)) map.set(row.taskId, []);
+      map.get(row.taskId)!.push(row);
+    }
+    return map;
+  }
+
+  async getTasksBatch(taskIds: number[]): Promise<Map<number, Task>> {
+    if (taskIds.length === 0) return new Map();
+    const result = await db.select().from(tasks).where(inArray(tasks.id, taskIds));
+    const map = new Map<number, Task>();
+    for (const row of result) {
+      map.set(row.id, row);
+    }
+    return map;
+  }
 }
 
 export const storage = new DatabaseStorage();

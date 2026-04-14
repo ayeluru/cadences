@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth, unauthorized } from './auth.js';
-import { storage, enrichTask } from './task-utils.js';
+import { storage, enrichTask, enrichTasks } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
 import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay } from 'date-fns';
 
@@ -83,7 +83,7 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
     const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate, profileId, excludeDemo);
 
     const allTasks = await storage.getTasks(userId, profileId, excludeDemo);
-    const enrichedTasks = await Promise.all(allTasks.map((t) => enrichTask(t, userId)));
+    const enrichedTasks = await enrichTasks(allTasks, userId);
 
     const days = eachDayOfInterval({ start: startDate, end: endDate });
     const calendarMap = new Map<string, {
@@ -637,7 +637,7 @@ async function statsIndexHandleGet(req: VercelRequest, res: VercelResponse, user
 
     const completions = await storage.getAllCompletions(userId, profileId, excludeDemo);
     const tasks = await storage.getTasks(userId, profileId, excludeDemo);
-    const enrichedTasks = await Promise.all(tasks.map(t => enrichTask(t, userId)));
+    const enrichedTasks = await enrichTasks(tasks, userId);
 
     const totalCompletions = completions.length;
 
@@ -776,9 +776,7 @@ async function tasksIndexHandleGet(req: VercelRequest, res: VercelResponse, user
       tasks = tasks.filter(task => task.categoryId === catId);
     }
 
-    const enrichedTasks = await Promise.all(
-      tasks.map(task => enrichTask(task, userId))
-    );
+    const enrichedTasks = await enrichTasks(tasks, userId);
 
     let filteredTasks = enrichedTasks;
     if (tagId) {
