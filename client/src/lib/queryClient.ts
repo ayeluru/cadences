@@ -9,7 +9,16 @@ async function throwIfResNotOk(res: Response) {
 }
 
 export async function getAuthHeaders(): Promise<HeadersInit> {
-  const { data: { session } } = await supabase.auth.getSession();
+  let { data: { session } } = await supabase.auth.getSession();
+
+  if (session) {
+    const now = Math.floor(Date.now() / 1000);
+    if (session.expires_at && now >= session.expires_at - 60) {
+      const { data } = await supabase.auth.refreshSession();
+      session = data.session;
+    }
+  }
+
   if (session?.access_token) {
     return {
       Authorization: `Bearer ${session.access_token}`,

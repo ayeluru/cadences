@@ -59,7 +59,8 @@ export function useAuth() {
     try {
       await supabase.auth.signOut();
       queryClient.clear();
-    } finally {
+      window.location.replace("/");
+    } catch {
       setIsLoggingOut(false);
     }
   };
