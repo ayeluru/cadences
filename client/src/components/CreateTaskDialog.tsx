@@ -80,6 +80,8 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const [refractoryUnit, setRefractoryUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
   // Advanced section collapsed state
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Scheduled validation error
+  const [scheduledError, setScheduledError] = useState(false);
   // Variations state
   const [variations, setVariations] = useState<string[]>([]);
   const [newVariationName, setNewVariationName] = useState("");
@@ -143,6 +145,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       // Scheduled task type - validate at least one schedule option is set
       const hasSchedule = selectedDaysOfWeek.length > 0 || scheduledDaysOfMonth.trim();
       if (!hasSchedule) {
+        setScheduledError(true);
         toast({ title: "Schedule Required", description: "Please select days of week or days of month", variant: "destructive" });
         return;
       }
@@ -219,6 +222,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         setRefractoryValue("");
         setRefractoryUnit('hours');
         setAdvancedOpen(false);
+        setScheduledError(false);
         setVariations([]);
         setNewVariationName("");
       }
@@ -304,6 +308,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       setRefractoryValue("");
       setRefractoryUnit('hours');
       setAdvancedOpen(false);
+      setScheduledError(false);
       reset({
         intervalValue: 1,
         intervalUnit: 'days',
@@ -471,7 +476,10 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               
             </TabsContent>
 
-            <TabsContent value="scheduled" className="space-y-4 pt-4">
+            <TabsContent value="scheduled" className={`space-y-4 pt-4 rounded-lg transition-colors ${scheduledError ? 'ring-2 ring-destructive/50 p-3' : ''}`}>
+              {scheduledError && (
+                <p className="text-sm text-destructive font-medium">Select at least one schedule option below.</p>
+              )}
               <div className="space-y-3">
                 <Label className="flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
@@ -489,6 +497,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                             ? prev.filter(d => d !== day.id) 
                             : [...prev, day.id]
                         );
+                        setScheduledError(false);
                       }}
                       className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
                         selectedDaysOfWeek.includes(day.id)
@@ -529,7 +538,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                   data-testid="input-days-of-month"
                   placeholder="e.g., 1,15 for 1st and 15th"
                   value={scheduledDaysOfMonth}
-                  onChange={(e) => setScheduledDaysOfMonth(e.target.value)}
+                  onChange={(e) => { setScheduledDaysOfMonth(e.target.value); setScheduledError(false); }}
                 />
                 <p className="text-xs text-muted-foreground">
                   Enter comma-separated days (1-31) for monthly scheduling, e.g., "1,15" for bi-monthly.
