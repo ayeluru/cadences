@@ -10,7 +10,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/use-auth";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { Loader2 } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 
 const DailyTasks = lazy(() => import("@/pages/DailyTasks"));
 const WeeklyTasks = lazy(() => import("@/pages/WeeklyTasks"));
@@ -21,6 +22,25 @@ const Settings = lazy(() => import("@/pages/Settings"));
 const UserGuide = lazy(() => import("@/pages/UserGuide"));
 const CalendarView = lazy(() => import("@/pages/CalendarView"));
 const MetricsPage = lazy(() => import("@/pages/Metrics"));
+
+function PageTransition({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const [key, setKey] = useState(0);
+  const prevLocation = useRef(location);
+
+  useEffect(() => {
+    if (location !== prevLocation.current) {
+      prevLocation.current = location;
+      setKey((k) => k + 1);
+    }
+  }, [location]);
+
+  return (
+    <div key={key} className="page-enter">
+      {children}
+    </div>
+  );
+}
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -45,7 +65,9 @@ function PrivateRoute({ component: Component }: { component: React.ComponentType
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         }>
-          <Component />
+          <PageTransition>
+            <Component />
+          </PageTransition>
         </Suspense>
       </AppLayout>
     </ProfileProvider>
