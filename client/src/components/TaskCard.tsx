@@ -181,18 +181,18 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
           </AnimatePresence>
         </div>
         
-        <EditTaskDialog open={editOpen} onOpenChange={setEditOpen} task={task} />
-        <TaskHistoryDialog 
+        {editOpen && <EditTaskDialog open={editOpen} onOpenChange={setEditOpen} task={task} />}
+        {historyOpen && <TaskHistoryDialog 
           open={historyOpen} 
           onOpenChange={setHistoryOpen} 
           taskId={task.id}
           taskTitle={task.title}
-        />
-        <CompleteTaskDialog 
+        />}
+        {completeDialogOpen && <CompleteTaskDialog 
           open={completeDialogOpen} 
           onOpenChange={setCompleteDialogOpen} 
           task={task} 
-        />
+        />}
       </>
     );
   }
@@ -405,18 +405,18 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
         </AnimatePresence>
       </motion.div>
 
-      <EditTaskDialog open={editOpen} onOpenChange={setEditOpen} task={task} />
-      <TaskHistoryDialog 
+      {editOpen && <EditTaskDialog open={editOpen} onOpenChange={setEditOpen} task={task} />}
+      {historyOpen && <TaskHistoryDialog 
         open={historyOpen} 
         onOpenChange={setHistoryOpen} 
         taskId={task.id}
         taskTitle={task.title}
-      />
-      <CompleteTaskDialog 
+      />}
+      {completeDialogOpen && <CompleteTaskDialog 
         open={completeDialogOpen} 
         onOpenChange={setCompleteDialogOpen} 
         task={task} 
-      />
+      />}
     </>
   );
 }

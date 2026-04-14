@@ -190,7 +190,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <CreateTaskDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {createOpen && <CreateTaskDialog open={createOpen} onOpenChange={setCreateOpen} />}
     </div>
   );
 }

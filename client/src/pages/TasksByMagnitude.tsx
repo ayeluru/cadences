@@ -231,7 +231,7 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
         )}
       </div>
 
-      <CreateTaskDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {createOpen && <CreateTaskDialog open={createOpen} onOpenChange={setCreateOpen} />}
     </div>
   );
 }
