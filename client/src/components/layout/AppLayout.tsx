@@ -104,7 +104,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         <div className="p-4 border-t border-border/50">
           <div className="flex items-center gap-3 px-4 py-3 mb-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-bold">
               {user?.email?.[0]?.toUpperCase() || "U"}
             </div>
             <div className="flex-1 min-w-0">
