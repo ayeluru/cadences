@@ -33,9 +33,26 @@ export function useAuth() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data: { session: cached } }) => {
+      if (cached) {
+        const now = Math.floor(Date.now() / 1000);
+        if (cached.expires_at && now >= cached.expires_at) {
+          const { data } = await supabase.auth.refreshSession();
+          if (!data.session) {
+            await supabase.auth.signOut({ scope: 'local' });
+            setSession(null);
+            setUser(null);
+            setIsLoading(false);
+            return;
+          }
+          setSession(data.session);
+          setUser(data.session.user);
+          setIsLoading(false);
+          return;
+        }
+      }
+      setSession(cached);
+      setUser(cached?.user ?? null);
       setIsLoading(false);
     });
 
@@ -56,13 +73,9 @@ export function useAuth() {
 
   const logout = async () => {
     setIsLoggingOut(true);
-    try {
-      await supabase.auth.signOut();
-      queryClient.clear();
-      window.location.replace("/");
-    } catch {
-      setIsLoggingOut(false);
-    }
+    await supabase.auth.signOut({ scope: 'local' });
+    queryClient.clear();
+    window.location.replace("/");
   };
 
   const refreshUser = useCallback(async () => {

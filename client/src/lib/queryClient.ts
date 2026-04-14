@@ -16,6 +16,11 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
     if (session.expires_at && now >= session.expires_at - 60) {
       const { data } = await supabase.auth.refreshSession();
       session = data.session;
+      if (!session) {
+        await supabase.auth.signOut({ scope: 'local' });
+        window.location.replace("/");
+        return {};
+      }
     }
   }
 
