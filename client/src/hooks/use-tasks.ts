@@ -3,16 +3,7 @@ import { api, buildUrl } from "@shared/routes";
 import { InsertTask } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useProfileContext } from "@/contexts/ProfileContext";
-import { apiRequest } from "@/lib/queryClient";
-import { supabase } from "@/lib/supabase";
-
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    return { Authorization: `Bearer ${session.access_token}` };
-  }
-  return {};
-}
+import { apiRequest, getAuthHeaders } from "@/lib/queryClient";
 
 export function useTasks(filters?: { search?: string; categoryId?: number; tagId?: number }) {
   const { currentProfile, isAggregatedView } = useProfileContext();

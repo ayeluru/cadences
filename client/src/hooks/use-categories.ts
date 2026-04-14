@@ -3,16 +3,7 @@ import { api } from "@shared/routes";
 import { InsertCategory } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useProfileContext } from "@/contexts/ProfileContext";
-import { apiRequest } from "@/lib/queryClient";
-import { supabase } from "@/lib/supabase";
-
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    return { Authorization: `Bearer ${session.access_token}` };
-  }
-  return {};
-}
+import { apiRequest, getAuthHeaders } from "@/lib/queryClient";
 
 export function useCategories() {
   const { currentProfile, isAggregatedView } = useProfileContext();

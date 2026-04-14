@@ -1,14 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/routes";
-import { supabase } from "@/lib/supabase";
-
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    return { Authorization: `Bearer ${session.access_token}` };
-  }
-  return {};
-}
+import { getAuthHeaders } from "@/lib/queryClient";
 
 export function useStats(profileId?: number | null) {
   const queryParams = profileId ? `?profileId=${profileId}` : '';

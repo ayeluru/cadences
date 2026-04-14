@@ -8,7 +8,7 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-async function getAuthHeaders(): Promise<HeadersInit> {
+export async function getAuthHeaders(): Promise<HeadersInit> {
   const { data: { session } } = await supabase.auth.getSession();
   if (session?.access_token) {
     return {
