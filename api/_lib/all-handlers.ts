@@ -13,7 +13,14 @@ export async function authUser(req: VercelRequest, res: VercelResponse) {
   if (!user) return unauthorized(res);
 
   if (req.method === 'GET') {
-    return res.status(200).json({ id: user.id, email: user.email });
+    const { data: { user: fullUser } } = await supabaseAdmin.auth.admin.getUserById(user.id);
+    const meta = fullUser?.user_metadata ?? {};
+    return res.status(200).json({
+      id: user.id,
+      email: user.email,
+      firstName: meta.firstName ?? null,
+      lastName: meta.lastName ?? null,
+    });
   } else if (req.method === 'PATCH') {
     return authUserHandlePatch(req, res, user.id);
   } else if (req.method === 'DELETE') {
@@ -30,7 +37,13 @@ async function authUserHandlePatch(req: VercelRequest, res: VercelResponse, user
       user_metadata: { firstName, lastName },
     });
     if (error) return res.status(400).json({ error: error.message });
-    return res.status(200).json({ id: data.user.id, email: data.user.email });
+    const meta = data.user.user_metadata ?? {};
+    return res.status(200).json({
+      id: data.user.id,
+      email: data.user.email,
+      firstName: meta.firstName ?? null,
+      lastName: meta.lastName ?? null,
+    });
   } catch (error) {
     console.error('Error updating user:', error);
     return res.status(500).json({ error: 'Internal server error' });

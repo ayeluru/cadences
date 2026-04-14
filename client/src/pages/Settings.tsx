@@ -2,21 +2,16 @@ import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile, useImportFromProfile } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
-import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, ChevronDown, User, LogOut } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, ChevronDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,45 +24,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-function useUpdateUser() {
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async (data: { firstName?: string; lastName?: string }) => {
-      const res = await apiRequest('PATCH', '/api/auth/user', data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
-      toast({ title: "Profile updated", description: "Your profile has been updated." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
-}
-
-function useDeleteAccount() {
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async () => {
-      await apiRequest('DELETE', '/api/auth/user');
-    },
-    onSuccess: () => {
-      toast({ title: "Account deleted", description: "Your account has been deleted." });
-      window.location.href = "/";
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
-}
-
 export default function Settings() {
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: tags, isLoading: tagsLoading } = useTags();
   const { data: profiles, isLoading: profilesLoading } = useProfiles();
   const { currentProfile, setCurrentProfile, isLoading: profileContextLoading } = useProfileContext();
-  const { user, logout, isLoggingOut } = useAuth();
   const createTagMutation = useCreateTag();
   const deleteCategoryMutation = useDeleteCategory();
   const createProfileMutation = useCreateProfile();
@@ -77,21 +38,16 @@ export default function Settings() {
   const clearAllProfilesDataMutation = useClearAllProfilesData();
   const regenerateDemoMutation = useRegenerateDemoProfile();
   const importFromProfileMutation = useImportFromProfile();
-  const updateUserMutation = useUpdateUser();
-  const deleteAccountMutation = useDeleteAccount();
   
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newProfileName, setNewProfileName] = useState("");
   const [importFromProfileId, setImportFromProfileId] = useState<string>("");
   
-  const [accountOpen, setAccountOpen] = useState(true);
   const [profilesOpen, setProfilesOpen] = useState(true);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
-  
-  // User profile is managed by Supabase Auth
 
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,95 +97,8 @@ export default function Settings() {
     <div className="space-y-4 max-w-4xl mx-auto">
       <div>
         <h2 className="text-3xl font-bold font-display tracking-tight">Settings</h2>
-        <p className="text-muted-foreground mt-1">Configure your account and organization preferences.</p>
+        <p className="text-muted-foreground mt-1">Configure your profiles, categories, tags, and data.</p>
       </div>
-
-      {/* Account Management */}
-      <Collapsible open={accountOpen} onOpenChange={setAccountOpen}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover-elevate">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="w-5 h-5 text-primary" /> Account
-                  </CardTitle>
-                  <CardDescription>Manage your account settings and profile information.</CardDescription>
-                </div>
-                <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${accountOpen ? 'rotate-180' : ''}`} />
-              </div>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <CardContent className="space-y-6">
-              <div className="flex items-start gap-4">
-                <Avatar className="w-16 h-16">
-                  <AvatarFallback className="text-lg">
-                    {user?.email?.[0]?.toUpperCase() || "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <p className="font-medium">{user?.email?.split("@")[0] || "User"}</p>
-                  <p className="text-sm text-muted-foreground">{user?.email || "No email"}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Member since {user?.created_at ? new Date(user.created_at).toLocaleDateString() : "Unknown"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t space-y-4">
-                <div className="flex gap-3">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => logout()}
-                    disabled={isLoggingOut}
-                    data-testid="button-logout"
-                  >
-                    {isLoggingOut ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogOut className="w-4 h-4 mr-2" />}
-                    Sign Out
-                  </Button>
-                </div>
-
-                <div className="pt-4 border-t">
-                  <h4 className="text-sm font-medium text-destructive mb-2">Danger Zone</h4>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive" data-testid="button-delete-account">
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Account
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2">
-                          <AlertTriangle className="w-5 h-5 text-destructive" />
-                          Delete your account?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will permanently delete your account and all associated data including all profiles, tasks, completions, categories, and tags. This action cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => deleteAccountMutation.mutate()}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          data-testid="button-confirm-delete-account"
-                        >
-                          {deleteAccountMutation.isPending ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : null}
-                          Delete Account
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </div>
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
 
       {/* Profiles */}
       <Collapsible open={profilesOpen} onOpenChange={setProfilesOpen}>

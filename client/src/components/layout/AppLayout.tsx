@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
-import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal } from "lucide-react";
+import { useAuth, getDisplayName, getInitials } from "@/hooks/use-auth";
+import { LayoutDashboard, PieChart, Settings, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,7 +10,7 @@ import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { user, logout, isLoggingOut } = useAuth();
+  const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [cadencesOpen, setCadencesOpen] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -105,24 +105,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="p-4 border-t border-border/50">
-          <div className="flex items-center gap-3 px-4 py-3 mb-2">
+          <Link href="/account" className="flex items-center gap-3 px-4 py-3 mb-2 rounded-xl transition-colors hover:bg-muted group cursor-pointer">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-bold">
-              {user?.email?.[0]?.toUpperCase() || "U"}
+              {getInitials(user)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.email?.split("@")[0] || "User"}</p>
+              <p className="text-sm font-medium truncate group-hover:text-foreground">{getDisplayName(user)}</p>
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
-          </div>
-          <Button 
-            variant="ghost" 
-            className="w-full justify-start text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            onClick={() => logout()}
-            disabled={isLoggingOut}
-          >
-            {isLoggingOut ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogOut className="w-4 h-4 mr-2" />}
-            Sign Out
-          </Button>
+          </Link>
           <p className="text-[10px] text-muted-foreground/50 text-center mt-2">v{__APP_VERSION__}</p>
         </div>
       </aside>
@@ -201,13 +192,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               );
             })}
             <div className="mt-auto border-t pt-4">
-               <Button 
-                variant="destructive" 
-                className="w-full justify-center"
-                onClick={() => logout()}
-              >
-                Sign Out
-              </Button>
+              <Link href="/account" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-muted">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-xs font-bold">
+                  {getInitials(user)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{getDisplayName(user)}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                </div>
+              </Link>
             </div>
           </motion.div>
         )}

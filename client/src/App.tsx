@@ -22,6 +22,7 @@ const Settings = lazy(() => import("@/pages/Settings"));
 const UserGuide = lazy(() => import("@/pages/UserGuide"));
 const CalendarView = lazy(() => import("@/pages/CalendarView"));
 const MetricsPage = lazy(() => import("@/pages/Metrics"));
+const Account = lazy(() => import("@/pages/Account"));
 
 function PageTransition({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -86,6 +87,7 @@ function Router() {
       <Route path="/calendar" component={() => <PrivateRoute component={CalendarView} />} />
       <Route path="/metrics" component={() => <PrivateRoute component={MetricsPage} />} />
       <Route path="/guide" component={() => <PrivateRoute component={UserGuide} />} />
+      <Route path="/account" component={() => <PrivateRoute component={Account} />} />
       <Route path="/settings" component={() => <PrivateRoute component={Settings} />} />
       <Route path="/login" component={AuthPage} />
       <Route component={NotFound} />
