@@ -427,10 +427,10 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
                 </TabsContent>
 
                 <TabsContent value="scheduled" className="space-y-4 pt-4">
-                  <div className="space-y-3">
-                    <Label className="flex items-center gap-2">
+                  <div className="rounded-lg border p-3 space-y-3">
+                    <Label className="flex items-center gap-2 text-sm font-semibold">
                       <Calendar className="w-4 h-4" />
-                      Days of the Week
+                      By weekday
                     </Label>
                     <div className="flex flex-wrap gap-2">
                       {DAYS_OF_WEEK.map((day) => (
@@ -455,12 +455,32 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
                         </button>
                       ))}
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Pick which days of the week this task recurs on.
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <Label htmlFor="edit-scheduledDaysOfMonth" className="flex items-center gap-2 text-sm font-semibold">
+                      <Calendar className="w-4 h-4" />
+                      By day of month
+                    </Label>
+                    <Input 
+                      id="edit-scheduledDaysOfMonth" 
+                      data-testid="input-edit-days-of-month"
+                      placeholder="e.g., 1,15,-1"
+                      value={scheduledDaysOfMonth}
+                      onChange={(e) => setScheduledDaysOfMonth(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Comma-separated day numbers (1-31). Use negative numbers to count from the end: -1 = last day, -2 = 2nd to last.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="edit-scheduledTime" className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
-                      Preferred Time (optional)
+                      Preferred time (optional)
                     </Label>
                     <Input 
                       type="time" 
@@ -468,17 +488,6 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
                       data-testid="input-edit-scheduled-time"
                       value={scheduledTime}
                       onChange={(e) => setScheduledTime(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-scheduledDaysOfMonth">Specific Days of Month (optional)</Label>
-                    <Input 
-                      id="edit-scheduledDaysOfMonth" 
-                      data-testid="input-edit-days-of-month"
-                      placeholder="e.g., 1,15 for 1st and 15th"
-                      value={scheduledDaysOfMonth}
-                      onChange={(e) => setScheduledDaysOfMonth(e.target.value)}
                     />
                   </div>
                 </TabsContent>
