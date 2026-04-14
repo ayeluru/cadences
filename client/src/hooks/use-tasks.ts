@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
-import { InsertTask } from "@shared/schema";
+import { InsertTask, TaskWithDetails } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { apiRequest, getAuthHeaders } from "@/lib/queryClient";
@@ -120,16 +120,27 @@ export function useDeleteTaskWithCascade() {
       const res = await apiRequest("DELETE", `/api/tasks/${id}/cascade`);
       return res.json();
     },
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
+      const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
+      queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
+        old?.filter(t => t.id !== id && t.parentTaskId !== id)
+      );
+      return { previous };
+    },
+    onError: (err, _id, context) => {
+      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
       queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
       queryClient.invalidateQueries({ queryKey: ["/api/completions"] });
-      toast({ title: "Task deleted", description: "Task and all its history have been permanently removed." });
     },
-    onError: (err) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    onSuccess: () => {
+      toast({ title: "Task deleted", description: "Task and all its history have been permanently removed." });
     },
   });
 }
@@ -143,13 +154,24 @@ export function useArchiveTask() {
       const res = await apiRequest("POST", `/api/tasks/${id}/archive`);
       return res.json();
     },
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
+      const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
+      queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
+        old?.filter(t => t.id !== id)
+      );
+      return { previous };
+    },
+    onError: (err, _id, context) => {
+      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
-      toast({ title: "Task ended", description: "Task will no longer recur. History is preserved." });
     },
-    onError: (err) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    onSuccess: () => {
+      toast({ title: "Task ended", description: "Task will no longer recur. History is preserved." });
     },
   });
 }
@@ -176,13 +198,44 @@ export function useCompleteTask() {
       const res = await apiRequest(api.tasks.complete.method, url, { notes, completedAt, metrics, variationId });
       return res.json();
     },
-    onSuccess: () => {
+    onMutate: async ({ id, completedAt }) => {
+      await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
+      const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
+      const nowDate = completedAt ? new Date(completedAt) : new Date();
+      queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
+        old?.map((t): TaskWithDetails => {
+          if (t.id !== id) return t;
+          const isFrequency = t.taskType === 'frequency';
+          const newCompletionsThisPeriod = (t.completionsThisPeriod || 0) + 1;
+          const targetMet = isFrequency && newCompletionsThisPeriod >= (t.targetCount || 0);
+          return {
+            ...t,
+            lastCompletedAt: nowDate,
+            status: targetMet || !isFrequency ? 'later' : t.status,
+            completionsThisPeriod: isFrequency ? newCompletionsThisPeriod : t.completionsThisPeriod,
+            targetProgress: isFrequency && t.targetCount
+              ? Math.min(100, (newCompletionsThisPeriod / t.targetCount) * 100)
+              : t.targetProgress,
+            streak: t.streak ? {
+              ...t.streak,
+              currentStreak: t.streak.currentStreak + 1,
+              longestStreak: Math.max(t.streak.longestStreak, t.streak.currentStreak + 1),
+            } : t.streak,
+          };
+        })
+      );
+      return { previous };
+    },
+    onError: (err, _vars, context) => {
+      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
-      toast({ title: "Task completed", description: "Good job! Maintenance recorded." });
     },
-    onError: (err) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    onSuccess: () => {
+      toast({ title: "Task completed", description: "Good job! Maintenance recorded." });
     },
   });
 }
