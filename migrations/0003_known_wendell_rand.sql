@@ -1,0 +1,2 @@
+ALTER TABLE "feedback_comments" ADD COLUMN "is_anonymous" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "feedback_submissions" ADD COLUMN "is_anonymous" boolean DEFAULT false NOT NULL;

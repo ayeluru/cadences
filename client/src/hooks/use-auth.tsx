@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import type { User, Session } from "@supabase/supabase-js";
@@ -25,14 +25,49 @@ export function getInitials(user: User | null): string {
   return user.email?.[0]?.toUpperCase() || "U";
 }
 
-export function useAuth() {
+interface AuthState {
+  user: User | null;
+  session: Session | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  userRole: 'user' | 'admin';
+  logout: () => Promise<void>;
+  isLoggingOut: boolean;
+  refreshUser: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthState | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userRole, setUserRole] = useState<'user' | 'admin'>(() => {
+    return (sessionStorage.getItem('userRole') as 'user' | 'admin') || 'user';
+  });
 
   useEffect(() => {
+    const fetchRole = async (accessToken: string, retries = 3) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await fetch('/api/auth/role', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            sessionStorage.setItem('userRole', data.role);
+            setUserRole(data.role);
+            return;
+          }
+        } catch {
+          if (i < retries - 1) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+        }
+      }
+    };
+
     supabase.auth.getSession().then(async ({ data: { session: cached } }) => {
       if (cached) {
         const now = Math.floor(Date.now() / 1000);
@@ -47,9 +82,11 @@ export function useAuth() {
           }
           setSession(data.session);
           setUser(data.session.user);
+          fetchRole(data.session.access_token);
           setIsLoading(false);
           return;
         }
+        fetchRole(cached.access_token);
       }
       setSession(cached);
       setUser(cached?.user ?? null);
@@ -62,7 +99,11 @@ export function useAuth() {
         setUser(session?.user ?? null);
         setIsLoading(false);
 
-        if (!session) {
+        if (session?.access_token) {
+          fetchRole(session.access_token);
+        } else {
+          sessionStorage.removeItem('userRole');
+          setUserRole('user');
           queryClient.clear();
         }
       }
@@ -71,12 +112,13 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, [queryClient]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     setIsLoggingOut(true);
+    sessionStorage.removeItem('userRole');
     await supabase.auth.signOut({ scope: 'local' });
     queryClient.clear();
     window.location.replace("/");
-  };
+  }, [queryClient]);
 
   const refreshUser = useCallback(async () => {
     const { data: { session } } = await supabase.auth.refreshSession();
@@ -86,15 +128,25 @@ export function useAuth() {
     }
   }, []);
 
-  return {
+  const value: AuthState = {
     user,
     session,
     isLoading,
     isAuthenticated: !!user,
+    isAdmin: userRole === 'admin',
+    userRole,
     logout,
     isLoggingOut,
     refreshUser,
   };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthState {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
 }
 
 // Helper to get access token for API calls

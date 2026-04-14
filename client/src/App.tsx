@@ -7,7 +7,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import AuthPage from "@/pages/AuthPage";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, AuthProvider } from "@/hooks/use-auth";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { Loader2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -23,6 +23,9 @@ const UserGuide = lazy(() => import("@/pages/UserGuide"));
 const CalendarView = lazy(() => import("@/pages/CalendarView"));
 const MetricsPage = lazy(() => import("@/pages/Metrics"));
 const Account = lazy(() => import("@/pages/Account"));
+const FeedbackPage = lazy(() => import("@/pages/FeedbackPage"));
+const FeedbackDetailPage = lazy(() => import("@/pages/FeedbackDetailPage"));
+const AdminPage = lazy(() => import("@/pages/AdminPage"));
 
 function PageTransition({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -43,7 +46,7 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
+function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -67,7 +70,7 @@ function PrivateRoute({ component: Component }: { component: React.ComponentType
           </div>
         }>
           <PageTransition>
-            <Component />
+            {children}
           </PageTransition>
         </Suspense>
       </AppLayout>
@@ -76,32 +79,44 @@ function PrivateRoute({ component: Component }: { component: React.ComponentType
 }
 
 function Router() {
+  const [location] = useLocation();
+
+  if (location === "/login") {
+    return <AuthPage />;
+  }
+
   return (
-    <Switch>
-      <Route path="/" component={() => <PrivateRoute component={Dashboard} />} />
-      <Route path="/tasks/daily" component={() => <PrivateRoute component={DailyTasks} />} />
-      <Route path="/tasks/weekly" component={() => <PrivateRoute component={WeeklyTasks} />} />
-      <Route path="/tasks/monthly" component={() => <PrivateRoute component={MonthlyTasks} />} />
-      <Route path="/tasks/yearly" component={() => <PrivateRoute component={YearlyTasks} />} />
-      <Route path="/stats" component={() => <PrivateRoute component={Stats} />} />
-      <Route path="/calendar" component={() => <PrivateRoute component={CalendarView} />} />
-      <Route path="/metrics" component={() => <PrivateRoute component={MetricsPage} />} />
-      <Route path="/guide" component={() => <PrivateRoute component={UserGuide} />} />
-      <Route path="/account" component={() => <PrivateRoute component={Account} />} />
-      <Route path="/settings" component={() => <PrivateRoute component={Settings} />} />
-      <Route path="/login" component={AuthPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <AuthGate>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/tasks/daily" component={DailyTasks} />
+        <Route path="/tasks/weekly" component={WeeklyTasks} />
+        <Route path="/tasks/monthly" component={MonthlyTasks} />
+        <Route path="/tasks/yearly" component={YearlyTasks} />
+        <Route path="/stats" component={Stats} />
+        <Route path="/calendar" component={CalendarView} />
+        <Route path="/metrics" component={MetricsPage} />
+        <Route path="/guide" component={UserGuide} />
+        <Route path="/account" component={Account} />
+        <Route path="/settings" component={Settings} />
+        <Route path="/feedback/:id" component={FeedbackDetailPage} />
+        <Route path="/feedback" component={FeedbackPage} />
+        <Route path="/admin" component={AdminPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </AuthGate>
   );
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

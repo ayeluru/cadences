@@ -1,0 +1,1 @@
+ALTER TABLE "feedback_comments" ADD COLUMN "is_official_response" boolean DEFAULT false NOT NULL;

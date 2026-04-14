@@ -1,0 +1,1 @@
+ALTER TABLE "feedback_submissions" ADD COLUMN "admin_response_by" varchar;
