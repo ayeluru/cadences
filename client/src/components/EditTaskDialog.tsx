@@ -243,10 +243,15 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
           updateData.scheduledDaysOfWeek = null;
         }
         if (scheduledDaysOfMonth.trim()) {
-          const daysInput = scheduledDaysOfMonth.split(',')
+          const positives = scheduledDaysOfMonth.split(',')
             .map(d => parseInt(d.trim()))
             .filter(d => !isNaN(d) && d >= 1 && d <= 31)
             .sort((a, b) => a - b);
+          const negatives = scheduledDaysOfMonth.split(',')
+            .map(d => parseInt(d.trim()))
+            .filter(d => !isNaN(d) && d >= -31 && d <= -1)
+            .sort((a, b) => a - b);
+          const daysInput = [...positives, ...negatives];
           updateData.scheduledDaysOfMonth = daysInput.length > 0 ? daysInput.join(',') : null;
         } else {
           updateData.scheduledDaysOfMonth = null;

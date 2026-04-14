@@ -154,11 +154,15 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
         taskData.scheduledDaysOfWeek = selectedDaysOfWeek.sort((a, b) => a - b).join(',');
       }
       if (scheduledDaysOfMonth.trim()) {
-        // Validate and normalize days of month input
-        const daysInput = scheduledDaysOfMonth.split(',')
+        const positives = scheduledDaysOfMonth.split(',')
           .map(d => parseInt(d.trim()))
           .filter(d => !isNaN(d) && d >= 1 && d <= 31)
           .sort((a, b) => a - b);
+        const negatives = scheduledDaysOfMonth.split(',')
+          .map(d => parseInt(d.trim()))
+          .filter(d => !isNaN(d) && d >= -31 && d <= -1)
+          .sort((a, b) => a - b);
+        const daysInput = [...positives, ...negatives];
         if (daysInput.length > 0) {
           taskData.scheduledDaysOfMonth = daysInput.join(',');
         }
