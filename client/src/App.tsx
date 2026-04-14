@@ -5,20 +5,22 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
-import DailyTasks from "@/pages/DailyTasks";
-import WeeklyTasks from "@/pages/WeeklyTasks";
-import MonthlyTasks from "@/pages/MonthlyTasks";
-import YearlyTasks from "@/pages/YearlyTasks";
-import Stats from "@/pages/Stats";
-import Settings from "@/pages/Settings";
-import UserGuide from "@/pages/UserGuide";
-import CalendarView from "@/pages/CalendarView";
-import MetricsPage from "@/pages/Metrics";
 import AuthPage from "@/pages/AuthPage";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/use-auth";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { Loader2 } from "lucide-react";
+import { lazy, Suspense } from "react";
+
+const DailyTasks = lazy(() => import("@/pages/DailyTasks"));
+const WeeklyTasks = lazy(() => import("@/pages/WeeklyTasks"));
+const MonthlyTasks = lazy(() => import("@/pages/MonthlyTasks"));
+const YearlyTasks = lazy(() => import("@/pages/YearlyTasks"));
+const Stats = lazy(() => import("@/pages/Stats"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const UserGuide = lazy(() => import("@/pages/UserGuide"));
+const CalendarView = lazy(() => import("@/pages/CalendarView"));
+const MetricsPage = lazy(() => import("@/pages/Metrics"));
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -38,7 +40,13 @@ function PrivateRoute({ component: Component }: { component: React.ComponentType
   return (
     <ProfileProvider>
       <AppLayout>
-        <Component />
+        <Suspense fallback={
+          <div className="flex h-64 w-full items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        }>
+          <Component />
+        </Suspense>
       </AppLayout>
     </ProfileProvider>
   );
