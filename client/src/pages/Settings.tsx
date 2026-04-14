@@ -453,18 +453,43 @@ export default function Settings() {
                   categories?.map(cat => (
                     <div key={cat.id} className="bg-secondary text-secondary-foreground px-3 py-1.5 rounded-lg text-sm font-medium border border-border/50 flex items-center gap-2 group">
                       <span>{cat.name}</span>
-                      <button
-                        onClick={() => deleteCategoryMutation.mutate(cat.id)}
-                        disabled={deleteCategoryMutation.isPending}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 ml-1"
-                        title="Delete category"
-                      >
-                        {deleteCategoryMutation.isPending && deleteCategoryMutation.variables === cat.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3 h-3" />
-                        )}
-                      </button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 ml-1"
+                            title="Delete category"
+                          >
+                            {deleteCategoryMutation.isPending && deleteCategoryMutation.variables === cat.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3 h-3" />
+                            )}
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="flex items-center gap-2">
+                              <AlertTriangle className="w-5 h-5 text-destructive" />
+                              Delete category "{cat.name}"?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Tasks using this category will become uncategorized. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteCategoryMutation.mutate(cat.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              {deleteCategoryMutation.isPending && deleteCategoryMutation.variables === cat.id ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              ) : null}
+                              Delete Category
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   ))
                 )}
