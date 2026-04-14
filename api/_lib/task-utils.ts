@@ -156,17 +156,21 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     }
 
     if (!foundNextDue && task.scheduledDaysOfMonth) {
-      const scheduledDays = task.scheduledDaysOfMonth.split(',')
+      const rawDays = task.scheduledDaysOfMonth.split(',')
         .map((d: string) => parseInt(d.trim()))
-        .filter((d: number) => !isNaN(d) && d >= 1 && d <= 31)
-        .sort((a: number, b: number) => a - b);
+        .filter((d: number) => !isNaN(d) && ((d >= 1 && d <= 31) || (d >= -31 && d <= -1)));
 
       for (let monthOffset = 0; monthOffset <= 2 && !foundNextDue; monthOffset++) {
         const checkMonth = addMonths(today, monthOffset);
         const daysInMonth = new Date(checkMonth.getFullYear(), checkMonth.getMonth() + 1, 0).getDate();
 
-        for (const day of scheduledDays) {
-          if (day > daysInMonth) continue;
+        // Resolve negative days relative to month end: -1 = last day, -2 = 2nd to last
+        const resolvedDays = rawDays
+          .map((d: number) => d < 0 ? daysInMonth + 1 + d : d)
+          .filter((d: number) => d >= 1 && d <= daysInMonth)
+          .sort((a: number, b: number) => a - b);
+
+        for (const day of resolvedDays) {
           const candidate = new Date(checkMonth.getFullYear(), checkMonth.getMonth(), day);
           candidate.setHours(scheduledHour, scheduledMinute, 0, 0);
           if (candidate >= now && !wasCompletedAfter(candidate)) {
