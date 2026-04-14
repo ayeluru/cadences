@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Loader2, TrendingUp, TrendingDown, Minus, Activity, Eye, EyeOff } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Minus, Activity, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -215,9 +216,15 @@ export default function MetricsPage() {
           <CardContent className="py-12 text-center">
             <Activity className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
             <h3 className="text-lg font-medium mb-2">No metrics tracked yet</h3>
-            <p className="text-muted-foreground text-sm max-w-md mx-auto">
+            <p className="text-muted-foreground text-sm max-w-md mx-auto mb-4">
               Add custom metrics to your tasks to track things like weight, reps, duration, or any other measurement you want to monitor over time.
+              Edit any task and look for "Track Statistics" in the Advanced Options section.
             </p>
+            <Link href="/">
+              <Button variant="outline">
+                Go to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       ) : (
