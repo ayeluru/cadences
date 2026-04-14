@@ -4,6 +4,17 @@ export type CadenceMagnitude = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export function filterTasksByCadence(tasks: TaskWithDetails[], magnitude: CadenceMagnitude): TaskWithDetails[] {
   return tasks.filter(task => {
+    // Handle scheduled tasks by their schedule type
+    if (task.taskType === 'scheduled') {
+      if (task.scheduledDaysOfWeek) {
+        return magnitude === 'daily';
+      }
+      if (task.scheduledDaysOfMonth) {
+        return magnitude === 'monthly';
+      }
+      return magnitude === 'daily';
+    }
+
     // Handle frequency-based tasks
     if (task.taskType === 'frequency') {
       // Show frequency tasks in weekly view since they're typically weekly targets
