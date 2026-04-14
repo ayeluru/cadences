@@ -108,6 +108,14 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
   };
 
   const handleComplete = () => {
+    if (!hasMetrics && !hasVariations) {
+      completeMutation.mutate({ id: task.id });
+    } else {
+      setCompleteDialogOpen(true);
+    }
+  };
+
+  const handleCompleteWithDetails = () => {
     setCompleteDialogOpen(true);
   };
 
@@ -335,8 +343,8 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                 <DropdownMenuItem onClick={() => setHistoryOpen(true)} data-testid={`menu-history-${task.id}`}>
                   <History className="w-4 h-4 mr-2" /> View History
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleComplete} data-testid={`menu-complete-${task.id}`}>
-                  <CalendarCheck className="w-4 h-4 mr-2" /> Mark Done
+                <DropdownMenuItem onClick={handleCompleteWithDetails} data-testid={`menu-complete-${task.id}`}>
+                  <CalendarCheck className="w-4 h-4 mr-2" /> Complete with details...
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
