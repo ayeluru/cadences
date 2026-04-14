@@ -50,13 +50,14 @@ function getStreakDuration(streak: StreakData): { days: number; label: string } 
 }
 
 export default function Stats() {
-  const { currentProfile } = useProfileContext();
+  const { currentProfile, isAggregatedView } = useProfileContext();
+  const profileId = isAggregatedView ? undefined : currentProfile?.id;
   const [showAllStreaks, setShowAllStreaks] = useState(false);
-  const { data: stats, isLoading } = useStats(currentProfile?.id);
+  const { data: stats, isLoading } = useStats(profileId);
   const { data: streaks = [], isLoading: streaksLoading } = useQuery<StreakData[]>({
-    queryKey: ['/api/streaks', currentProfile?.id],
+    queryKey: ['/api/streaks', isAggregatedView ? 'all' : profileId],
     queryFn: async () => {
-      const queryParams = currentProfile?.id ? `?profileId=${currentProfile.id}` : '';
+      const queryParams = profileId ? `?profileId=${profileId}` : '';
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`/api/streaks${queryParams}`, {
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
