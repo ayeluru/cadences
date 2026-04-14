@@ -1,17 +1,19 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer } from "lucide-react";
+import { LayoutDashboard, PieChart, Settings, LogOut, Loader2, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout, isLoggingOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [cadencesOpen, setCadencesOpen] = useState(true);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const cadenceItems = [
     { href: "/tasks/daily", label: "Daily", icon: Clock },
@@ -150,7 +152,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-0 top-16 z-30 bg-background/95 backdrop-blur-sm md:hidden p-4 flex flex-col gap-2 overflow-y-auto"
+            className="fixed inset-0 top-16 bottom-14 z-30 bg-background/95 backdrop-blur-sm md:hidden p-4 flex flex-col gap-2 overflow-y-auto"
           >
             {navItems.map((item, idx) => {
               if (item.type === "divider") {
@@ -218,7 +220,38 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </main>
       
-      {/* Mobile Bottom Nav (Optional alternative to burger menu, but sticking to sidebar/burger for consistency) */}
+      {/* Mobile Bottom Nav */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <div className="flex items-center justify-around h-14">
+          <Link href="/" className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${location === '/' ? 'text-primary' : 'text-muted-foreground'}`}>
+            <LayoutDashboard className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Home</span>
+          </Link>
+          <Link href="/calendar" className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${location === '/calendar' ? 'text-primary' : 'text-muted-foreground'}`}>
+            <CalendarDays className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Calendar</span>
+          </Link>
+          <button
+            onClick={() => setCreateDialogOpen(true)}
+            className="flex items-center justify-center w-12 h-12 -mt-4 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 active:scale-95 transition-transform"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+          <Link href="/stats" className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${location === '/stats' ? 'text-primary' : 'text-muted-foreground'}`}>
+            <PieChart className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Stats</span>
+          </Link>
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${mobileMenuOpen ? 'text-primary' : 'text-muted-foreground'}`}
+          >
+            <MoreHorizontal className="w-5 h-5" />
+            <span className="text-[10px] font-medium">More</span>
+          </button>
+        </div>
+      </nav>
+
+      {createDialogOpen && <CreateTaskDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />}
     </div>
   );
 }
