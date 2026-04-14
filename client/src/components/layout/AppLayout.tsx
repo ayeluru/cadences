@@ -114,6 +114,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {isLoggingOut ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogOut className="w-4 h-4 mr-2" />}
             Sign Out
           </Button>
+          <p className="text-[10px] text-muted-foreground/50 text-center mt-2">v{__APP_VERSION__}</p>
         </div>
       </aside>
 
