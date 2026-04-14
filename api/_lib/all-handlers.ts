@@ -682,12 +682,11 @@ async function streaksIndexHandleGet(req: VercelRequest, res: VercelResponse, us
     const excludeDemo = profileId === undefined;
     const allStreaks = await storage.getAllStreaks(userId, profileId, excludeDemo);
 
-    const enrichedStreaks = await Promise.all(allStreaks.map(async (streak) => {
-      const task = await storage.getTask(streak.taskId);
-      return {
-        ...streak,
-        taskTitle: task?.title || "Unknown Task"
-      };
+    const streakTaskIds = allStreaks.map(s => s.taskId);
+    const taskMap = await storage.getTasksBatch(streakTaskIds);
+    const enrichedStreaks = allStreaks.map(streak => ({
+      ...streak,
+      taskTitle: taskMap.get(streak.taskId)?.title || "Unknown Task"
     }));
 
     return res.status(200).json(enrichedStreaks);
