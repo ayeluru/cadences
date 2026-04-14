@@ -37,9 +37,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar - Desktop */}
       <aside className="hidden md:flex w-64 flex-col border-r bg-card/50 backdrop-blur-xl sticky top-0 h-screen">
         <div className="p-6 border-b border-border/50">
-          <h1 className="text-2xl font-display font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            Cadences
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-display font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+              Cadences
+            </h1>
+            {import.meta.env.DEV && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                Dev
+              </span>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Track your recurring tasks.</p>
           <div className="mt-3">
             <ProfileSwitcher />
@@ -120,7 +127,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Header */}
       <header className="md:hidden sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b flex items-center justify-between gap-2 p-4">
-        <h1 className="text-xl font-display font-bold text-foreground">Cadences</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-display font-bold text-foreground">Cadences</h1>
+          {import.meta.env.DEV && (
+            <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
+              Dev
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <ProfileSwitcher />
           <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} data-testid="button-mobile-menu">

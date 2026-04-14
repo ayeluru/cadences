@@ -5,9 +5,9 @@ This file provides guidance to AI agents (Claude Code, Cursor, etc.) when workin
 ## Build & Development Commands
 
 ```bash
-npm run dev          # Start local dev: API server (port 3001) + Vite frontend (port 5173)
-npm run dev:api      # Start only the API dev server (port 3001)
-npm run dev:frontend # Start only the Vite frontend (port 5173)
+npm run dev          # Sync prod→dev DB, then start API server (port 3001) + Vite frontend (port 5173)
+npm run dev:api      # Start only the API dev server (port 3001) — no DB sync
+npm run dev:frontend # Start only the Vite frontend (port 5173) — no DB sync
 npm run build        # Build client for production (outputs to dist/public)
 npm run check        # TypeScript type checking
 npm run db:generate  # Generate a migration SQL file from schema changes
@@ -60,10 +60,12 @@ Cadences is a task/habit tracking application with multi-profile support, dynami
 - **Vercel** serves the static frontend via its CDN and runs the API as serverless functions. In production, there is no Express or Node.js server — just static files + on-demand functions.
 
 ### Local Development Architecture
-- **`npm run dev`** starts two processes:
-  1. **API dev server** (`scripts/dev-api.ts`) on port 3001 — loads the Vercel serverless function handler directly via Node/tsx, reads env vars from `.env.local`
-  2. **Vite frontend** on port 5173 — proxies all `/api` requests to the API server (configured in `vite.config.ts`)
+- **`npm run dev`** does three things in order:
+  1. **Syncs prod→dev database** (`scripts/sync-dev-db.sh`) — snapshots production data into dev via pg_dump/pg_restore, then re-applies any pending migrations (~15s). This ensures the dev database always mirrors production.
+  2. **API dev server** (`scripts/dev-api.ts`) on port 3001 — loads the Vercel serverless function handler directly via Node/tsx, reads env vars from `.env.local`
+  3. **Vite frontend** on port 5173 — proxies all `/api` requests to the API server (configured in `vite.config.ts`)
 - Access the app at **http://localhost:5173** (NOT port 3000 or 3001)
+- Use `dev:api` / `dev:frontend` to skip the DB sync and restart individual servers quickly
 - **Do NOT use `vercel dev`** — it has known proxy issues with this project's configuration
 
 ### Directory Structure
@@ -86,7 +88,8 @@ Cadences is a task/habit tracking application with multi-profile support, dynami
   - `schema.ts` - Drizzle ORM schema + Zod validation (single source of truth)
 - `scripts/` - Utility scripts
   - `dev-api.ts` - Local API dev server (adapts Vercel function handler to plain Node HTTP)
-  - `snapshot-prod-to-dev.sh` - Clones production database into dev database via pg_dump/pg_restore
+  - `sync-dev-db.sh` - Non-interactive prod→dev sync (runs automatically on `npm run dev`)
+  - `snapshot-prod-to-dev.sh` - Interactive prod→dev snapshot with confirmation prompt (for manual use)
 
 ### Path Aliases
 ```typescript
@@ -181,17 +184,11 @@ All API routes verify JWT via `verifyAuth(req)` which extracts the Supabase user
 
 When a task requires changing `shared/schema.ts` (adding/removing/renaming columns, tables, types, constraints, etc.):
 
-1. **Snapshot prod data into dev first.** Before any schema change, sync production data into the dev database so the migration is tested against real data:
+1. **Ensure dev mirrors prod.** `npm run dev` auto-syncs on every start, so if the dev server is already running the data is fresh. If not, run the sync manually:
    ```bash
-   PROD_DATABASE_URL="postgresql://postgres:Arryak0222!!@db.xodqmkmsrsmjrahuegfl.supabase.co:5432/postgres" ./scripts/snapshot-prod-to-dev.sh
+   bash scripts/sync-dev-db.sh
    ```
-   Requires `pg_dump`/`pg_restore` (install: `brew install libpq`, ensure `/opt/homebrew/opt/libpq/bin` is on PATH). If the user confirms they've already snapshotted recently, skip this step.
-   
-   **After each snapshot**, reset the migration tracking and re-apply migrations:
-   ```bash
-   psql '<DEV_DIRECT_URL>' -c "DELETE FROM drizzle.__drizzle_migrations WHERE id > 1;"
-   npm run db:migrate
-   ```
+   Requires `pg_dump`/`pg_restore` (install: `brew install libpq`). The sync handles migration tracking reset and re-apply automatically.
 2. **Make the schema change** in `shared/schema.ts`
 3. **Generate the migration**: run `npm run db:generate`
 4. **Read and present the generated SQL file** (in `migrations/`) to the user. Explain what it does in plain language. Flag anything destructive (DROP, ALTER TYPE, column renames).

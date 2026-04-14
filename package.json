@@ -4,7 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "node --import tsx/esm scripts/dev-api.ts & vite",
+    "dev": "bash scripts/sync-dev-db.sh; node --import tsx/esm scripts/dev-api.ts & vite",
     "dev:api": "node --import tsx/esm scripts/dev-api.ts",
     "dev:frontend": "vite",
     "build": "vite build",
