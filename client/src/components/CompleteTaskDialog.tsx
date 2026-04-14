@@ -35,6 +35,9 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
   const uniqueLocalVariations = localVariations.filter(v => !taskVariationIds.has(v.id));
   const variations = [...(task.variations || []), ...uniqueLocalVariations];
 
+  const hasMetrics = task.metrics && task.metrics.length > 0;
+  const hasExistingVariations = (task.variations || []).length > 0;
+
   const addVariationMutation = useMutation({
     mutationFn: async (name: string) => {
       const res = await apiRequest("POST", `/api/tasks/${task.id}/variations`, { name });
@@ -114,7 +117,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
         <DialogHeader>
           <DialogTitle>Complete: {task.title}</DialogTitle>
           <DialogDescription>
-            Record your stats for this completion.
+            {hasMetrics ? "Record your stats for this completion." : "Optionally backdate or add notes."}
           </DialogDescription>
         </DialogHeader>
 
@@ -178,9 +181,9 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="variation">Which variation? (optional)</Label>
-            {variations.length > 0 ? (
+          {(hasExistingVariations || variations.length > 0) ? (
+            <div className="space-y-2">
+              <Label htmlFor="variation">Which variation? (optional)</Label>
               <select
                 id="variation"
                 data-testid="select-variation"
@@ -193,49 +196,90 @@ export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDia
                   <option key={v.id} value={v.id}>{v.name}</option>
                 ))}
               </select>
-            ) : (
-              <p className="text-sm text-muted-foreground">No variations yet.</p>
-            )}
-            
-            {showAddVariation ? (
-              <div className="flex gap-2 mt-2">
-                <Input
-                  placeholder="New variation name..."
-                  value={newVariationName}
-                  onChange={(e) => setNewVariationName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddVariation()}
-                  data-testid="input-new-variation"
-                  autoFocus
-                />
+              {showAddVariation ? (
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    placeholder="New variation name..."
+                    value={newVariationName}
+                    onChange={(e) => setNewVariationName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddVariation()}
+                    data-testid="input-new-variation"
+                    autoFocus
+                  />
+                  <Button 
+                    size="sm" 
+                    onClick={handleAddVariation}
+                    disabled={addVariationMutation.isPending || !newVariationName.trim()}
+                    data-testid="button-save-variation"
+                  >
+                    {addVariationMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="ghost"
+                    onClick={() => { setShowAddVariation(false); setNewVariationName(""); }}
+                    data-testid="button-cancel-variation"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
                 <Button 
+                  variant="ghost" 
                   size="sm" 
-                  onClick={handleAddVariation}
-                  disabled={addVariationMutation.isPending || !newVariationName.trim()}
-                  data-testid="button-save-variation"
+                  onClick={() => setShowAddVariation(true)}
+                  className="mt-1"
+                  data-testid="button-add-variation"
                 >
-                  {addVariationMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                  <Plus className="h-4 w-4 mr-1" /> Add new variation
                 </Button>
-                <Button 
-                  size="sm" 
-                  variant="ghost"
-                  onClick={() => { setShowAddVariation(false); setNewVariationName(""); }}
-                  data-testid="button-cancel-variation"
+              )}
+            </div>
+          ) : (
+            <div>
+              {showAddVariation ? (
+                <div className="space-y-2">
+                  <Label>Add a variation</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Variation name..."
+                      value={newVariationName}
+                      onChange={(e) => setNewVariationName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddVariation()}
+                      data-testid="input-new-variation"
+                      autoFocus
+                    />
+                    <Button 
+                      size="sm" 
+                      onClick={handleAddVariation}
+                      disabled={addVariationMutation.isPending || !newVariationName.trim()}
+                      data-testid="button-save-variation"
+                    >
+                      {addVariationMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => { setShowAddVariation(false); setNewVariationName(""); }}
+                      data-testid="button-cancel-variation"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowAddVariation(true)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid="button-add-variation"
                 >
-                  Cancel
-                </Button>
-              </div>
-            ) : (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setShowAddVariation(true)}
-                className="mt-1"
-                data-testid="button-add-variation"
-              >
-                <Plus className="h-4 w-4 mr-1" /> Add new variation
-              </Button>
-            )}
-          </div>
+                  <Plus className="h-3.5 w-3.5 inline mr-1" />
+                  Add variation
+                </button>
+              )}
+            </div>
+          )}
 
           {task.metrics?.map((metric: TaskMetric) => (
             <div key={metric.id} className="space-y-2">
