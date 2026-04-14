@@ -562,57 +562,10 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  // Clear all user data (for resetting before seeding)
   async clearUserData(userId: string): Promise<void> {
-    // Get all user's tasks
-    const userTasks = await db.select().from(tasks).where(eq(tasks.userId, userId));
-    const taskIds = userTasks.map(t => t.id);
-
-    if (taskIds.length > 0) {
-      // Delete metric values for completions of these tasks
-      const taskCompletions = await db.select().from(completions).where(
-        inArray(completions.taskId, taskIds)
-      );
-      const completionIds = taskCompletions.map(c => c.id);
-      
-      if (completionIds.length > 0) {
-        await db.delete(metricValues).where(
-          inArray(metricValues.completionId, completionIds)
-        );
-      }
-
-      // Delete completions
-      await db.delete(completions).where(
-        inArray(completions.taskId, taskIds)
-      );
-
-      // Delete task metrics
-      await db.delete(taskMetrics).where(
-        inArray(taskMetrics.taskId, taskIds)
-      );
-
-      // Delete task tags
-      await db.delete(taskTags).where(
-        inArray(taskTags.taskId, taskIds)
-      );
-
-      // Delete task variations
-      await db.delete(taskVariations).where(
-        inArray(taskVariations.taskId, taskIds)
-      );
-
-      // Delete streaks
-      await db.delete(taskStreaks).where(eq(taskStreaks.userId, userId));
-
-      // Delete tasks (hard delete for reset)
-      await db.delete(tasks).where(eq(tasks.userId, userId));
-    }
-
-
-    // Delete tags
+    // CASCADE handles all child data (completions, metrics, streaks, variations, tag associations)
+    await db.delete(tasks).where(eq(tasks.userId, userId));
     await db.delete(tags).where(eq(tags.userId, userId));
-
-    // Delete categories
     await db.delete(categories).where(eq(categories.userId, userId));
   }
 
@@ -698,34 +651,8 @@ export class DatabaseStorage implements IStorage {
     if (!profile) {
       throw new Error("Profile not found or unauthorized");
     }
-    
-    // Get all tasks in this profile
-    const profileTasks = await db.select().from(tasks)
-      .where(and(eq(tasks.profileId, id), eq(tasks.userId, userId)));
-    const taskIds = profileTasks.map(t => t.id);
-    
-    if (taskIds.length > 0) {
-      // Delete completions and their metric values
-      const taskCompletions = await db.select().from(completions)
-        .where(inArray(completions.taskId, taskIds));
-      const completionIds = taskCompletions.map(c => c.id);
-      
-      if (completionIds.length > 0) {
-        await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
-      }
-      await db.delete(completions).where(inArray(completions.taskId, taskIds));
-      await db.delete(taskVariations).where(inArray(taskVariations.taskId, taskIds));
-      await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
-      await db.delete(taskTags).where(inArray(taskTags.taskId, taskIds));
-      await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
-      await db.delete(tasks).where(inArray(tasks.id, taskIds));
-    }
-    
-    // Delete categories and tags in this profile
-    await db.delete(categories).where(and(eq(categories.profileId, id), eq(categories.userId, userId)));
-    await db.delete(tags).where(and(eq(tags.profileId, id), eq(tags.userId, userId)));
-    
-    // Delete the profile itself
+
+    // ON DELETE CASCADE handles tasks, categories, tags, and all their children
     await db.delete(profiles).where(eq(profiles.id, id));
   }
 
@@ -735,30 +662,10 @@ export class DatabaseStorage implements IStorage {
     if (!profile) {
       throw new Error("Profile not found or unauthorized");
     }
-    
-    // Get all tasks in this profile
-    const profileTasks = await db.select().from(tasks)
-      .where(and(eq(tasks.profileId, profileId), eq(tasks.userId, userId)));
-    const taskIds = profileTasks.map(t => t.id);
-    
-    if (taskIds.length > 0) {
-      // Delete completions and their metric values
-      const taskCompletions = await db.select().from(completions)
-        .where(inArray(completions.taskId, taskIds));
-      const completionIds = taskCompletions.map(c => c.id);
-      
-      if (completionIds.length > 0) {
-        await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
-      }
-      await db.delete(completions).where(inArray(completions.taskId, taskIds));
-      await db.delete(taskVariations).where(inArray(taskVariations.taskId, taskIds));
-      await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
-      await db.delete(taskTags).where(inArray(taskTags.taskId, taskIds));
-      await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
-      await db.delete(tasks).where(inArray(tasks.id, taskIds));
-    }
-    
-    // Delete categories and tags in this profile (but keep the profile itself)
+
+    // Delete tasks (CASCADE handles completions, metrics, streaks, variations, tag associations)
+    await db.delete(tasks).where(and(eq(tasks.profileId, profileId), eq(tasks.userId, userId)));
+    // Delete categories and tags (keep the profile itself)
     await db.delete(categories).where(and(eq(categories.profileId, profileId), eq(categories.userId, userId)));
     await db.delete(tags).where(and(eq(tags.profileId, profileId), eq(tags.userId, userId)));
   }
@@ -1486,44 +1393,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteTaskWithCascade(id: number, userId: string): Promise<void> {
-    // Verify task belongs to user
     const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
     if (!task || task.userId !== userId) {
       throw new Error("Task not found or unauthorized");
     }
 
-    // Get all task IDs to delete (including variations)
-    const variations = await db.select().from(tasks).where(eq(tasks.parentTaskId, id));
-    const allTaskIds = [id, ...variations.map(v => v.id)];
-
-    // Delete metric values for completions of these tasks
-    const taskCompletions = await db.select().from(completions).where(
-      inArray(completions.taskId, allTaskIds)
-    );
-    const completionIds = taskCompletions.map(c => c.id);
-    
-    if (completionIds.length > 0) {
-      await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
-    }
-
-    // Delete completions
-    await db.delete(completions).where(inArray(completions.taskId, allTaskIds));
-
-    // Delete task metrics
-    await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, allTaskIds));
-
-    // Delete task tags
-    await db.delete(taskTags).where(inArray(taskTags.taskId, allTaskIds));
-
-    // Delete task variations
-    await db.delete(taskVariations).where(inArray(taskVariations.taskId, allTaskIds));
-
-    // Delete streaks for these tasks
-    await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, allTaskIds));
-
-    // Delete variations first, then the parent task
-    if (variations.length > 0) {
-      await db.delete(tasks).where(inArray(tasks.id, variations.map(v => v.id)));
+    // Child tasks (variations) have parentTaskId FK with SET NULL,
+    // so delete them explicitly first, then the parent.
+    // All other related data (completions, metrics, streaks, tags, variations)
+    // is cleaned up automatically by ON DELETE CASCADE.
+    const childTasks = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.parentTaskId, id));
+    if (childTasks.length > 0) {
+      await db.delete(tasks).where(inArray(tasks.id, childTasks.map(t => t.id)));
     }
     await db.delete(tasks).where(eq(tasks.id, id));
   }
@@ -2175,47 +2056,8 @@ export class DatabaseStorage implements IStorage {
   }
   
   async deleteAllUserData(userId: string): Promise<void> {
-    // Delete in order respecting foreign key constraints
-    // First, get all tasks for this user
-    const userTasks = await db.select().from(tasks).where(eq(tasks.userId, userId));
-    const taskIds = userTasks.map(t => t.id);
-    
-    if (taskIds.length > 0) {
-      // Get all completions for these tasks
-      const taskCompletions = await db.select().from(completions).where(inArray(completions.taskId, taskIds));
-      const completionIds = taskCompletions.map(c => c.id);
-      
-      // Delete metric values for these completions
-      if (completionIds.length > 0) {
-        await db.delete(metricValues).where(inArray(metricValues.completionId, completionIds));
-      }
-      
-      // Delete completions
-      await db.delete(completions).where(inArray(completions.taskId, taskIds));
-      
-      // Delete task tags
-      await db.delete(taskTags).where(inArray(taskTags.taskId, taskIds));
-      
-      // Delete task metrics
-      await db.delete(taskMetrics).where(inArray(taskMetrics.taskId, taskIds));
-      
-      // Delete task streaks
-      await db.delete(taskStreaks).where(inArray(taskStreaks.taskId, taskIds));
-
-      // Delete task variations
-      await db.delete(taskVariations).where(inArray(taskVariations.taskId, taskIds));
-
-      // Delete tasks
-      await db.delete(tasks).where(eq(tasks.userId, userId));
-    }
-    
-    // Delete categories
-    await db.delete(categories).where(eq(categories.userId, userId));
-    
-    // Delete tags
-    await db.delete(tags).where(eq(tags.userId, userId));
-    
-    // Delete profiles
+    // Deleting profiles CASCADE-deletes tasks, categories, and tags.
+    // Deleting tasks CASCADE-deletes completions, metrics, streaks, variations, and tag associations.
     await db.delete(profiles).where(eq(profiles.userId, userId));
   }
 

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, real, index, unique } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -10,26 +10,35 @@ import { z } from "zod";
 export const profiles = pgTable("profiles", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  slug: text("slug").notNull(), // URL-friendly identifier
+  slug: text("slug").notNull(),
   userId: varchar("user_id").notNull(),
   isDemo: boolean("is_demo").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  unique("profiles_user_id_slug_unique").on(table.userId, table.slug),
+  index("profiles_user_id_idx").on(table.userId),
+]);
 
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  parentId: integer("parent_id"),
+  parentId: integer("parent_id").references((): any => categories.id, { onDelete: 'set null' }),
   userId: varchar("user_id").notNull(),
-  profileId: integer("profile_id").references(() => profiles.id),
-});
+  profileId: integer("profile_id").references(() => profiles.id, { onDelete: 'cascade' }),
+}, (table) => [
+  index("categories_user_id_idx").on(table.userId),
+  index("categories_profile_id_idx").on(table.profileId),
+]);
 
 export const tags = pgTable("tags", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   userId: varchar("user_id").notNull(),
-  profileId: integer("profile_id").references(() => profiles.id),
-});
+  profileId: integer("profile_id").references(() => profiles.id, { onDelete: 'cascade' }),
+}, (table) => [
+  index("tags_user_id_idx").on(table.userId),
+  index("tags_profile_id_idx").on(table.profileId),
+]);
 
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
@@ -58,62 +67,89 @@ export const tasks = pgTable("tasks", {
   scheduledDates: text("scheduled_dates"),
   
   // For task variations - parent task that this variation fulfills
-  parentTaskId: integer("parent_task_id"),
+  parentTaskId: integer("parent_task_id").references((): any => tasks.id, { onDelete: 'set null' }),
   
   // Profile this task belongs to
-  profileId: integer("profile_id").references(() => profiles.id),
+  profileId: integer("profile_id").references(() => profiles.id, { onDelete: 'cascade' }),
   
   // Refractory period - minimum time between completions counting toward frequency target (in minutes)
   // For frequency tasks, prevents gaming by doing all reps back-to-back
   refractoryMinutes: integer("refractory_minutes"),
   
   lastCompletedAt: timestamp("last_completed_at"),
-  categoryId: integer("category_id").references(() => categories.id),
+  categoryId: integer("category_id").references(() => categories.id, { onDelete: 'set null' }),
   userId: varchar("user_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   isArchived: boolean("is_archived").default(false),
-});
+}, (table) => [
+  index("tasks_user_id_idx").on(table.userId),
+  index("tasks_profile_id_idx").on(table.profileId),
+]);
 
 export const taskTags = pgTable("task_tags", {
   id: serial("id").primaryKey(),
-  taskId: integer("task_id").references(() => tasks.id).notNull(),
-  tagId: integer("tag_id").references(() => tags.id).notNull(),
-});
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: 'cascade' }).notNull(),
+  tagId: integer("tag_id").references(() => tags.id, { onDelete: 'cascade' }).notNull(),
+}, (table) => [
+  unique("task_tags_task_id_tag_id_unique").on(table.taskId, table.tagId),
+]);
 
 // Define what metrics to track for each task (e.g., weight, sets, reps)
 export const taskMetrics = pgTable("task_metrics", {
   id: serial("id").primaryKey(),
-  taskId: integer("task_id").references(() => tasks.id).notNull(),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: 'cascade' }).notNull(),
   name: text("name").notNull(), // e.g., "weight", "sets", "reps", "front_left_tire"
   unit: text("unit"), // e.g., "lbs", "psi"
   dataType: text("data_type").default('number').notNull(), // 'number', 'text'
-});
-
-export const completions = pgTable("completions", {
-  id: serial("id").primaryKey(),
-  taskId: integer("task_id").references(() => tasks.id).notNull(),
-  completedAt: timestamp("completed_at").defaultNow().notNull(),
-  notes: text("notes"),
-  // Which variation was used for this completion (optional)
-  variationId: integer("variation_id"),
-});
-
-// Store actual metric values recorded during completion
-export const metricValues = pgTable("metric_values", {
-  id: serial("id").primaryKey(),
-  completionId: integer("completion_id").references(() => completions.id).notNull(),
-  metricId: integer("metric_id").references(() => taskMetrics.id).notNull(),
-  numericValue: real("numeric_value"),
-  textValue: text("text_value"),
-});
+}, (table) => [
+  index("task_metrics_task_id_idx").on(table.taskId),
+]);
 
 // Task variations - different ways to complete a task (e.g., Goblet Squats, Back Squats for a "Squats" task)
 export const taskVariations = pgTable("task_variations", {
   id: serial("id").primaryKey(),
-  taskId: integer("task_id").references(() => tasks.id).notNull(),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: 'cascade' }).notNull(),
   name: text("name").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("task_variations_task_id_idx").on(table.taskId),
+]);
+
+export const completions = pgTable("completions", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: 'cascade' }).notNull(),
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  notes: text("notes"),
+  variationId: integer("variation_id").references(() => taskVariations.id, { onDelete: 'set null' }),
+}, (table) => [
+  index("completions_task_id_idx").on(table.taskId),
+]);
+
+// Store actual metric values recorded during completion
+export const metricValues = pgTable("metric_values", {
+  id: serial("id").primaryKey(),
+  completionId: integer("completion_id").references(() => completions.id, { onDelete: 'cascade' }).notNull(),
+  metricId: integer("metric_id").references(() => taskMetrics.id, { onDelete: 'cascade' }).notNull(),
+  numericValue: real("numeric_value"),
+  textValue: text("text_value"),
+}, (table) => [
+  index("metric_values_completion_id_idx").on(table.completionId),
+  index("metric_values_metric_id_idx").on(table.metricId),
+]);
+
+// Task streaks - track consecutive completions
+export const taskStreaks = pgTable("task_streaks", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: 'cascade' }).notNull(),
+  userId: varchar("user_id").notNull(),
+  currentStreak: integer("current_streak").default(0).notNull(),
+  longestStreak: integer("longest_streak").default(0).notNull(),
+  lastCompletedAt: timestamp("last_completed_at"),
+  streakStartDate: timestamp("streak_start_date"),
+  totalCompletions: integer("total_completions").default(0).notNull(),
+}, (table) => [
+  index("task_streaks_task_id_idx").on(table.taskId),
+]);
 
 // Relations (users managed by Supabase Auth, no ORM relation needed)
 export const profilesRelations = relations(profiles, ({ many }) => ({
@@ -169,6 +205,10 @@ export const metricValuesRelations = relations(metricValues, ({ one }) => ({
   metric: one(taskMetrics, { fields: [metricValues.metricId], references: [taskMetrics.id] }),
 }));
 
+export const taskStreaksRelations = relations(taskStreaks, ({ one }) => ({
+  task: one(tasks, { fields: [taskStreaks.taskId], references: [tasks.id] }),
+}));
+
 // Schemas
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, createdAt: true });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, userId: true });
@@ -189,6 +229,7 @@ export type TaskMetric = typeof taskMetrics.$inferSelect;
 export type Completion = typeof completions.$inferSelect;
 export type MetricValue = typeof metricValues.$inferSelect;
 export type TaskVariation = typeof taskVariations.$inferSelect;
+export type TaskStreak = typeof taskStreaks.$inferSelect;
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -197,24 +238,6 @@ export type InsertTag = z.infer<typeof insertTagSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
 export type InsertTaskVariation = z.infer<typeof insertTaskVariationSchema>;
-
-// Task streaks - track consecutive completions
-export const taskStreaks = pgTable("task_streaks", {
-  id: serial("id").primaryKey(),
-  taskId: integer("task_id").references(() => tasks.id).notNull(),
-  userId: varchar("user_id").notNull(),
-  currentStreak: integer("current_streak").default(0).notNull(),
-  longestStreak: integer("longest_streak").default(0).notNull(),
-  lastCompletedAt: timestamp("last_completed_at"),
-  streakStartDate: timestamp("streak_start_date"),
-  totalCompletions: integer("total_completions").default(0).notNull(),
-});
-
-export const taskStreaksRelations = relations(taskStreaks, ({ one }) => ({
-  task: one(tasks, { fields: [taskStreaks.taskId], references: [tasks.id] }),
-}));
-
-export type TaskStreak = typeof taskStreaks.$inferSelect;
 
 // Custom Types for API
 export type TaskWithDetails = Task & {
@@ -227,11 +250,8 @@ export type TaskWithDetails = Task & {
   status?: 'overdue' | 'due_soon' | 'later' | 'never_done';
   nextDue?: string;
   daysUntilDue?: number;
-  // For frequency tasks - progress toward target
   completionsThisPeriod?: number;
   targetProgress?: number; // percentage 0-100
-  // Streak data
   streak?: TaskStreak | null;
-  // Variation stats - which variations have been used and how often
   variationStats?: { variationId: number; name: string; count: number; percentage: number }[];
 };
