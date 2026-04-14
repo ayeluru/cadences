@@ -480,10 +480,11 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               {scheduledError && (
                 <p className="text-sm text-destructive font-medium">Select at least one schedule option below.</p>
               )}
-              <div className="space-y-3">
-                <Label className="flex items-center gap-2">
+
+              <div className="rounded-lg border p-3 space-y-3">
+                <Label className="flex items-center gap-2 text-sm font-semibold">
                   <Calendar className="w-4 h-4" />
-                  Days of the Week
+                  By weekday
                 </Label>
                 <div className="flex flex-wrap gap-2">
                   {DAYS_OF_WEEK.map((day) => (
@@ -510,14 +511,31 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Select which days this task should be done (e.g., Mon/Wed/Fri).
+                  Pick which days of the week this task recurs on.
+                </p>
+              </div>
+
+              <div className="rounded-lg border p-3 space-y-2">
+                <Label htmlFor="scheduledDaysOfMonth" className="flex items-center gap-2 text-sm font-semibold">
+                  <Calendar className="w-4 h-4" />
+                  By day of month
+                </Label>
+                <Input 
+                  id="scheduledDaysOfMonth" 
+                  data-testid="input-days-of-month"
+                  placeholder="e.g., 1,15,-1"
+                  value={scheduledDaysOfMonth}
+                  onChange={(e) => { setScheduledDaysOfMonth(e.target.value); setScheduledError(false); }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated day numbers (1-31). Use negative numbers to count from the end: -1 = last day, -2 = 2nd to last.
                 </p>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="scheduledTime" className="flex items-center gap-2">
                   <Clock className="w-4 h-4" />
-                  Preferred Time (optional)
+                  Preferred time (optional)
                 </Label>
                 <Input 
                   type="time" 
@@ -526,23 +544,6 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                   value={scheduledTime}
                   onChange={(e) => setScheduledTime(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Set a preferred time for reminders and scheduling.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="scheduledDaysOfMonth">Specific Days of Month (optional)</Label>
-                <Input 
-                  id="scheduledDaysOfMonth" 
-                  data-testid="input-days-of-month"
-                  placeholder="e.g., 1,15 for 1st and 15th"
-                  value={scheduledDaysOfMonth}
-                  onChange={(e) => { setScheduledDaysOfMonth(e.target.value); setScheduledError(false); }}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Enter comma-separated days (1-31) for monthly scheduling, e.g., "1,15" for bi-monthly.
-                </p>
               </div>
             </TabsContent>
           </Tabs>
