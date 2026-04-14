@@ -97,7 +97,13 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
         parts.push(days.join('/'));
       }
       if (task.scheduledDaysOfMonth) {
-        parts.push(`on ${task.scheduledDaysOfMonth} of month`);
+        const formatted = task.scheduledDaysOfMonth.split(',').map(d => {
+          const n = parseInt(d.trim());
+          if (n === -1) return 'last';
+          if (n < -1) return `${Math.abs(n)}th-last`;
+          return String(n);
+        });
+        parts.push(`on ${formatted.join(', ')} of month`);
       }
       if (task.scheduledTime) {
         parts.push(`at ${task.scheduledTime}`);
