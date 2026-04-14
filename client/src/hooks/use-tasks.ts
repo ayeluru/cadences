@@ -9,8 +9,15 @@ export function useTasks(filters?: { search?: string; categoryId?: number; tagId
   const { currentProfile, isAggregatedView } = useProfileContext();
   const profileId = isAggregatedView ? undefined : currentProfile?.id;
 
+  // Normalize filters so {categoryId: undefined} and undefined produce the same key
+  const activeFilters: Record<string, string | number> = {};
+  if (filters?.search) activeFilters.search = filters.search;
+  if (filters?.categoryId) activeFilters.categoryId = filters.categoryId;
+  if (filters?.tagId) activeFilters.tagId = filters.tagId;
+  const filterKey = Object.keys(activeFilters).length > 0 ? activeFilters : undefined;
+
   return useQuery({
-    queryKey: [api.tasks.list.path, isAggregatedView ? "all" : profileId, filters],
+    queryKey: [api.tasks.list.path, isAggregatedView ? "all" : profileId, filterKey],
     queryFn: async () => {
       const url = new URL(api.tasks.list.path, window.location.origin);
       if (profileId) url.searchParams.append("profileId", profileId.toString());
