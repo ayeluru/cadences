@@ -1,4 +1,4 @@
-import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
+import { useCategories, useCreateCategory, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile, useImportFromProfile } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
@@ -10,7 +10,6 @@ import { Separator } from "@/components/ui/separator";
 import { Plus, Tag as TagIcon, Folder, Trash2, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, MoreHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,8 +32,9 @@ export default function Settings() {
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: tags, isLoading: tagsLoading } = useTags();
   const { data: profiles, isLoading: profilesLoading } = useProfiles();
-  const { currentProfile, setCurrentProfile, isLoading: profileContextLoading, switchToProfileById } = useProfileContext();
+  const { currentProfile, setCurrentProfile, isLoading: profileContextLoading } = useProfileContext();
   const createTagMutation = useCreateTag();
+  const createCategoryMutation = useCreateCategory();
   const deleteCategoryMutation = useDeleteCategory();
   const createProfileMutation = useCreateProfile();
   const deleteProfileMutation = useDeleteProfile();
@@ -44,12 +44,20 @@ export default function Settings() {
   const regenerateDemoMutation = useRegenerateDemoProfile();
   const importFromProfileMutation = useImportFromProfile();
   
-  const [catDialogOpen, setCatDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [newTagName, setNewTagName] = useState("");
   const [newProfileName, setNewProfileName] = useState("");
   const [importFromProfileId, setImportFromProfileId] = useState<string>("");
   const [clearProfileTarget, setClearProfileTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ id: number; name: string } | null>(null);
+
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    createCategoryMutation.mutate({ name: newCategoryName }, {
+      onSuccess: () => setNewCategoryName("")
+    });
+  };
 
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,22 +67,23 @@ export default function Settings() {
     });
   };
 
-  const handleAddProfile = (e: React.FormEvent) => {
+  const handleAddProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProfileName.trim()) return;
-    createProfileMutation.mutate({ name: newProfileName }, {
-      onSuccess: (newProfile) => {
-        setNewProfileName("");
-        switchToProfileById(newProfile.id);
-        if (importFromProfileId && importFromProfileId !== "none") {
-          importFromProfileMutation.mutate({
-            targetProfileId: newProfile.id,
-            sourceProfileId: Number(importFromProfileId)
-          });
-          setImportFromProfileId("");
-        }
+    try {
+      const newProfile = await createProfileMutation.mutateAsync({ name: newProfileName });
+      setNewProfileName("");
+      if (importFromProfileId && importFromProfileId !== "none") {
+        await importFromProfileMutation.mutateAsync({
+          targetProfileId: newProfile.id,
+          sourceProfileId: Number(importFromProfileId)
+        });
+        setImportFromProfileId("");
       }
-    });
+      setCurrentProfile(newProfile);
+    } catch {
+      // Error toasts handled by mutation hooks
+    }
   };
 
   const handleDeleteProfile = (profileId: number) => {
@@ -227,8 +236,8 @@ export default function Settings() {
             size="sm"
             onClick={() => createDemoMutation.mutate(undefined, {
               onSuccess: (data) => {
-                if (data?.profile?.id) {
-                  switchToProfileById(data.profile.id);
+                if (data?.profile) {
+                  setCurrentProfile(data.profile);
                 }
               },
             })}
@@ -262,18 +271,29 @@ export default function Settings() {
         <div className="grid gap-6 sm:grid-cols-2">
           {/* Categories */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Categories</Label>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-7 px-2 text-xs"
-                onClick={() => setCatDialogOpen(true)}
-                data-testid="button-add-category"
-              >
-                <Plus className="w-3.5 h-3.5 mr-1" /> Add
+            <Label className="text-sm font-medium flex items-center gap-1.5">
+              <Folder className="w-3.5 h-3.5" />
+              Categories
+            </Label>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Each task belongs to one category. Best for broad groupings like "Health", "Work", or "Finance".
+            </p>
+            <form onSubmit={handleAddCategory} className="flex gap-2">
+              <div className="flex-1">
+                <Label htmlFor="category-name" className="sr-only">New Category Name</Label>
+                <Input
+                  id="category-name"
+                  placeholder="New category..."
+                  className="h-8 text-sm"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  data-testid="input-category-name"
+                />
+              </div>
+              <Button type="submit" size="sm" className="h-8" disabled={createCategoryMutation.isPending || !newCategoryName.trim()} data-testid="button-add-category">
+                {createCategoryMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
               </Button>
-            </div>
+            </form>
             <div className="rounded-lg border min-h-[60px] p-2.5">
               {catsLoading ? (
                 <span className="text-muted-foreground text-sm">Loading...</span>
@@ -282,7 +302,7 @@ export default function Settings() {
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {categories?.map(cat => (
-                    <div key={cat.id} className="bg-secondary text-secondary-foreground pl-2.5 pr-1 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 group">
+                    <div key={cat.id} className="bg-secondary text-secondary-foreground pl-2.5 pr-1 py-1 rounded-md text-xs font-medium flex items-center gap-1.5">
                       <span>{cat.name}</span>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -313,9 +333,6 @@ export default function Settings() {
                               onClick={() => deleteCategoryMutation.mutate(cat.id)}
                               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >
-                              {deleteCategoryMutation.isPending && deleteCategoryMutation.variables === cat.id ? (
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              ) : null}
                               Delete
                             </AlertDialogAction>
                           </AlertDialogFooter>
@@ -334,6 +351,9 @@ export default function Settings() {
               <TagIcon className="w-3.5 h-3.5" />
               Tags
             </Label>
+            <p className="text-xs text-muted-foreground -mt-1">
+              A task can have many tags. Best for cross-cutting labels like "Quick", "Urgent", or "Outdoors".
+            </p>
             <form onSubmit={handleAddTag} className="flex gap-2">
               <div className="flex-1">
                 <Label htmlFor="tag-name" className="sr-only">New Tag Name</Label>
@@ -358,9 +378,16 @@ export default function Settings() {
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {tags?.map(tag => (
-                    <Badge key={tag.id} variant="secondary" className="text-xs font-normal">
-                      {tag.name}
-                    </Badge>
+                    <div key={tag.id} className="bg-secondary text-secondary-foreground pl-2.5 pr-1 py-1 rounded-md text-xs font-medium flex items-center gap-1.5">
+                      <span>{tag.name}</span>
+                      <button
+                        className="p-0.5 rounded opacity-40 hover:opacity-100 transition-opacity text-destructive"
+                        title="Delete tag"
+                        onClick={() => {/* TODO: add tag delete */}}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -502,9 +529,6 @@ export default function Settings() {
           </div>
         </div>
       </section>
-
-      {/* Shared dialogs */}
-      <CreateCategoryDialog open={catDialogOpen} onOpenChange={setCatDialogOpen} />
 
       {/* Clear profile confirmation (from dropdown) */}
       <AlertDialog open={!!clearProfileTarget} onOpenChange={(open) => !open && setClearProfileTarget(null)}>
