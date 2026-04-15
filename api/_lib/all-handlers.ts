@@ -798,33 +798,6 @@ async function tagsIndexHandlePost(req: VercelRequest, res: VercelResponse, user
 }
 
 // ---------------------------------------------------------------------------
-// tags-id
-// ---------------------------------------------------------------------------
-
-export async function tagsId(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'DELETE') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const user = await verifyAuth(req);
-  if (!user) return unauthorized(res);
-
-  const tagId = parseInt(req.query.id as string, 10);
-
-  if (isNaN(tagId)) {
-    return res.status(400).json({ error: 'Invalid tag ID' });
-  }
-
-  try {
-    await storage.deleteTag(tagId, user.id);
-    return res.status(200).json({ success: true });
-  } catch (error) {
-    console.error('Error deleting tag:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-}
-
-// ---------------------------------------------------------------------------
 // tasks-index
 // ---------------------------------------------------------------------------
 
