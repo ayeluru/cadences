@@ -45,3 +45,23 @@ export function useCreateTag() {
     },
   });
 }
+
+export function useDeleteTag() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (tagId: number) => {
+      const res = await apiRequest("DELETE", `/api/tags/${tagId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tags.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      toast({ title: "Tag deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete tag", variant: "destructive" });
+    },
+  });
+}

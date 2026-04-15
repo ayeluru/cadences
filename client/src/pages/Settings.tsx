@@ -1,5 +1,6 @@
 import { useCategories, useCreateCategory, useDeleteCategory } from "@/hooks/use-categories";
-import { useTags, useCreateTag } from "@/hooks/use-tags";
+import { useTags, useCreateTag, useDeleteTag } from "@/hooks/use-tags";
+import { useTasks } from "@/hooks/use-tasks";
 import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile, useImportFromProfile } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,9 @@ export default function Settings() {
   const { data: tags, isLoading: tagsLoading } = useTags();
   const { data: profiles, isLoading: profilesLoading } = useProfiles();
   const { currentProfile, setCurrentProfile, isLoading: profileContextLoading } = useProfileContext();
+  const { data: allTasks } = useTasks();
   const createTagMutation = useCreateTag();
+  const deleteTagMutation = useDeleteTag();
   const createCategoryMutation = useCreateCategory();
   const deleteCategoryMutation = useDeleteCategory();
   const createProfileMutation = useCreateProfile();
@@ -51,6 +54,10 @@ export default function Settings() {
   const [importFromProfileId, setImportFromProfileId] = useState<string>("");
   const [clearProfileTarget, setClearProfileTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ id: number; name: string } | null>(null);
+  const [deleteTagTarget, setDeleteTagTarget] = useState<{ id: number; name: string } | null>(null);
+
+  const getTaskCountForCategory = (catId: number) => allTasks?.filter(t => t.categoryId === catId).length ?? 0;
+  const getTaskCountForTag = (tagId: number) => allTasks?.filter(t => t.tags?.some((tt: any) => tt.id === tagId)).length ?? 0;
 
   const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
@@ -330,7 +337,9 @@ export default function Settings() {
                               Delete category "{cat.name}"?
                             </AlertDialogTitle>
                             <AlertDialogDescription>
-                              Tasks using this category will become uncategorized. This action cannot be undone.
+                              {getTaskCountForCategory(cat.id) > 0
+                                ? `${getTaskCountForCategory(cat.id)} task${getTaskCountForCategory(cat.id) === 1 ? '' : 's'} will become uncategorized. This action cannot be undone.`
+                                : "No tasks use this category. This action cannot be undone."}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -389,9 +398,13 @@ export default function Settings() {
                       <button
                         className="p-0.5 rounded opacity-40 hover:opacity-100 transition-opacity text-destructive"
                         title="Delete tag"
-                        onClick={() => {/* TODO: add tag delete */}}
+                        onClick={() => setDeleteTagTarget({ id: tag.id, name: tag.name })}
                       >
-                        <Trash2 className="w-3 h-3" />
+                        {deleteTagMutation.isPending && deleteTagMutation.variables === tag.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3 h-3" />
+                        )}
                       </button>
                     </div>
                   ))}
@@ -592,6 +605,37 @@ export default function Settings() {
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : null}
               Delete Profile
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete tag confirmation */}
+      <AlertDialog open={!!deleteTagTarget} onOpenChange={(open) => !open && setDeleteTagTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-destructive" />
+              Delete tag "{deleteTagTarget?.name}"?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTagTarget && getTaskCountForTag(deleteTagTarget.id) > 0
+                ? `This tag is used on ${getTaskCountForTag(deleteTagTarget.id)} task${getTaskCountForTag(deleteTagTarget.id) === 1 ? '' : 's'}. It will be removed from all of them. This action cannot be undone.`
+                : "No tasks use this tag. This action cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteTagTarget) {
+                  deleteTagMutation.mutate(deleteTagTarget.id);
+                  setDeleteTagTarget(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Tag
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

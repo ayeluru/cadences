@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.8.0
+
+- Tag deletion with confirmation dialog and task count
+- Category deletion now shows how many tasks will become uncategorized
+- Combined category + tag filter dropdown on Dashboard and Tasks by Magnitude
+- Filter dropdown stays open for multi-select
+- Dynamic overlap counts — selecting a tag updates category counts and vice versa
+- "Showing X of Y tasks" total in filter dropdown
+- Task magnitude pages show counts scoped to that magnitude only
+- Category filtering is now instant (client-side instead of API refetch)
+- "Uncategorized" filter option for tasks without a category
+- Folder and Tag icons on TaskCards for visual distinction
+- DELETE /api/tags/:id endpoint for tag management
+
+## 1.7.3
+
+- Streaks use calendar-day comparison instead of raw millisecond diff (fixes midnight edge cases)
+- Fixed frequency task grace window: uses per-completion interval instead of full period
+- Scheduled task streaks survive normal schedule gaps (e.g. Fri to Mon)
+- Backdated completions no longer alter streak count or overwrite lastCompletedAt
+- Passive streak expiry at read time — stale streaks show as broken
+- Deleting a completion recalculates streak from remaining history
+- Same-day completions no longer double-increment streak
+
 ## 1.7.2
 
 - Auto-create "Personal" profile on first login so users never land with no profile
