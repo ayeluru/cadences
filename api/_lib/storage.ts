@@ -12,7 +12,8 @@ import {
 // User type from Supabase auth (no longer using custom users table)
 export type User = { id: string; email?: string };
 import { db } from "./db.js";
-import { eq, desc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount } from "drizzle-orm";
+import { eq, desc, asc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount } from "drizzle-orm";
+import { startOfDay, differenceInDays } from "date-fns";
 
 export interface IStorage {
   // Users
@@ -1140,6 +1141,15 @@ export class DatabaseStorage implements IStorage {
     return newTag;
   }
 
+  async deleteTag(id: number, userId: string): Promise<void> {
+    const [tag] = await db.select().from(tags).where(eq(tags.id, id));
+    if (!tag || tag.userId !== userId) {
+      throw new Error("Tag not found or unauthorized");
+    }
+    await db.delete(taskTags).where(eq(taskTags.tagId, id));
+    await db.delete(tags).where(eq(tags.id, id));
+  }
+
   async getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]> {
     if (profileId !== undefined && profileId !== null) {
       return await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.profileId, profileId), eq(tasks.isArchived, false)));
@@ -1465,15 +1475,95 @@ export class DatabaseStorage implements IStorage {
   async deleteCompletion(completionId: number, userId: string): Promise<void> {
     const [completion] = await db.select().from(completions).where(eq(completions.id, completionId));
     if (!completion) throw new Error("Completion not found");
-    
+
     const task = await this.getTask(completion.taskId);
     if (!task || task.userId !== userId) throw new Error("Access denied");
-    
+
     // Delete metric values first
     await db.delete(metricValues).where(eq(metricValues.completionId, completionId));
-    
+
     // Delete the completion
     await db.delete(completions).where(eq(completions.id, completionId));
+
+    // Update task's lastCompletedAt to the most recent remaining completion
+    const [latestRemaining] = await db.select()
+      .from(completions)
+      .where(eq(completions.taskId, completion.taskId))
+      .orderBy(desc(completions.completedAt))
+      .limit(1);
+
+    await db.update(tasks)
+      .set({ lastCompletedAt: latestRemaining?.completedAt || null })
+      .where(eq(tasks.id, completion.taskId));
+
+    // Recalculate the streak from remaining completion history
+    await this.recalculateStreak(completion.taskId, userId, task);
+  }
+
+  private async recalculateStreak(taskId: number, userId: string, task: Task): Promise<void> {
+    const allCompletions = await db.select()
+      .from(completions)
+      .where(eq(completions.taskId, taskId))
+      .orderBy(asc(completions.completedAt));
+
+    const existing = await this.getTaskStreak(taskId, userId);
+
+    if (allCompletions.length === 0) {
+      if (existing) {
+        await db.delete(taskStreaks)
+          .where(eq(taskStreaks.id, existing.id));
+      }
+      return;
+    }
+
+    const intervalDays = this.getIntervalInDays(task);
+    const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
+
+    let currentStreak = 1;
+    let longestStreak = 1;
+    let streakStartDate = allCompletions[0].completedAt;
+    let lastDay = startOfDay(allCompletions[0].completedAt);
+
+    for (let i = 1; i < allCompletions.length; i++) {
+      const day = startOfDay(allCompletions[i].completedAt);
+      const gap = differenceInDays(day, lastDay);
+
+      if (gap === 0) continue; // same calendar day
+
+      if (gap <= graceWindow) {
+        currentStreak++;
+      } else {
+        currentStreak = 1;
+        streakStartDate = allCompletions[i].completedAt;
+      }
+
+      longestStreak = Math.max(longestStreak, currentStreak);
+      lastDay = day;
+    }
+
+    const lastCompletion = allCompletions[allCompletions.length - 1];
+
+    if (existing) {
+      await db.update(taskStreaks)
+        .set({
+          currentStreak,
+          longestStreak,
+          lastCompletedAt: lastCompletion.completedAt,
+          streakStartDate,
+          totalCompletions: allCompletions.length,
+        })
+        .where(eq(taskStreaks.id, existing.id));
+    } else {
+      await db.insert(taskStreaks).values({
+        taskId,
+        userId,
+        currentStreak,
+        longestStreak,
+        lastCompletedAt: lastCompletion.completedAt,
+        streakStartDate,
+        totalCompletions: allCompletions.length,
+      });
+    }
   }
 
   // Metric Values
@@ -1566,63 +1656,68 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date): Promise<TaskStreak> {
-    // Get current streak or create new one
     let streak = await this.getTaskStreak(taskId, userId);
     
-    // Get interval in days for this task to determine if streak is broken
     const intervalDays = this.getIntervalInDays(task);
     
-    // Calculate streak based on completion date
-    const now = completedAt;
-    
     if (!streak) {
-      // First completion - create streak record
       const [newStreak] = await db.insert(taskStreaks).values({
         taskId,
         userId,
         currentStreak: 1,
         longestStreak: 1,
-        lastCompletedAt: now,
-        streakStartDate: now,
+        lastCompletedAt: completedAt,
+        streakStartDate: completedAt,
         totalCompletions: 1,
       }).returning();
       return newStreak;
     }
 
-    // Calculate if streak continues or breaks
     const lastCompletion = streak.lastCompletedAt;
-    const daysSinceLastCompletion = lastCompletion 
-      ? Math.floor((now.getTime() - lastCompletion.getTime()) / (1000 * 60 * 60 * 24))
+
+    // Use calendar-day comparison to avoid midnight edge cases
+    const completedDay = startOfDay(completedAt);
+    const lastCompletionDay = lastCompletion ? startOfDay(lastCompletion) : null;
+    const calendarDaysDiff = lastCompletionDay
+      ? differenceInDays(completedDay, lastCompletionDay)
       : Infinity;
 
-    // Streak continues if completed within the grace window (interval + 50% buffer)
-    const graceWindow = Math.max(intervalDays * 1.5, intervalDays + 1);
-    const streakContinues = daysSinceLastCompletion <= graceWindow;
+    // Grace window: interval * 1.5, floored to at least interval + 1 day
+    const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
 
     let newCurrentStreak: number;
     let newStreakStartDate: Date;
 
-    if (streakContinues && daysSinceLastCompletion >= 0.5) {
-      // Streak continues - increment
-      newCurrentStreak = streak.currentStreak + 1;
-      newStreakStartDate = streak.streakStartDate || now;
-    } else if (daysSinceLastCompletion < 0.5) {
-      // Same day completion - don't increment streak
+    if (calendarDaysDiff === 0) {
+      // Same calendar day — don't increment
       newCurrentStreak = streak.currentStreak;
-      newStreakStartDate = streak.streakStartDate || now;
+      newStreakStartDate = streak.streakStartDate || completedAt;
+    } else if (calendarDaysDiff < 0) {
+      // Backdated completion (before last recorded) — don't alter streak count
+      newCurrentStreak = streak.currentStreak;
+      newStreakStartDate = streak.streakStartDate || completedAt;
+    } else if (calendarDaysDiff <= graceWindow) {
+      // Within grace window on a new day — streak continues
+      newCurrentStreak = streak.currentStreak + 1;
+      newStreakStartDate = streak.streakStartDate || completedAt;
     } else {
-      // Streak broken - reset to 1
+      // Gap too large — streak broken
       newCurrentStreak = 1;
-      newStreakStartDate = now;
+      newStreakStartDate = completedAt;
     }
 
     const newLongestStreak = Math.max(streak.longestStreak, newCurrentStreak);
+
+    // Only advance lastCompletedAt if this completion is newer
+    const newLastCompletedAt = lastCompletion && completedAt <= lastCompletion
+      ? lastCompletion
+      : completedAt;
 
     const [updatedStreak] = await db.update(taskStreaks)
       .set({
         currentStreak: newCurrentStreak,
         longestStreak: newLongestStreak,
-        lastCompletedAt: now,
+        lastCompletedAt: newLastCompletedAt,
         streakStartDate: newStreakStartDate,
         totalCompletions: streak.totalCompletions + 1,
       })
@@ -1632,16 +1727,21 @@ export class DatabaseStorage implements IStorage {
     return updatedStreak;
   }
 
-  private getIntervalInDays(task: Task): number {
-    // For frequency tasks, use target period
+  getIntervalInDays(task: Task): number {
     if (task.taskType === 'frequency') {
-      return task.targetPeriod === 'week' ? 7 : 30;
+      // Per-completion interval: e.g. 3x/week → 7/3 ≈ 2.3 days between completions
+      const periodDays = task.targetPeriod === 'week' ? 7 : task.targetPeriod === 'month' ? 30 : 365;
+      return periodDays / (task.targetCount || 1);
     }
-    
-    // For interval tasks
+
+    if (task.taskType === 'scheduled') {
+      return this.getScheduledIntervalDays(task);
+    }
+
+    // Interval-based tasks
     const value = task.intervalValue || 1;
     const unit = task.intervalUnit || 'days';
-    
+
     switch (unit) {
       case 'days': return value;
       case 'weeks': return value * 7;
@@ -1649,6 +1749,54 @@ export class DatabaseStorage implements IStorage {
       case 'years': return value * 365;
       default: return value;
     }
+  }
+
+  // Calculate the max gap between consecutive scheduled occurrences,
+  // so the grace window accommodates the natural schedule rhythm.
+  private getScheduledIntervalDays(task: Task): number {
+    if (task.scheduledDaysOfWeek) {
+      const days = task.scheduledDaysOfWeek.split(',')
+        .map(Number)
+        .filter(d => d >= 0 && d <= 6)
+        .sort((a, b) => a - b);
+      if (days.length === 0) return 1;
+      if (days.length === 1) return 7;
+
+      let maxGap = 0;
+      for (let i = 1; i < days.length; i++) {
+        maxGap = Math.max(maxGap, days[i] - days[i - 1]);
+      }
+      // Wrap-around gap (e.g., Fri→Mon = 7 - 5 + 1 = 3)
+      maxGap = Math.max(maxGap, 7 - days[days.length - 1] + days[0]);
+      return maxGap;
+    }
+
+    if (task.scheduledDaysOfMonth) {
+      const rawDays = task.scheduledDaysOfMonth.split(',')
+        .map(d => parseInt(d.trim()))
+        .filter(d => !isNaN(d));
+      // Resolve negative days relative to a 30-day month for gap estimation
+      const days = rawDays
+        .map(d => d < 0 ? 31 + d : d)
+        .filter(d => d >= 1 && d <= 31)
+        .sort((a, b) => a - b);
+      if (days.length === 0) return 1;
+      if (days.length === 1) return 30;
+
+      let maxGap = 0;
+      for (let i = 1; i < days.length; i++) {
+        maxGap = Math.max(maxGap, days[i] - days[i - 1]);
+      }
+      maxGap = Math.max(maxGap, 30 - days[days.length - 1] + days[0]);
+      return maxGap;
+    }
+
+    if (task.scheduledDates) {
+      // One-off specific dates — no recurring interval for streaks
+      return 365;
+    }
+
+    return 1;
   }
 
   // Task Migration methods

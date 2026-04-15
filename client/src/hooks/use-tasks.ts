@@ -216,11 +216,24 @@ export function useCompleteTask() {
             targetProgress: isFrequency && t.targetCount
               ? Math.min(100, (newCompletionsThisPeriod / t.targetCount) * 100)
               : t.targetProgress,
-            streak: t.streak ? {
-              ...t.streak,
-              currentStreak: t.streak.currentStreak + 1,
-              longestStreak: Math.max(t.streak.longestStreak, t.streak.currentStreak + 1),
-            } : t.streak,
+            streak: (() => {
+              if (!t.streak) return t.streak;
+              const lastCompleted = t.streak.lastCompletedAt ? new Date(t.streak.lastCompletedAt) : null;
+              const isSameDay = lastCompleted &&
+                nowDate.getFullYear() === lastCompleted.getFullYear() &&
+                nowDate.getMonth() === lastCompleted.getMonth() &&
+                nowDate.getDate() === lastCompleted.getDate();
+              if (isSameDay) {
+                return t.streak;
+              }
+              const next = t.streak.currentStreak + 1;
+              return {
+                ...t.streak,
+                currentStreak: next,
+                longestStreak: Math.max(t.streak.longestStreak, next),
+                lastCompletedAt: nowDate,
+              };
+            })(),
           };
         })
       );
@@ -233,6 +246,8 @@ export function useCompleteTask() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
     },
     onSuccess: () => {
       toast({ title: "Task completed", description: "Good job! Maintenance recorded." });

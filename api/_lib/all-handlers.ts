@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden } from './auth.js';
 import { storage, enrichTask, enrichTasks } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
-import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay } from 'date-fns';
+import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays } from 'date-fns';
 
 // ---------------------------------------------------------------------------
 // auth-user
@@ -701,10 +701,28 @@ async function streaksIndexHandleGet(req: VercelRequest, res: VercelResponse, us
 
     const streakTaskIds = allStreaks.map(s => s.taskId);
     const taskMap = await storage.getTasksBatch(streakTaskIds);
-    const enrichedStreaks = allStreaks.map(streak => ({
-      ...streak,
-      taskTitle: taskMap.get(streak.taskId)?.title || "Unknown Task"
-    }));
+
+    const now = startOfDay(new Date());
+    const enrichedStreaks = allStreaks.map(streak => {
+      const task = taskMap.get(streak.taskId);
+      let effectiveCurrentStreak = streak.currentStreak;
+
+      // Check if the streak has expired (grace window elapsed since last completion)
+      if (task && streak.currentStreak > 0 && streak.lastCompletedAt) {
+        const intervalDays = storage.getIntervalInDays(task);
+        const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
+        const daysSince = differenceInDays(now, startOfDay(streak.lastCompletedAt));
+        if (daysSince > graceWindow) {
+          effectiveCurrentStreak = 0;
+        }
+      }
+
+      return {
+        ...streak,
+        currentStreak: effectiveCurrentStreak,
+        taskTitle: task?.title || "Unknown Task",
+      };
+    });
 
     return res.status(200).json(enrichedStreaks);
   } catch (error) {
@@ -749,6 +767,33 @@ async function tagsIndexHandlePost(req: VercelRequest, res: VercelResponse, user
     return res.status(201).json(tag);
   } catch (error) {
     console.error('Error creating tag:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// tags-id
+// ---------------------------------------------------------------------------
+
+export async function tagsId(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'DELETE') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  const tagId = parseInt(req.query.id as string, 10);
+
+  if (isNaN(tagId)) {
+    return res.status(400).json({ error: 'Invalid tag ID' });
+  }
+
+  try {
+    await storage.deleteTag(tagId, user.id);
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error deleting tag:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
