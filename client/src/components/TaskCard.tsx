@@ -1,6 +1,6 @@
 import { TaskWithDetails, TaskMetric } from "@shared/schema";
 import { format, formatDistanceToNow, addDays, isPast } from "date-fns";
-import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History, Archive, XCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History, Archive, XCircle, Folder, Tag as TagIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -229,7 +229,8 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               {task.category && (
-                <span className="text-xs font-semibold text-primary tracking-wide uppercase">
+                <span className="text-xs font-semibold text-primary tracking-wide uppercase flex items-center gap-1">
+                  <Folder className="w-3 h-3" />
                   {task.category.name}
                 </span>
               )}
@@ -266,13 +267,16 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                   <Trophy className="w-3 h-3 mr-1 text-yellow-500" /> Best
                 </Badge>
               )}
-              <div className="flex gap-1">
-                {task.tags?.map(tag => (
-                  <Badge key={tag.id} variant="secondary" className="text-[10px] px-1.5 h-5">
-                    {tag.name}
-                  </Badge>
-                ))}
-              </div>
+              {task.tags && task.tags.length > 0 && (
+                <div className="flex gap-1">
+                  {task.tags.map(tag => (
+                    <Badge key={tag.id} variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 text-muted-foreground border-muted-foreground/30">
+                      <TagIcon className="w-2.5 h-2.5" />
+                      {tag.name}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
             
             <h3 className="text-lg font-bold font-display text-foreground leading-tight mb-1">

@@ -1,11 +1,12 @@
 import { useTasks } from "@/hooks/use-tasks";
 import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
-import { Plus, SlidersHorizontal, LayoutGrid, List } from "lucide-react";
-import { useState } from "react";
+import { Plus, SlidersHorizontal, LayoutGrid, List, X, Folder, Tag as TagIcon } from "lucide-react";
+import { useState, useMemo } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { TaskWithDetails } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import {
   DropdownMenu,
@@ -16,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCategories } from "@/hooks/use-categories";
+import { useTags } from "@/hooks/use-tags";
 import { motion } from "framer-motion";
 import {
   Tooltip,
@@ -23,14 +25,48 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+const UNCATEGORIZED_FILTER = -1;
+
 export default function Dashboard() {
   const { user, isLoading: authLoading } = useAuth();
   const [filterCategory, setFilterCategory] = useState<number | undefined>();
-  const { data: tasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory });
+  const [filterTagIds, setFilterTagIds] = useState<number[]>([]);
+  const { data: tasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory === UNCATEGORIZED_FILTER ? undefined : filterCategory });
   const { data: categories } = useCategories();
+  const { data: tags } = useTags();
   const [createOpen, setCreateOpen] = useState(false);
   const [condensedView, setCondensedView] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+
+  const hasActiveFilters = filterCategory !== undefined || filterTagIds.length > 0;
+
+  const filteredTasks = useMemo(() => {
+    if (!tasks) return [];
+    let result = tasks;
+
+    if (filterCategory === UNCATEGORIZED_FILTER) {
+      result = result.filter(t => !t.categoryId);
+    }
+
+    if (filterTagIds.length > 0) {
+      result = result.filter(t =>
+        filterTagIds.every(tagId => t.tags?.some((tag: any) => tag.id === tagId))
+      );
+    }
+
+    return result;
+  }, [tasks, filterCategory, filterTagIds]);
+
+  const toggleTagFilter = (tagId: number) => {
+    setFilterTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    );
+  };
+
+  const clearAllFilters = () => {
+    setFilterCategory(undefined);
+    setFilterTagIds([]);
+  };
 
   if (authLoading || tasksLoading) {
     return (
@@ -46,9 +82,6 @@ export default function Dashboard() {
     );
   }
 
-  // Manually group tasks client-side for display order
-  // Order: Overdue -> Due Soon -> Later -> Never Done
-  // Filter out variations - they should only appear nested under their parent task
   const groupedTasks: Record<string, TaskWithDetails[]> = {
     overdue: [],
     due_soon: [],
@@ -56,8 +89,8 @@ export default function Dashboard() {
     never_done: []
   };
 
-  tasks?.forEach(task => {
-    const status = task.status || 'later'; // Default fallback
+  filteredTasks.forEach(task => {
+    const status = task.status || 'later';
     if (groupedTasks[status]) {
       groupedTasks[status].push(task);
     } else {
@@ -65,7 +98,6 @@ export default function Dashboard() {
     }
   });
 
-  // Sort within groups by urgency (daysUntilDue)
   Object.keys(groupedTasks).forEach(key => {
     groupedTasks[key].sort((a, b) => (a.daysUntilDue || 9999) - (b.daysUntilDue || 9999));
   });
@@ -77,7 +109,16 @@ export default function Dashboard() {
     { id: 'never_done', label: 'Never Completed', color: 'text-muted-foreground', count: groupedTasks.never_done.length },
   ];
 
-  const hasTasks = tasks && tasks.length > 0;
+  const hasTasks = filteredTasks.length > 0;
+  const totalUnfiltered = tasks?.length ?? 0;
+
+  const getActiveFilterLabel = () => {
+    if (filterCategory === UNCATEGORIZED_FILTER) return "Uncategorized";
+    if (filterCategory !== undefined) {
+      return categories?.find(c => c.id === filterCategory)?.name ?? "Category";
+    }
+    return null;
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -111,12 +152,21 @@ export default function Dashboard() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <SlidersHorizontal className="w-4 h-4" /> Filter
+              <Button variant={hasActiveFilters ? "default" : "outline"} className="gap-2">
+                <SlidersHorizontal className="w-4 h-4" />
+                Filter
+                {hasActiveFilters && (
+                  <span className="ml-1 bg-primary-foreground/20 text-primary-foreground px-1.5 py-0.5 rounded-full text-xs">
+                    {(filterCategory !== undefined ? 1 : 0) + filterTagIds.length}
+                  </span>
+                )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Filter by Category</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="flex items-center gap-1.5">
+                <Folder className="w-3.5 h-3.5" />
+                Category
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem 
                 checked={filterCategory === undefined}
@@ -124,15 +174,55 @@ export default function Dashboard() {
               >
                 All Categories
               </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={filterCategory === UNCATEGORIZED_FILTER}
+                onCheckedChange={() => setFilterCategory(filterCategory === UNCATEGORIZED_FILTER ? undefined : UNCATEGORIZED_FILTER)}
+              >
+                <span className="italic">Uncategorized</span>
+              </DropdownMenuCheckboxItem>
               {categories?.map(cat => (
                 <DropdownMenuCheckboxItem
                   key={cat.id}
                   checked={filterCategory === cat.id}
-                  onCheckedChange={() => setFilterCategory(cat.id)}
+                  onCheckedChange={() => setFilterCategory(filterCategory === cat.id ? undefined : cat.id)}
                 >
                   {cat.name}
                 </DropdownMenuCheckboxItem>
               ))}
+
+              {tags && tags.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="flex items-center gap-1.5">
+                    <TagIcon className="w-3.5 h-3.5" />
+                    Tags
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {tags.map(tag => (
+                    <DropdownMenuCheckboxItem
+                      key={tag.id}
+                      checked={filterTagIds.includes(tag.id)}
+                      onCheckedChange={() => toggleTagFilter(tag.id)}
+                    >
+                      {tag.name}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </>
+              )}
+
+              {hasActiveFilters && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={false}
+                    onCheckedChange={clearAllFilters}
+                    className="text-muted-foreground"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" />
+                    Clear all filters
+                  </DropdownMenuCheckboxItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -142,6 +232,51 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Active filter pills */}
+      {hasActiveFilters && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Filtering:</span>
+          {getActiveFilterLabel() && (
+            <Badge
+              variant="secondary"
+              className="gap-1 cursor-pointer hover:bg-secondary/80"
+              onClick={() => setFilterCategory(undefined)}
+            >
+              <Folder className="w-3 h-3" />
+              {getActiveFilterLabel()}
+              <X className="w-3 h-3 ml-0.5" />
+            </Badge>
+          )}
+          {filterTagIds.map(tagId => {
+            const tag = tags?.find(t => t.id === tagId);
+            if (!tag) return null;
+            return (
+              <Badge
+                key={tagId}
+                variant="secondary"
+                className="gap-1 cursor-pointer hover:bg-secondary/80"
+                onClick={() => toggleTagFilter(tagId)}
+              >
+                <TagIcon className="w-3 h-3" />
+                {tag.name}
+                <X className="w-3 h-3 ml-0.5" />
+              </Badge>
+            );
+          })}
+          <button
+            onClick={clearAllFilters}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Clear all
+          </button>
+          {totalUnfiltered !== filteredTasks.length && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              {filteredTasks.length} of {totalUnfiltered} tasks
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Task List */}
       <div className="space-y-8">
         {!hasTasks ? (
@@ -149,9 +284,19 @@ export default function Dashboard() {
             <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
               <Plus className="w-6 h-6 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium">No tasks yet</h3>
-            <p className="text-muted-foreground mb-4">Create your first maintenance task to get started.</p>
-            <Button onClick={() => setCreateOpen(true)}>Create Task</Button>
+            {hasActiveFilters ? (
+              <>
+                <h3 className="text-lg font-medium">No matching tasks</h3>
+                <p className="text-muted-foreground mb-4">No tasks match your current filters.</p>
+                <Button variant="outline" onClick={clearAllFilters}>Clear Filters</Button>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-medium">No tasks yet</h3>
+                <p className="text-muted-foreground mb-4">Create your first maintenance task to get started.</p>
+                <Button onClick={() => setCreateOpen(true)}>Create Task</Button>
+              </>
+            )}
           </div>
         ) : (
           sections.map(section => {

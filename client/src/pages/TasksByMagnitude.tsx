@@ -2,8 +2,8 @@ import { useTasks } from "@/hooks/use-tasks";
 import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, SlidersHorizontal, Calendar, LayoutGrid, List, Tag, X } from "lucide-react";
-import { useState } from "react";
+import { Plus, SlidersHorizontal, Calendar, LayoutGrid, List, Tag as TagIcon, X, Folder } from "lucide-react";
+import { useState, useMemo } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { TaskWithDetails } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,21 +21,50 @@ import { motion } from "framer-motion";
 import { filterTasksByCadence, getCadenceLabel, getCadenceDescription, type CadenceMagnitude } from "@/lib/task-utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+const UNCATEGORIZED_FILTER = -1;
+
 interface TasksByMagnitudeProps {
   magnitude: CadenceMagnitude;
 }
 
 export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
   const [filterCategory, setFilterCategory] = useState<number | undefined>();
-  const [filterTagId, setFilterTagId] = useState<number | undefined>();
-  const { data: allTasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory, tagId: filterTagId });
+  const [filterTagIds, setFilterTagIds] = useState<number[]>([]);
+  const { data: allTasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory === UNCATEGORIZED_FILTER ? undefined : filterCategory });
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const [createOpen, setCreateOpen] = useState(false);
   const [condensedView, setCondensedView] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
-  const tasks = allTasks ? filterTasksByCadence(allTasks, magnitude) : [];
+  const hasActiveFilters = filterCategory !== undefined || filterTagIds.length > 0;
+
+  const toggleTagFilter = (tagId: number) => {
+    setFilterTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    );
+  };
+
+  const clearAllFilters = () => {
+    setFilterCategory(undefined);
+    setFilterTagIds([]);
+  };
+
+  const filteredByOrg = useMemo(() => {
+    if (!allTasks) return [];
+    let result = allTasks;
+    if (filterCategory === UNCATEGORIZED_FILTER) {
+      result = result.filter(t => !t.categoryId);
+    }
+    if (filterTagIds.length > 0) {
+      result = result.filter(t =>
+        filterTagIds.every(tagId => t.tags?.some((tag: any) => tag.id === tagId))
+      );
+    }
+    return result;
+  }, [allTasks, filterCategory, filterTagIds]);
+
+  const tasks = filteredByOrg ? filterTasksByCadence(filteredByOrg, magnitude) : [];
 
   if (tasksLoading) {
     return (
@@ -117,12 +146,21 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <SlidersHorizontal className="w-4 h-4" /> Filter
+              <Button variant={hasActiveFilters ? "default" : "outline"} className="gap-2">
+                <SlidersHorizontal className="w-4 h-4" />
+                Filter
+                {hasActiveFilters && (
+                  <span className="ml-1 bg-primary-foreground/20 text-primary-foreground px-1.5 py-0.5 rounded-full text-xs">
+                    {(filterCategory !== undefined ? 1 : 0) + filterTagIds.length}
+                  </span>
+                )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Filter by Category</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="flex items-center gap-1.5">
+                <Folder className="w-3.5 h-3.5" />
+                Category
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem 
                 checked={filterCategory === undefined}
@@ -130,15 +168,55 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
               >
                 All Categories
               </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={filterCategory === UNCATEGORIZED_FILTER}
+                onCheckedChange={() => setFilterCategory(filterCategory === UNCATEGORIZED_FILTER ? undefined : UNCATEGORIZED_FILTER)}
+              >
+                <span className="italic">Uncategorized</span>
+              </DropdownMenuCheckboxItem>
               {categories?.map(cat => (
                 <DropdownMenuCheckboxItem
                   key={cat.id}
                   checked={filterCategory === cat.id}
-                  onCheckedChange={() => setFilterCategory(cat.id)}
+                  onCheckedChange={() => setFilterCategory(filterCategory === cat.id ? undefined : cat.id)}
                 >
                   {cat.name}
                 </DropdownMenuCheckboxItem>
               ))}
+
+              {tags && tags.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="flex items-center gap-1.5">
+                    <TagIcon className="w-3.5 h-3.5" />
+                    Tags
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {tags.map(tag => (
+                    <DropdownMenuCheckboxItem
+                      key={tag.id}
+                      checked={filterTagIds.includes(tag.id)}
+                      onCheckedChange={() => toggleTagFilter(tag.id)}
+                    >
+                      {tag.name}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </>
+              )}
+
+              {hasActiveFilters && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={false}
+                    onCheckedChange={clearAllFilters}
+                    className="text-muted-foreground"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" />
+                    Clear all filters
+                  </DropdownMenuCheckboxItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -148,36 +226,45 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
         </div>
       </div>
 
-      {/* Tag Filter Chips */}
-      {tags && tags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Tag className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground mr-1">Filter by tag:</span>
-          {tags.map(tag => (
+      {/* Active filter pills */}
+      {hasActiveFilters && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Filtering:</span>
+          {filterCategory !== undefined && (
             <Badge
-              key={tag.id}
-              variant={filterTagId === tag.id ? "default" : "outline"}
-              className="cursor-pointer gap-1"
-              onClick={() => setFilterTagId(filterTagId === tag.id ? undefined : tag.id)}
-              data-testid={`tag-filter-${tag.id}`}
+              variant="secondary"
+              className="gap-1 cursor-pointer hover:bg-secondary/80"
+              onClick={() => setFilterCategory(undefined)}
             >
-              {tag.name}
-              {filterTagId === tag.id && (
-                <X className="w-3 h-3" />
-              )}
+              <Folder className="w-3 h-3" />
+              {filterCategory === UNCATEGORIZED_FILTER
+                ? "Uncategorized"
+                : categories?.find(c => c.id === filterCategory)?.name ?? "Category"}
+              <X className="w-3 h-3 ml-0.5" />
             </Badge>
-          ))}
-          {filterTagId && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={() => setFilterTagId(undefined)}
-              data-testid="button-clear-tag-filter"
-            >
-              Clear
-            </Button>
           )}
+          {filterTagIds.map(tagId => {
+            const tag = tags?.find(t => t.id === tagId);
+            if (!tag) return null;
+            return (
+              <Badge
+                key={tagId}
+                variant="secondary"
+                className="gap-1 cursor-pointer hover:bg-secondary/80"
+                onClick={() => toggleTagFilter(tagId)}
+              >
+                <TagIcon className="w-3 h-3" />
+                {tag.name}
+                <X className="w-3 h-3 ml-0.5" />
+              </Badge>
+            );
+          })}
+          <button
+            onClick={clearAllFilters}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Clear all
+          </button>
         </div>
       )}
 
