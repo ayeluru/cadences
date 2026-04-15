@@ -4,7 +4,7 @@
   "description": "Track recurring tasks and build better habits.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f3f7f5",
+  "background_color": "#3d8b6e",
   "theme_color": "#3d8b6e",
   "orientation": "portrait-primary",
   "icons": [
