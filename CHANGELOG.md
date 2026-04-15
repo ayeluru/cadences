@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.2
+
+- Redesigned app icon: bold white wave motif on teal-green background
+- Icon scales cleanly from favicon (32px) to iOS home screen (180px) to splash (512px)
+
 ## 1.8.1
 
 - Branded app icon replacing generic placeholder favicon
