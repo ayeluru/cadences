@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.1
+- Fixed profile creation failing due to missing slug generation
+- Fixed "Copy tasks from" import not completing before profile switch
+
+## 1.7.0
+- Streamlined settings page: flat layout with all sections visible at a glance
+- Profiles displayed as a list with dropdown menus for actions (mobile-friendly)
+- Categories and tags unified into an "Organization" section with parallel UI patterns
+- Added descriptions explaining when to use categories vs tags
+- Danger Zone section with clear destructive action styling
+
 ## 1.6.0
 - Name collection at signup — new users now provide their first and last name
 - Existing users without a name are prompted to set one on login
