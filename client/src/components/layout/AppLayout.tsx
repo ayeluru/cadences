@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { useAuth, getDisplayName, getInitials } from "@/hooks/use-auth";
 import { useFeedbackStats } from "@/hooks/use-feedback";
-import { LayoutDashboard, PieChart, Settings, LogOut, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal, MessageSquarePlus, Shield } from "lucide-react";
+import { WhatsNewDialog, useHasUnseenNotes } from "@/components/WhatsNewDialog";
+import { LayoutDashboard, PieChart, Settings, LogOut, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal, MessageSquarePlus, Shield, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -13,6 +14,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout, isAdmin } = useAuth();
   const { data: feedbackStats } = useFeedbackStats(isAdmin);
+  const hasUnseen = useHasUnseenNotes();
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [cadencesOpen, setCadencesOpen] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -140,7 +143,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground/50 text-center mt-2">v{__APP_VERSION__}</p>
+          <button
+            onClick={() => setWhatsNewOpen(true)}
+            className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-primary transition-colors mt-2 mx-auto group"
+          >
+            {hasUnseen && !whatsNewOpen && (
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            )}
+            <Sparkles className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+            v{__APP_VERSION__}
+          </button>
+          <WhatsNewDialog externalOpen={whatsNewOpen} onOpenChange={setWhatsNewOpen} />
         </div>
       </aside>
 

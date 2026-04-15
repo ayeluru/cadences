@@ -9,6 +9,7 @@ import AuthPage from "@/pages/AuthPage";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth, AuthProvider } from "@/hooks/use-auth";
 import { ProfileProvider } from "@/contexts/ProfileContext";
+import { NameRequiredModal } from "@/components/NameRequiredModal";
 import { Loader2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -61,8 +62,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return <AuthPage />;
   }
 
+  const hasName = !!user.user_metadata?.firstName?.trim();
+
   return (
     <ProfileProvider>
+      {!hasName && <NameRequiredModal />}
       <AppLayout>
         <Suspense fallback={
           <div className="flex h-64 w-full items-center justify-center">
