@@ -93,6 +93,11 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
   }
 });
 
+// Prevent DB timeouts / transient errors from crashing the dev server
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection (dev server survived):', err);
+});
+
 server.listen(PORT, () => {
   console.log(`API dev server running at http://localhost:${PORT}`);
 });
