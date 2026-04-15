@@ -21,7 +21,8 @@ export function useFeedbackStats(enabled = true) {
   return useQuery<FeedbackStats>({
     queryKey: ["/api/feedback/stats"],
     enabled,
-    refetchInterval: 60000,
+    staleTime: 60000,
+    refetchInterval: 120000,
   });
 }
 

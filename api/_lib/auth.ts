@@ -35,16 +35,15 @@ export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
 }
 
 export async function isAdmin(userId: string): Promise<boolean> {
-  const initialAdminId = process.env.INITIAL_ADMIN_USER_ID;
-  if (initialAdminId && userId === initialAdminId) {
-    const adminRows = await db.select().from(userRoles).where(eq(userRoles.role, 'admin'));
-    if (adminRows.length === 0) {
-      await db.insert(userRoles).values({ userId, role: 'admin' }).onConflictDoNothing();
-      return true;
-    }
-  }
   const [role] = await db.select().from(userRoles).where(eq(userRoles.userId, userId));
-  return role?.role === 'admin';
+  if (role?.role === 'admin') return true;
+
+  const initialAdminId = process.env.INITIAL_ADMIN_USER_ID;
+  if (initialAdminId && userId === initialAdminId && !role) {
+    await db.insert(userRoles).values({ userId, role: 'admin' }).onConflictDoNothing();
+    return true;
+  }
+  return false;
 }
 
 export async function verifyAdmin(req: VercelRequest): Promise<AuthUser | null> {

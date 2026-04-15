@@ -1356,14 +1356,16 @@ async function resolveUserProfiles(userIds: string[]): Promise<Map<string, { nam
   if (unique.length === 0) return map;
 
   try {
-    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
-    for (const u of users) {
-      if (!unique.includes(u.id)) continue;
-      const first = u.user_metadata?.firstName?.trim() ?? '';
-      const last = u.user_metadata?.lastName?.trim() ?? '';
-      const name = [first, last].filter(Boolean).join(' ') || u.email?.split('@')[0] || 'Unknown';
-      map.set(u.id, { name, email: u.email ?? '' });
-    }
+    await Promise.all(unique.map(async (id) => {
+      try {
+        const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(id);
+        if (!user) return;
+        const first = user.user_metadata?.firstName?.trim() ?? '';
+        const last = user.user_metadata?.lastName?.trim() ?? '';
+        const name = [first, last].filter(Boolean).join(' ') || user.email?.split('@')[0] || 'Unknown';
+        map.set(id, { name, email: user.email ?? '' });
+      } catch {}
+    }));
   } catch {}
 
   return map;
