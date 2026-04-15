@@ -1,4 +1,4 @@
-import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
+import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
 
@@ -267,8 +267,17 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     urgency = -daysUntilDue;
   }
 
-  // Get streak data
-  const streak = batch ? batch.streaksMap.get(task.id) : await storage.getTaskStreak(task.id, userId);
+  // Get streak data and check if it's still active (hasn't expired)
+  const rawStreak = batch ? batch.streaksMap.get(task.id) : await storage.getTaskStreak(task.id, userId);
+  let streak = rawStreak;
+  if (streak && streak.currentStreak > 0 && streak.lastCompletedAt) {
+    const intervalDays = storage.getIntervalInDays(task);
+    const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
+    const daysSinceLast = differenceInDays(startOfDay(now), startOfDay(streak.lastCompletedAt));
+    if (daysSinceLast > graceWindow) {
+      streak = { ...streak, currentStreak: 0 };
+    }
+  }
 
   // Get variation stats if there are variations
   let variationStats: any[] = [];

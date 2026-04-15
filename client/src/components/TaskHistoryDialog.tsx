@@ -75,6 +75,8 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
       queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId, "history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/completions/calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       toast({ title: "Completion deleted" });
     },
     onError: () => {
