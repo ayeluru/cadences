@@ -35,6 +35,7 @@ export interface IStorage {
   // Tags (profileId: null = all profiles, number = specific profile)
   getTags(userId: string, profileId?: number | null): Promise<Tag[]>;
   createTag(userId: string, tag: InsertTag): Promise<Tag>;
+  deleteTag(id: number, userId: string): Promise<void>;
   
   // Tasks (profileId: null = all profiles, number = specific profile)
   getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]>;
@@ -1138,6 +1139,15 @@ export class DatabaseStorage implements IStorage {
   async createTag(userId: string, tag: InsertTag): Promise<Tag> {
     const [newTag] = await db.insert(tags).values({ ...tag, userId }).returning();
     return newTag;
+  }
+
+  async deleteTag(id: number, userId: string): Promise<void> {
+    const [tag] = await db.select().from(tags).where(eq(tags.id, id));
+    if (!tag || tag.userId !== userId) {
+      throw new Error("Tag not found or unauthorized");
+    }
+    await db.delete(taskTags).where(eq(taskTags.tagId, id));
+    await db.delete(tags).where(eq(tags.id, id));
   }
 
   async getTasks(userId: string, profileId?: number | null, excludeDemo?: boolean): Promise<Task[]> {

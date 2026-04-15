@@ -30,7 +30,7 @@ interface TasksByMagnitudeProps {
 export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
   const [filterCategory, setFilterCategory] = useState<number | undefined>();
   const [filterTagIds, setFilterTagIds] = useState<number[]>([]);
-  const { data: allTasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory === UNCATEGORIZED_FILTER ? undefined : filterCategory });
+  const { data: allTasks, isLoading: tasksLoading } = useTasks();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const [createOpen, setCreateOpen] = useState(false);
@@ -55,6 +55,8 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
     let result = allTasks;
     if (filterCategory === UNCATEGORIZED_FILTER) {
       result = result.filter(t => !t.categoryId);
+    } else if (filterCategory !== undefined) {
+      result = result.filter(t => t.categoryId === filterCategory);
     }
     if (filterTagIds.length > 0) {
       result = result.filter(t =>
@@ -63,6 +65,27 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
     }
     return result;
   }, [allTasks, filterCategory, filterTagIds]);
+
+  // All tasks scoped to this magnitude (before org filters)
+  const magnitudeTasks = useMemo(() => {
+    if (!allTasks) return [];
+    return filterTasksByCadence(allTasks, magnitude);
+  }, [allTasks, magnitude]);
+
+  // Tasks in this magnitude filtered by tags only (for category overlap counts)
+  const tasksFilteredByTags = useMemo(() => {
+    if (filterTagIds.length === 0) return magnitudeTasks;
+    return magnitudeTasks.filter(t =>
+      filterTagIds.every(tagId => t.tags?.some((tag: any) => tag.id === tagId))
+    );
+  }, [magnitudeTasks, filterTagIds]);
+
+  // Tasks in this magnitude filtered by category only (for tag overlap counts)
+  const tasksFilteredByCategory = useMemo(() => {
+    if (filterCategory === undefined) return magnitudeTasks;
+    if (filterCategory === UNCATEGORIZED_FILTER) return magnitudeTasks.filter(t => !t.categoryId);
+    return magnitudeTasks.filter(t => t.categoryId === filterCategory);
+  }, [magnitudeTasks, filterCategory]);
 
   const tasks = filteredByOrg ? filterTasksByCadence(filteredByOrg, magnitude) : [];
 
@@ -151,7 +174,7 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
                 Filter
                 {hasActiveFilters && (
                   <span className="ml-1 bg-primary-foreground/20 text-primary-foreground px-1.5 py-0.5 rounded-full text-xs">
-                    {(filterCategory !== undefined ? 1 : 0) + filterTagIds.length}
+                    {tasks.length}
                   </span>
                 )}
               </Button>
@@ -164,23 +187,29 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem 
                 checked={filterCategory === undefined}
+                onSelect={(e) => e.preventDefault()}
                 onCheckedChange={() => setFilterCategory(undefined)}
               >
-                All Categories
+                <span className="flex-1">All Categories</span>
+                <span className="text-xs text-muted-foreground">{tasksFilteredByTags.length}</span>
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterCategory === UNCATEGORIZED_FILTER}
+                onSelect={(e) => e.preventDefault()}
                 onCheckedChange={() => setFilterCategory(filterCategory === UNCATEGORIZED_FILTER ? undefined : UNCATEGORIZED_FILTER)}
               >
-                <span className="italic">Uncategorized</span>
+                <span className="flex-1 italic">Uncategorized</span>
+                <span className="text-xs text-muted-foreground">{tasksFilteredByTags.filter(t => !t.categoryId).length}</span>
               </DropdownMenuCheckboxItem>
               {categories?.map(cat => (
                 <DropdownMenuCheckboxItem
                   key={cat.id}
                   checked={filterCategory === cat.id}
+                  onSelect={(e) => e.preventDefault()}
                   onCheckedChange={() => setFilterCategory(filterCategory === cat.id ? undefined : cat.id)}
                 >
-                  {cat.name}
+                  <span className="flex-1">{cat.name}</span>
+                  <span className="text-xs text-muted-foreground">{tasksFilteredByTags.filter(t => t.categoryId === cat.id).length}</span>
                 </DropdownMenuCheckboxItem>
               ))}
 
@@ -196,26 +225,31 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
                     <DropdownMenuCheckboxItem
                       key={tag.id}
                       checked={filterTagIds.includes(tag.id)}
+                      onSelect={(e) => e.preventDefault()}
                       onCheckedChange={() => toggleTagFilter(tag.id)}
                     >
-                      {tag.name}
+                      <span className="flex-1">{tag.name}</span>
+                      <span className="text-xs text-muted-foreground">{tasksFilteredByCategory.filter(t => t.tags?.some((tt: any) => tt.id === tag.id)).length}</span>
                     </DropdownMenuCheckboxItem>
                   ))}
                 </>
               )}
 
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5 text-xs text-muted-foreground flex justify-between">
+                <span>Showing</span>
+                <span className="font-medium text-foreground">{tasks.length} of {magnitudeTasks.length} tasks</span>
+              </div>
+
               {hasActiveFilters && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuCheckboxItem
-                    checked={false}
-                    onCheckedChange={clearAllFilters}
-                    className="text-muted-foreground"
-                  >
-                    <X className="w-3.5 h-3.5 mr-1" />
-                    Clear all filters
-                  </DropdownMenuCheckboxItem>
-                </>
+                <DropdownMenuCheckboxItem
+                  checked={false}
+                  onCheckedChange={clearAllFilters}
+                  className="text-muted-foreground"
+                >
+                  <X className="w-3.5 h-3.5 mr-1" />
+                  Clear all filters
+                </DropdownMenuCheckboxItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>

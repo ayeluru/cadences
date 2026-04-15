@@ -31,7 +31,7 @@ export default function Dashboard() {
   const { user, isLoading: authLoading } = useAuth();
   const [filterCategory, setFilterCategory] = useState<number | undefined>();
   const [filterTagIds, setFilterTagIds] = useState<number[]>([]);
-  const { data: tasks, isLoading: tasksLoading } = useTasks({ categoryId: filterCategory === UNCATEGORIZED_FILTER ? undefined : filterCategory });
+  const { data: tasks, isLoading: tasksLoading } = useTasks();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const [createOpen, setCreateOpen] = useState(false);
@@ -46,6 +46,8 @@ export default function Dashboard() {
 
     if (filterCategory === UNCATEGORIZED_FILTER) {
       result = result.filter(t => !t.categoryId);
+    } else if (filterCategory !== undefined) {
+      result = result.filter(t => t.categoryId === filterCategory);
     }
 
     if (filterTagIds.length > 0) {
@@ -56,6 +58,23 @@ export default function Dashboard() {
 
     return result;
   }, [tasks, filterCategory, filterTagIds]);
+
+  // Tasks filtered by tags only (for computing category counts with tag overlap)
+  const tasksFilteredByTags = useMemo(() => {
+    if (!tasks) return [];
+    if (filterTagIds.length === 0) return tasks;
+    return tasks.filter(t =>
+      filterTagIds.every(tagId => t.tags?.some((tag: any) => tag.id === tagId))
+    );
+  }, [tasks, filterTagIds]);
+
+  // Tasks filtered by category only (for computing tag counts with category overlap)
+  const tasksFilteredByCategory = useMemo(() => {
+    if (!tasks) return [];
+    if (filterCategory === undefined) return tasks;
+    if (filterCategory === UNCATEGORIZED_FILTER) return tasks.filter(t => !t.categoryId);
+    return tasks.filter(t => t.categoryId === filterCategory);
+  }, [tasks, filterCategory]);
 
   const toggleTagFilter = (tagId: number) => {
     setFilterTagIds(prev =>
@@ -157,7 +176,7 @@ export default function Dashboard() {
                 Filter
                 {hasActiveFilters && (
                   <span className="ml-1 bg-primary-foreground/20 text-primary-foreground px-1.5 py-0.5 rounded-full text-xs">
-                    {(filterCategory !== undefined ? 1 : 0) + filterTagIds.length}
+                    {filteredTasks.length}
                   </span>
                 )}
               </Button>
@@ -170,23 +189,29 @@ export default function Dashboard() {
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem 
                 checked={filterCategory === undefined}
+                onSelect={(e) => e.preventDefault()}
                 onCheckedChange={() => setFilterCategory(undefined)}
               >
-                All Categories
+                <span className="flex-1">All Categories</span>
+                <span className="text-xs text-muted-foreground">{tasksFilteredByTags.length}</span>
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={filterCategory === UNCATEGORIZED_FILTER}
+                onSelect={(e) => e.preventDefault()}
                 onCheckedChange={() => setFilterCategory(filterCategory === UNCATEGORIZED_FILTER ? undefined : UNCATEGORIZED_FILTER)}
               >
-                <span className="italic">Uncategorized</span>
+                <span className="flex-1 italic">Uncategorized</span>
+                <span className="text-xs text-muted-foreground">{tasksFilteredByTags.filter(t => !t.categoryId).length}</span>
               </DropdownMenuCheckboxItem>
               {categories?.map(cat => (
                 <DropdownMenuCheckboxItem
                   key={cat.id}
                   checked={filterCategory === cat.id}
+                  onSelect={(e) => e.preventDefault()}
                   onCheckedChange={() => setFilterCategory(filterCategory === cat.id ? undefined : cat.id)}
                 >
-                  {cat.name}
+                  <span className="flex-1">{cat.name}</span>
+                  <span className="text-xs text-muted-foreground">{tasksFilteredByTags.filter(t => t.categoryId === cat.id).length}</span>
                 </DropdownMenuCheckboxItem>
               ))}
 
@@ -202,26 +227,31 @@ export default function Dashboard() {
                     <DropdownMenuCheckboxItem
                       key={tag.id}
                       checked={filterTagIds.includes(tag.id)}
+                      onSelect={(e) => e.preventDefault()}
                       onCheckedChange={() => toggleTagFilter(tag.id)}
                     >
-                      {tag.name}
+                      <span className="flex-1">{tag.name}</span>
+                      <span className="text-xs text-muted-foreground">{tasksFilteredByCategory.filter(t => t.tags?.some((tt: any) => tt.id === tag.id)).length}</span>
                     </DropdownMenuCheckboxItem>
                   ))}
                 </>
               )}
 
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5 text-xs text-muted-foreground flex justify-between">
+                <span>Showing</span>
+                <span className="font-medium text-foreground">{filteredTasks.length} of {tasks?.length ?? 0} tasks</span>
+              </div>
+
               {hasActiveFilters && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuCheckboxItem
-                    checked={false}
-                    onCheckedChange={clearAllFilters}
-                    className="text-muted-foreground"
-                  >
-                    <X className="w-3.5 h-3.5 mr-1" />
-                    Clear all filters
-                  </DropdownMenuCheckboxItem>
-                </>
+                <DropdownMenuCheckboxItem
+                  checked={false}
+                  onCheckedChange={clearAllFilters}
+                  className="text-muted-foreground"
+                >
+                  <X className="w-3.5 h-3.5 mr-1" />
+                  Clear all filters
+                </DropdownMenuCheckboxItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
