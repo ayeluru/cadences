@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import { Profile } from "@shared/schema";
 import { useProfiles, useDefaultProfile } from "@/hooks/use-profiles";
+import { queryClient } from "@/lib/queryClient";
 
 interface ProfileContextType {
   currentProfile: Profile | null;
@@ -58,6 +59,11 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     if (defaultProfile) {
       setCurrentProfileId(defaultProfile.id);
       localStorage.setItem(PROFILE_STORAGE_KEY, String(defaultProfile.id));
+      // The default endpoint may have just created this profile — make sure
+      // the profiles list query picks it up so the derived currentProfile works.
+      if (!profiles.some(p => p.id === defaultProfile.id)) {
+        queryClient.invalidateQueries({ queryKey: ['/api/profiles'] });
+      }
     } else if (profiles.length > 0) {
       setCurrentProfileId(profiles[0].id);
       localStorage.setItem(PROFILE_STORAGE_KEY, String(profiles[0].id));

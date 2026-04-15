@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Check, ChevronsUpDown, Plus, Sparkles, Layers, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,11 +12,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { useCreateDemoProfile } from "@/hooks/use-profiles";
+import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
 export function ProfileSwitcher() {
   const { currentProfile, setCurrentProfile, profiles, isLoading, isAggregatedView, setAggregatedView, switchToProfileById } = useProfileContext();
   const createDemoMutation = useCreateDemoProfile();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -29,18 +32,21 @@ export function ProfileSwitcher() {
   const hasDemoProfile = profiles.some(p => p.isDemo);
   const displayName = isAggregatedView ? "All Profiles" : (currentProfile?.name || "Select Profile");
 
-  const handleCreateDemo = () => {
-    createDemoMutation.mutate(undefined, {
-      onSuccess: (data) => {
-        if (data?.profile?.id) {
-          switchToProfileById(data.profile.id);
-        }
-      },
-    });
+  const handleCreateDemo = async () => {
+    try {
+      const data = await createDemoMutation.mutateAsync();
+      // Wait for profiles list to include the new profile before switching
+      await queryClient.refetchQueries({ queryKey: ['/api/profiles'] });
+      if (data?.profile?.id) {
+        switchToProfileById(data.profile.id);
+      }
+    } finally {
+      setDropdownOpen(false);
+    }
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2" data-testid="button-profile-switcher">
           {isAggregatedView ? (
@@ -92,7 +98,10 @@ export function ProfileSwitcher() {
         <DropdownMenuSeparator />
         {!hasDemoProfile && (
           <DropdownMenuItem
-            onClick={handleCreateDemo}
+            onSelect={(e) => {
+              e.preventDefault();
+              handleCreateDemo();
+            }}
             className="gap-2"
             disabled={createDemoMutation.isPending}
             data-testid="menu-item-create-demo"
