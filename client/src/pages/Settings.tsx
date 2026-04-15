@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Plus, Tag as TagIcon, Folder, Trash2, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, MoreHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
+import { queryClient } from "@/lib/queryClient";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +81,7 @@ export default function Settings() {
         });
         setImportFromProfileId("");
       }
+      await queryClient.refetchQueries({ queryKey: ['/api/profiles'] });
       setCurrentProfile(newProfile);
     } catch {
       // Error toasts handled by mutation hooks
@@ -234,13 +236,17 @@ export default function Settings() {
           <Button 
             variant="outline" 
             size="sm"
-            onClick={() => createDemoMutation.mutate(undefined, {
-              onSuccess: (data) => {
+            onClick={async () => {
+              try {
+                const data = await createDemoMutation.mutateAsync();
+                await queryClient.refetchQueries({ queryKey: ['/api/profiles'] });
                 if (data?.profile) {
                   setCurrentProfile(data.profile);
                 }
-              },
-            })}
+              } catch {
+                // Error toasts handled by mutation hook
+              }
+            }}
             disabled={createDemoMutation.isPending}
             data-testid="button-create-demo-profile"
           >
