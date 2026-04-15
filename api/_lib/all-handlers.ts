@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyAuth, unauthorized } from './auth.js';
+import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden } from './auth.js';
 import { storage, enrichTask, enrichTasks } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
 import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay } from 'date-fns';
@@ -1263,6 +1263,432 @@ export async function variationsId(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ success: true });
   } catch (error) {
     console.error('Error deleting variation:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// auth-role (GET current user's role)
+// ---------------------------------------------------------------------------
+
+export async function authRole(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  try {
+    const admin = await isAdmin(user.id);
+    return res.status(200).json({ role: admin ? 'admin' : 'user' });
+  } catch (error) {
+    console.error('Error fetching role:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// admin-users (GET all users + roles, admin only)
+// ---------------------------------------------------------------------------
+
+export async function adminUsers(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+  const admin = await verifyAdmin(req);
+  if (!admin) return forbidden(res);
+
+  try {
+    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+    if (error) return res.status(500).json({ error: error.message });
+
+    const roles = await storage.getAllUserRoles();
+    const roleMap = new Map(roles.map(r => [r.userId, r.role]));
+
+    const result = users.map(u => ({
+      id: u.id,
+      email: u.email,
+      firstName: u.user_metadata?.firstName ?? null,
+      lastName: u.user_metadata?.lastName ?? null,
+      role: roleMap.get(u.id) ?? 'user',
+      createdAt: u.created_at,
+    }));
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Error listing admin users:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// admin-user-role (POST set role for a user, admin only)
+// ---------------------------------------------------------------------------
+
+export async function adminUserRole(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const admin = await verifyAdmin(req);
+  if (!admin) return forbidden(res);
+
+  const targetUserId = req.query.userId as string;
+  if (!targetUserId) return res.status(400).json({ error: 'userId is required' });
+
+  const { role } = req.body;
+  if (!role || !['user', 'admin'].includes(role)) {
+    return res.status(400).json({ error: 'role must be "user" or "admin"' });
+  }
+
+  try {
+    const updated = await storage.setUserRole(targetUserId, role, admin.id);
+    return res.status(200).json(updated);
+  } catch (error) {
+    console.error('Error setting user role:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// helper: resolve user IDs → { name, email } via Supabase Auth
+// ---------------------------------------------------------------------------
+
+async function resolveUserProfiles(userIds: string[]): Promise<Map<string, { name: string; email: string }>> {
+  const map = new Map<string, { name: string; email: string }>();
+  const unique = Array.from(new Set(userIds.filter(Boolean)));
+  if (unique.length === 0) return map;
+
+  try {
+    await Promise.all(unique.map(async (id) => {
+      try {
+        const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(id);
+        if (!user) return;
+        const first = user.user_metadata?.firstName?.trim() ?? '';
+        const last = user.user_metadata?.lastName?.trim() ?? '';
+        const name = [first, last].filter(Boolean).join(' ') || user.email?.split('@')[0] || 'Unknown';
+        map.set(id, { name, email: user.email ?? '' });
+      } catch {}
+    }));
+  } catch {}
+
+  return map;
+}
+
+// Stable phonetic alias from a userId — same user always gets the same alias
+const ADJECTIVES = ['Amber','Blue','Coral','Dusk','Echo','Fern','Gold','Haze','Iris','Jade','Kiwi','Luna','Mint','Nova','Opal','Pine','Quill','Rose','Sage','Teal'];
+const ANIMALS = ['Badger','Crane','Dove','Elk','Fox','Gecko','Heron','Ibis','Jay','Koala','Lynx','Mole','Newt','Otter','Puma','Quail','Robin','Swan','Tern','Vole'];
+
+function phoneticAlias(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash + userId.charCodeAt(i)) | 0;
+  }
+  const adj = ADJECTIVES[Math.abs(hash) % ADJECTIVES.length];
+  const animal = ANIMALS[Math.abs(hash >> 8) % ANIMALS.length];
+  return `${adj} ${animal}`;
+}
+
+interface IdentityInfo {
+  displayName: string;
+  isAnonymous: boolean;
+}
+
+function resolveIdentity(
+  userId: string,
+  isAnonymous: boolean,
+  profiles: Map<string, { name: string; email: string }>,
+  viewerIsAdmin: boolean,
+  viewerUserId: string,
+): IdentityInfo {
+  if (userId === viewerUserId) {
+    return { displayName: 'You', isAnonymous };
+  }
+  if (!isAnonymous) {
+    const profile = profiles.get(userId);
+    return { displayName: profile?.name ?? 'Unknown', isAnonymous: false };
+  }
+  if (viewerIsAdmin) {
+    const profile = profiles.get(userId);
+    const realName = profile?.name ?? 'Unknown';
+    return { displayName: `${phoneticAlias(userId)} (${realName})`, isAnonymous: true };
+  }
+  return { displayName: phoneticAlias(userId), isAnonymous: true };
+}
+
+// ---------------------------------------------------------------------------
+// feedback-list (GET list, POST create)
+// ---------------------------------------------------------------------------
+
+export async function feedbackStats(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+  const adminUser = await isAdmin(user.id);
+  if (!adminUser) return forbidden(res);
+  try {
+    const stats = await storage.getFeedbackStats();
+    return res.status(200).json(stats);
+  } catch (error) {
+    console.error('Error fetching feedback stats:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function feedbackList(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  if (req.method === 'GET') {
+    try {
+      const adminUser = await isAdmin(user.id);
+      const filters: { type?: string; status?: string } = {};
+      if (req.query.type) filters.type = req.query.type as string;
+      if (req.query.status) filters.status = req.query.status as string;
+
+      const items = await storage.getFeedbackList(user.id, adminUser, filters);
+      const profiles = await resolveUserProfiles(items.map(i => i.userId));
+
+      return res.status(200).json(items.map(item => {
+        const identity = resolveIdentity(item.userId, item.isAnonymous, profiles, adminUser, user.id);
+        return {
+          ...item,
+          userId: adminUser || item.userId === user.id ? item.userId : undefined,
+          displayName: identity.displayName,
+          submitterEmail: adminUser ? (profiles.get(item.userId)?.email ?? null) : undefined,
+        };
+      }));
+    } catch (error) {
+      console.error('Error fetching feedback:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  if (req.method === 'POST') {
+    try {
+      const { type, title, description, isAnonymous } = req.body;
+      if (!type || !title || !description) {
+        return res.status(400).json({ error: 'type, title, and description are required' });
+      }
+      const submission = await storage.createFeedback(user.id, { type, title, description }, !!isAnonymous);
+      return res.status(201).json(submission);
+    } catch (error) {
+      console.error('Error creating feedback:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ---------------------------------------------------------------------------
+// feedback-detail (GET, PATCH, DELETE single feedback)
+// ---------------------------------------------------------------------------
+
+export async function feedbackDetail(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  const feedbackId = parseInt(req.query.id as string, 10);
+  if (isNaN(feedbackId)) return res.status(400).json({ error: 'Invalid feedback ID' });
+
+  try {
+    const submission = await storage.getFeedback(feedbackId);
+    if (!submission) return res.status(404).json({ error: 'Not found' });
+
+    const adminUser = await isAdmin(user.id);
+    const isOwner = submission.userId === user.id;
+
+    if (!adminUser && !isOwner && !submission.isPublic) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    if (req.method === 'GET') {
+      const [voteCount, hasVoted] = await Promise.all([
+        storage.getVoteCount(feedbackId),
+        storage.hasUserVoted(user.id, feedbackId),
+      ]);
+      const userIdsToResolve = [submission.userId];
+      if (submission.adminResponseBy) userIdsToResolve.push(submission.adminResponseBy);
+      const profiles = await resolveUserProfiles(userIdsToResolve);
+      const identity = resolveIdentity(submission.userId, submission.isAnonymous, profiles, adminUser, user.id);
+      const adminResponder = submission.adminResponseBy ? profiles.get(submission.adminResponseBy) : null;
+      const result: any = {
+        ...submission,
+        voteCount,
+        hasVoted,
+        displayName: identity.displayName,
+        submitterEmail: adminUser ? (profiles.get(submission.userId)?.email ?? null) : undefined,
+        adminResponseByName: adminResponder?.name ?? null,
+      };
+      if (!adminUser && !isOwner) {
+        delete result.userId;
+      }
+      return res.status(200).json(result);
+    }
+
+    if (req.method === 'PATCH') {
+      const updates: any = {};
+      if (adminUser) {
+        if (req.body.status !== undefined) updates.status = req.body.status;
+        if (req.body.isPublic !== undefined) updates.isPublic = req.body.isPublic;
+        if (req.body.adminResponse !== undefined) {
+          updates.adminResponse = req.body.adminResponse;
+          updates.adminResponseBy = user.id;
+        }
+      }
+      if (isOwner && submission.status === 'new') {
+        if (req.body.title !== undefined) updates.title = req.body.title;
+        if (req.body.description !== undefined) updates.description = req.body.description;
+      }
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No valid updates' });
+      }
+      const updated = await storage.updateFeedback(feedbackId, updates);
+      return res.status(200).json(updated);
+    }
+
+    if (req.method === 'DELETE') {
+      if (!adminUser && !(isOwner && submission.status === 'new')) {
+        return forbidden(res);
+      }
+      await storage.deleteFeedback(feedbackId);
+      return res.status(200).json({ success: true });
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (error) {
+    console.error('Error handling feedback detail:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// feedback-vote (POST toggle upvote)
+// ---------------------------------------------------------------------------
+
+export async function feedbackVote(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  const feedbackId = parseInt(req.query.id as string, 10);
+  if (isNaN(feedbackId)) return res.status(400).json({ error: 'Invalid feedback ID' });
+
+  try {
+    const submission = await storage.getFeedback(feedbackId);
+    if (!submission) return res.status(404).json({ error: 'Not found' });
+
+    if (!submission.isPublic && submission.userId !== user.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const result = await storage.toggleVote(user.id, feedbackId);
+    const voteCount = await storage.getVoteCount(feedbackId);
+    return res.status(200).json({ ...result, voteCount });
+  } catch (error) {
+    console.error('Error toggling vote:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// feedback-comments (GET list, POST create)
+// ---------------------------------------------------------------------------
+
+export async function feedbackCommentsHandler(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  const feedbackId = parseInt(req.query.id as string, 10);
+  if (isNaN(feedbackId)) return res.status(400).json({ error: 'Invalid feedback ID' });
+
+  try {
+    const submission = await storage.getFeedback(feedbackId);
+    if (!submission) return res.status(404).json({ error: 'Not found' });
+
+    const adminUser = await isAdmin(user.id);
+    const isOwner = submission.userId === user.id;
+
+    if (!adminUser && !isOwner && !submission.isPublic) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    if (req.method === 'GET') {
+      const comments = await storage.getFeedbackComments(feedbackId);
+      const profiles = await resolveUserProfiles(comments.map(c => c.userId));
+      const allRoles = await storage.getAllUserRoles();
+      const adminIds = new Set(allRoles.filter(r => r.role === 'admin').map(r => r.userId));
+      const initialAdminId = process.env.INITIAL_ADMIN_USER_ID;
+      if (initialAdminId) adminIds.add(initialAdminId);
+
+      return res.status(200).json(comments.map(c => {
+        const identity = resolveIdentity(c.userId, c.isAnonymous, profiles, adminUser, user.id);
+        const commenterIsAdmin = adminIds.has(c.userId);
+        return {
+          ...c,
+          userId: adminUser || c.userId === user.id ? c.userId : undefined,
+          displayName: identity.displayName,
+          isAdminComment: commenterIsAdmin && !c.isAnonymous,
+        };
+      }));
+    }
+
+    if (req.method === 'POST') {
+      const { content, isAnonymous, isOfficialResponse } = req.body;
+      if (!content?.trim()) return res.status(400).json({ error: 'content is required' });
+      const markOfficial = !!isOfficialResponse && adminUser;
+      if (markOfficial) {
+        await storage.clearOfficialResponse(feedbackId);
+      }
+      const comment = await storage.createFeedbackComment(user.id, feedbackId, content.trim(), !!isAnonymous, markOfficial);
+      return res.status(201).json(comment);
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (error) {
+    console.error('Error handling feedback comments:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// feedback-comment-delete (DELETE single comment)
+// ---------------------------------------------------------------------------
+
+export async function feedbackCommentDelete(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  const commentId = parseInt(req.query.commentId as string, 10);
+  if (isNaN(commentId)) return res.status(400).json({ error: 'Invalid comment ID' });
+
+  try {
+    const comment = await storage.getFeedbackComment(commentId);
+    if (!comment) return res.status(404).json({ error: 'Not found' });
+
+    const adminUser = await isAdmin(user.id);
+
+    if (req.method === 'PATCH') {
+      if (!adminUser) return forbidden(res);
+      const { isOfficialResponse } = req.body;
+      if (isOfficialResponse !== undefined) {
+        if (isOfficialResponse) {
+          await storage.clearOfficialResponse(comment.feedbackId);
+        }
+        await storage.setOfficialResponse(commentId, !!isOfficialResponse);
+      }
+      return res.status(200).json({ success: true });
+    }
+
+    if (req.method === 'DELETE') {
+      if (!adminUser && comment.userId !== user.id) {
+        return forbidden(res);
+      }
+      await storage.deleteFeedbackComment(commentId);
+      return res.status(200).json({ success: true });
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (error) {
+    console.error('Error handling feedback comment:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

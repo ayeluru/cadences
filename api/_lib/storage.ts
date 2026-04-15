@@ -1,15 +1,18 @@
 import {
   categories, tags, tasks, taskTags, completions, taskMetrics, metricValues, taskStreaks, profiles, taskVariations,
+  userRoles, feedbackSubmissions, feedbackVotes, feedbackComments,
   type Category, type Tag, type Task, type TaskTag, type Completion,
   type TaskMetric, type MetricValue, type TaskStreak, type Profile, type TaskVariation,
+  type UserRole, type FeedbackSubmission, type FeedbackVote, type FeedbackComment,
   type InsertCategory, type InsertTag, type InsertTask,
-  type InsertTaskMetric, type InsertMetricValue, type InsertProfile
+  type InsertTaskMetric, type InsertMetricValue, type InsertProfile,
+  type InsertFeedback, type InsertFeedbackComment
 } from "../../shared/schema.js";
 
 // User type from Supabase auth (no longer using custom users table)
 export type User = { id: string; email?: string };
 import { db } from "./db.js";
-import { eq, desc, sql, and, gte, lte, inArray, notInArray } from "drizzle-orm";
+import { eq, desc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -2148,6 +2151,156 @@ export class DatabaseStorage implements IStorage {
       map.set(row.id, row);
     }
     return map;
+  }
+  // ============ User Roles ============
+
+  async getUserRole(userId: string): Promise<UserRole | undefined> {
+    const [role] = await db.select().from(userRoles).where(eq(userRoles.userId, userId));
+    return role;
+  }
+
+  async setUserRole(userId: string, role: 'user' | 'admin', grantedBy: string): Promise<UserRole> {
+    const existing = await this.getUserRole(userId);
+    if (existing) {
+      const [updated] = await db.update(userRoles)
+        .set({ role, grantedBy })
+        .where(eq(userRoles.userId, userId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(userRoles)
+      .values({ userId, role, grantedBy })
+      .returning();
+    return created;
+  }
+
+  async getAllUserRoles(): Promise<UserRole[]> {
+    return await db.select().from(userRoles);
+  }
+
+  // ============ Feedback Submissions ============
+
+  async createFeedback(userId: string, data: InsertFeedback, isAnonymous = false): Promise<FeedbackSubmission> {
+    const [submission] = await db.insert(feedbackSubmissions)
+      .values({ ...data, userId, isAnonymous })
+      .returning();
+    return submission;
+  }
+
+  async getFeedback(id: number): Promise<FeedbackSubmission | undefined> {
+    const [submission] = await db.select().from(feedbackSubmissions).where(eq(feedbackSubmissions.id, id));
+    return submission;
+  }
+
+  async getFeedbackStats(): Promise<{ total: number; unreviewed: number; public: number; byStatus: Record<string, number> }> {
+    const all = await db.select({ status: feedbackSubmissions.status, isPublic: feedbackSubmissions.isPublic }).from(feedbackSubmissions);
+    const byStatus: Record<string, number> = {};
+    let unreviewed = 0;
+    let publicCount = 0;
+    for (const row of all) {
+      byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+      if (row.status === 'new' && !row.isPublic) unreviewed++;
+      if (row.isPublic) publicCount++;
+    }
+    return { total: all.length, unreviewed, public: publicCount, byStatus };
+  }
+
+  async getFeedbackList(userId: string, isAdminUser: boolean, filters?: { type?: string; status?: string }): Promise<(FeedbackSubmission & { voteCount: number; commentCount: number; hasVoted: boolean })[]> {
+    const conditions: any[] = [];
+    if (!isAdminUser) {
+      conditions.push(or(eq(feedbackSubmissions.userId, userId), eq(feedbackSubmissions.isPublic, true))!);
+    }
+    if (filters?.type) {
+      conditions.push(eq(feedbackSubmissions.type, filters.type as any));
+    }
+    if (filters?.status) {
+      conditions.push(eq(feedbackSubmissions.status, filters.status as any));
+    }
+
+    const submissions = conditions.length > 0
+      ? await db.select().from(feedbackSubmissions).where(and(...conditions)).orderBy(desc(feedbackSubmissions.createdAt))
+      : await db.select().from(feedbackSubmissions).orderBy(desc(feedbackSubmissions.createdAt));
+
+    const result = await Promise.all(submissions.map(async (sub) => {
+      const [voteResult] = await db.select({ count: drizzleCount() }).from(feedbackVotes).where(eq(feedbackVotes.feedbackId, sub.id));
+      const [commentResult] = await db.select({ count: drizzleCount() }).from(feedbackComments).where(eq(feedbackComments.feedbackId, sub.id));
+      const [userVote] = await db.select().from(feedbackVotes).where(and(eq(feedbackVotes.feedbackId, sub.id), eq(feedbackVotes.userId, userId)));
+      return {
+        ...sub,
+        voteCount: Number(voteResult?.count ?? 0),
+        commentCount: Number(commentResult?.count ?? 0),
+        hasVoted: !!userVote,
+      };
+    }));
+
+    return result;
+  }
+
+  async updateFeedback(id: number, updates: Partial<Pick<FeedbackSubmission, 'title' | 'description' | 'status' | 'isPublic' | 'adminResponse'>>): Promise<FeedbackSubmission> {
+    const [updated] = await db.update(feedbackSubmissions)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(feedbackSubmissions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteFeedback(id: number): Promise<void> {
+    await db.delete(feedbackSubmissions).where(eq(feedbackSubmissions.id, id));
+  }
+
+  // ============ Feedback Votes ============
+
+  async toggleVote(userId: string, feedbackId: number): Promise<{ voted: boolean }> {
+    const [existing] = await db.select().from(feedbackVotes)
+      .where(and(eq(feedbackVotes.userId, userId), eq(feedbackVotes.feedbackId, feedbackId)));
+    if (existing) {
+      await db.delete(feedbackVotes).where(eq(feedbackVotes.id, existing.id));
+      return { voted: false };
+    }
+    await db.insert(feedbackVotes).values({ userId, feedbackId });
+    return { voted: true };
+  }
+
+  async getVoteCount(feedbackId: number): Promise<number> {
+    const [result] = await db.select({ count: drizzleCount() }).from(feedbackVotes).where(eq(feedbackVotes.feedbackId, feedbackId));
+    return Number(result?.count ?? 0);
+  }
+
+  async hasUserVoted(userId: string, feedbackId: number): Promise<boolean> {
+    const [vote] = await db.select().from(feedbackVotes).where(and(eq(feedbackVotes.userId, userId), eq(feedbackVotes.feedbackId, feedbackId)));
+    return !!vote;
+  }
+
+  // ============ Feedback Comments ============
+
+  async createFeedbackComment(userId: string, feedbackId: number, content: string, isAnonymous = false, isOfficialResponse = false): Promise<FeedbackComment> {
+    const [comment] = await db.insert(feedbackComments)
+      .values({ userId, feedbackId, content, isAnonymous, isOfficialResponse })
+      .returning();
+    return comment;
+  }
+
+  async getFeedbackComments(feedbackId: number): Promise<FeedbackComment[]> {
+    return await db.select().from(feedbackComments)
+      .where(eq(feedbackComments.feedbackId, feedbackId))
+      .orderBy(feedbackComments.createdAt);
+  }
+
+  async deleteFeedbackComment(commentId: number): Promise<void> {
+    await db.delete(feedbackComments).where(eq(feedbackComments.id, commentId));
+  }
+
+  async setOfficialResponse(commentId: number, isOfficial: boolean): Promise<void> {
+    await db.update(feedbackComments).set({ isOfficialResponse: isOfficial }).where(eq(feedbackComments.id, commentId));
+  }
+
+  async clearOfficialResponse(feedbackId: number): Promise<void> {
+    await db.update(feedbackComments).set({ isOfficialResponse: false }).where(eq(feedbackComments.feedbackId, feedbackId));
+  }
+
+  async getFeedbackComment(commentId: number): Promise<FeedbackComment | undefined> {
+    const [comment] = await db.select().from(feedbackComments).where(eq(feedbackComments.id, commentId));
+    return comment;
   }
 }
 

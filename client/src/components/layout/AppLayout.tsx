@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth, getDisplayName, getInitials } from "@/hooks/use-auth";
-import { LayoutDashboard, PieChart, Settings, LogOut, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal } from "lucide-react";
+import { useFeedbackStats } from "@/hooks/use-feedback";
+import { LayoutDashboard, PieChart, Settings, LogOut, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal, MessageSquarePlus, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,10 +11,12 @@ import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
+  const { data: feedbackStats } = useFeedbackStats(isAdmin);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [cadencesOpen, setCadencesOpen] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const unreviewedCount = feedbackStats?.unreviewed ?? 0;
 
   const cadenceItems = [
     { href: "/tasks/daily", label: "Daily", icon: Clock },
@@ -30,8 +33,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { type: "divider" },
     { href: "/stats", label: "Statistics", icon: PieChart },
     { href: "/metrics", label: "Metrics", icon: Activity },
+    { href: "/feedback", label: "Feedback", icon: MessageSquarePlus },
     { href: "/guide", label: "User Guide", icon: HelpCircle },
     { href: "/settings", label: "Settings", icon: Settings },
+    ...(isAdmin ? [
+      { type: "divider" },
+      { href: "/admin", label: "Admin", icon: Shield, badge: unreviewedCount > 0 ? unreviewedCount : undefined },
+    ] : []),
   ] as any[];
 
   return (
@@ -98,7 +106,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"}
               `}>
                 <Icon className={`w-5 h-5 ${isActive ? "" : "group-hover:scale-110 transition-transform"}`} />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.badge != null && (
+                  <span className={`min-w-[20px] h-5 flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 ${
+                    isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-destructive text-destructive-foreground"
+                  }`}>
+                    {item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}

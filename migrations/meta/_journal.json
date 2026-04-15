@@ -15,6 +15,34 @@
       "when": 1776144944159,
       "tag": "0001_careless_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776204269078,
+      "tag": "0002_silly_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776207822356,
+      "tag": "0003_known_wendell_rand",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776208403415,
+      "tag": "0004_mixed_pyro",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776209253163,
+      "tag": "0005_regular_nightmare",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import {
   authUser,
+  authRole,
   calendarEnhanced,
   categoriesIndex,
   categoriesId,
@@ -32,6 +33,14 @@ import {
   tasksIdReassign,
   tasksIdVariations,
   variationsId,
+  adminUsers,
+  adminUserRole,
+  feedbackStats,
+  feedbackList,
+  feedbackDetail,
+  feedbackVote,
+  feedbackCommentsHandler,
+  feedbackCommentDelete,
 } from './_lib/all-handlers.js';
 
 type Handler = (req: VercelRequest, res: VercelResponse) => any;
@@ -43,7 +52,16 @@ interface Route {
 }
 
 const routes: Route[] = [
+  { pattern: /^auth\/role$/, handler: authRole, params: [] },
   { pattern: /^auth\/user$/, handler: authUser, params: [] },
+  { pattern: /^admin\/users\/([^/]+)\/role$/, handler: adminUserRole, params: ['userId'] },
+  { pattern: /^admin\/users$/, handler: adminUsers, params: [] },
+  { pattern: /^feedback\/(\d+)\/vote$/, handler: feedbackVote, params: ['id'] },
+  { pattern: /^feedback\/(\d+)\/comments\/(\d+)$/, handler: feedbackCommentDelete, params: ['id', 'commentId'] },
+  { pattern: /^feedback\/(\d+)\/comments$/, handler: feedbackCommentsHandler, params: ['id'] },
+  { pattern: /^feedback\/(\d+)$/, handler: feedbackDetail, params: ['id'] },
+  { pattern: /^feedback\/stats$/, handler: feedbackStats, params: [] },
+  { pattern: /^feedback$/, handler: feedbackList, params: [] },
   { pattern: /^calendar\/enhanced$/, handler: calendarEnhanced, params: [] },
   { pattern: /^categories$/, handler: categoriesIndex, params: [] },
   { pattern: /^categories\/(\d+)$/, handler: categoriesId, params: ['id'] },

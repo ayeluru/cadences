@@ -1,10 +1,16 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, real, index, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, real, index, unique, pgEnum } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Note: Users are managed by Supabase Auth (auth.users table)
 // userId columns reference Supabase user IDs (UUIDs as strings)
+
+// ============ Enums ============
+
+export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+export const feedbackTypeEnum = pgEnum("feedback_type", ["bug", "feature_request", "feedback"]);
+export const feedbackStatusEnum = pgEnum("feedback_status", ["new", "under_review", "planned", "in_progress", "done", "declined"]);
 
 // Profiles - allow users to organize tasks into different contexts (Work, Personal, Exercise, Demo)
 export const profiles = pgTable("profiles", {
@@ -151,6 +157,60 @@ export const taskStreaks = pgTable("task_streaks", {
   index("task_streaks_task_id_idx").on(table.taskId),
 ]);
 
+// ============ Roles & Feedback Tables ============
+
+export const userRoles = pgTable("user_roles", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  role: userRoleEnum("role").default("user").notNull(),
+  grantedBy: varchar("granted_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("user_roles_user_id_unique").on(table.userId),
+  index("user_roles_user_id_idx").on(table.userId),
+]);
+
+export const feedbackSubmissions = pgTable("feedback_submissions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  type: feedbackTypeEnum("type").notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  description: text("description").notNull(),
+  status: feedbackStatusEnum("status").default("new").notNull(),
+  isPublic: boolean("is_public").default(false).notNull(),
+  isAnonymous: boolean("is_anonymous").default(false).notNull(),
+  adminResponse: text("admin_response"),
+  adminResponseBy: varchar("admin_response_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("feedback_submissions_user_id_idx").on(table.userId),
+  index("feedback_submissions_status_idx").on(table.status),
+  index("feedback_submissions_is_public_idx").on(table.isPublic),
+]);
+
+export const feedbackVotes = pgTable("feedback_votes", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  feedbackId: integer("feedback_id").references(() => feedbackSubmissions.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("feedback_votes_user_feedback_unique").on(table.userId, table.feedbackId),
+  index("feedback_votes_feedback_id_idx").on(table.feedbackId),
+]);
+
+export const feedbackComments = pgTable("feedback_comments", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  feedbackId: integer("feedback_id").references(() => feedbackSubmissions.id, { onDelete: 'cascade' }).notNull(),
+  content: text("content").notNull(),
+  isAnonymous: boolean("is_anonymous").default(false).notNull(),
+  isOfficialResponse: boolean("is_official_response").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("feedback_comments_feedback_id_idx").on(table.feedbackId),
+]);
+
 // Relations (users managed by Supabase Auth, no ORM relation needed)
 export const profilesRelations = relations(profiles, ({ many }) => ({
   tasks: many(tasks),
@@ -209,6 +269,20 @@ export const taskStreaksRelations = relations(taskStreaks, ({ one }) => ({
   task: one(tasks, { fields: [taskStreaks.taskId], references: [tasks.id] }),
 }));
 
+// Feedback relations
+export const feedbackSubmissionsRelations = relations(feedbackSubmissions, ({ many }) => ({
+  votes: many(feedbackVotes),
+  comments: many(feedbackComments),
+}));
+
+export const feedbackVotesRelations = relations(feedbackVotes, ({ one }) => ({
+  feedback: one(feedbackSubmissions, { fields: [feedbackVotes.feedbackId], references: [feedbackSubmissions.id] }),
+}));
+
+export const feedbackCommentsRelations = relations(feedbackComments, ({ one }) => ({
+  feedback: one(feedbackSubmissions, { fields: [feedbackComments.feedbackId], references: [feedbackSubmissions.id] }),
+}));
+
 // Schemas
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, createdAt: true });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, userId: true });
@@ -218,6 +292,9 @@ export const insertTaskMetricSchema = createInsertSchema(taskMetrics).omit({ id:
 export const insertCompletionSchema = createInsertSchema(completions).omit({ id: true, completedAt: true });
 export const insertMetricValueSchema = createInsertSchema(metricValues).omit({ id: true });
 export const insertTaskVariationSchema = createInsertSchema(taskVariations).omit({ id: true, createdAt: true });
+
+export const insertFeedbackSchema = createInsertSchema(feedbackSubmissions).omit({ id: true, userId: true, status: true, isPublic: true, isAnonymous: true, adminResponse: true, adminResponseBy: true, createdAt: true, updatedAt: true });
+export const insertFeedbackCommentSchema = createInsertSchema(feedbackComments).omit({ id: true, userId: true, createdAt: true });
 
 // Types
 export type Profile = typeof profiles.$inferSelect;
@@ -230,6 +307,10 @@ export type Completion = typeof completions.$inferSelect;
 export type MetricValue = typeof metricValues.$inferSelect;
 export type TaskVariation = typeof taskVariations.$inferSelect;
 export type TaskStreak = typeof taskStreaks.$inferSelect;
+export type UserRole = typeof userRoles.$inferSelect;
+export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
+export type FeedbackVote = typeof feedbackVotes.$inferSelect;
+export type FeedbackComment = typeof feedbackComments.$inferSelect;
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
@@ -238,6 +319,8 @@ export type InsertTag = z.infer<typeof insertTagSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
 export type InsertTaskVariation = z.infer<typeof insertTaskVariationSchema>;
+export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
+export type InsertFeedbackComment = z.infer<typeof insertFeedbackCommentSchema>;
 
 // Custom Types for API
 export type TaskWithDetails = Task & {
