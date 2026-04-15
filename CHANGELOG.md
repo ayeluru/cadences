@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.1
+
+- Branded app icon replacing generic placeholder favicon
+- Web app manifest and iOS meta tags for proper "Add to Home Screen" experience
+- Standalone display mode, theme-color, and safe-area-inset handling on iOS
+
 ## 1.8.0
 
 - Tag deletion with confirmation dialog and task count
