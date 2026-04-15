@@ -2,16 +2,21 @@ import { useCategories, useDeleteCategory } from "@/hooks/use-categories";
 import { useTags, useCreateTag } from "@/hooks/use-tags";
 import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile, useImportFromProfile } from "@/hooks/use-profiles";
 import { useProfileContext } from "@/contexts/ProfileContext";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Plus, Tag as TagIcon, Folder, Trash2, Database, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, ChevronDown } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Plus, Tag as TagIcon, Folder, Trash2, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, MoreHorizontal } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { CreateCategoryDialog } from "@/components/CreateCategoryDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +33,7 @@ export default function Settings() {
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: tags, isLoading: tagsLoading } = useTags();
   const { data: profiles, isLoading: profilesLoading } = useProfiles();
-  const { currentProfile, setCurrentProfile, isLoading: profileContextLoading } = useProfileContext();
+  const { currentProfile, setCurrentProfile, isLoading: profileContextLoading, switchToProfileById } = useProfileContext();
   const createTagMutation = useCreateTag();
   const deleteCategoryMutation = useDeleteCategory();
   const createProfileMutation = useCreateProfile();
@@ -43,11 +48,8 @@ export default function Settings() {
   const [newTagName, setNewTagName] = useState("");
   const [newProfileName, setNewProfileName] = useState("");
   const [importFromProfileId, setImportFromProfileId] = useState<string>("");
-  
-  const [profilesOpen, setProfilesOpen] = useState(true);
-  const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [tagsOpen, setTagsOpen] = useState(false);
-  const [dataOpen, setDataOpen] = useState(false);
+  const [clearProfileTarget, setClearProfileTarget] = useState<{ id: number; name: string } | null>(null);
+  const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ id: number; name: string } | null>(null);
 
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +65,7 @@ export default function Settings() {
     createProfileMutation.mutate({ name: newProfileName }, {
       onSuccess: (newProfile) => {
         setNewProfileName("");
+        switchToProfileById(newProfile.id);
         if (importFromProfileId && importFromProfileId !== "none") {
           importFromProfileMutation.mutate({
             targetProfileId: newProfile.id,
@@ -75,257 +78,216 @@ export default function Settings() {
   };
 
   const handleDeleteProfile = (profileId: number) => {
-    const profile = profiles?.find(p => p.id === profileId);
-    if (!profile) return;
-    
     deleteProfileMutation.mutate(profileId, {
       onSuccess: () => {
         if (currentProfile?.id === profileId) {
-          const remainingProfiles = profiles?.filter(p => p.id !== profileId);
-          if (remainingProfiles && remainingProfiles.length > 0) {
-            setCurrentProfile(remainingProfiles[0]);
+          const remaining = profiles?.filter(p => p.id !== profileId);
+          if (remaining && remaining.length > 0) {
+            setCurrentProfile(remaining[0]);
           }
         }
+        setDeleteProfileTarget(null);
       }
     });
   };
 
-  
   const hasDemoProfile = profiles?.some(p => p.isDemo) ?? false;
+  const isLoading = profilesLoading || profileContextLoading;
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className="max-w-3xl mx-auto space-y-8 pb-8">
       <div>
         <h2 className="text-3xl font-bold font-display tracking-tight">Settings</h2>
-        <p className="text-muted-foreground mt-1">Configure your profiles, categories, tags, and data.</p>
+        <p className="text-muted-foreground mt-1">Manage your profiles, categories, tags, and data.</p>
       </div>
 
-      {/* Profiles */}
-      <Collapsible open={profilesOpen} onOpenChange={setProfilesOpen}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover-elevate">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="w-5 h-5 text-primary" /> Profiles
-                  </CardTitle>
-                  <CardDescription>
-                    Organize your tasks into different contexts like Work, Personal, or Exercise.
-                  </CardDescription>
-                </div>
-                <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${profilesOpen ? 'rotate-180' : ''}`} />
-              </div>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <CardContent className="space-y-6">
-              <form onSubmit={handleAddProfile} className="space-y-3 max-w-lg">
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <Label htmlFor="profile-name" className="sr-only">New Profile Name</Label>
-                    <Input 
-                      id="profile-name" 
-                      placeholder="New profile name (e.g., Work, Exercise)..." 
-                      value={newProfileName}
-                      onChange={(e) => setNewProfileName(e.target.value)}
-                      data-testid="input-profile-name"
-                    />
-                  </div>
-                  <Button type="submit" disabled={createProfileMutation.isPending || importFromProfileMutation.isPending || !newProfileName.trim()} data-testid="button-create-profile">
-                    {(createProfileMutation.isPending || importFromProfileMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                    <span className="ml-2 hidden sm:inline">Create</span>
-                  </Button>
-                </div>
-                {profiles && profiles.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Copy className="w-4 h-4 text-muted-foreground" />
-                    <Label htmlFor="import-from" className="text-sm text-muted-foreground whitespace-nowrap">Copy tasks from:</Label>
-                    <Select value={importFromProfileId} onValueChange={setImportFromProfileId}>
-                      <SelectTrigger className="w-[200px]" data-testid="select-import-profile">
-                        <SelectValue placeholder="None (empty profile)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None (empty profile)</SelectItem>
-                        {profiles.map(p => (
-                          <SelectItem key={p.id} value={p.id.toString()}>
-                            {p.name}{p.isDemo ? " (Demo)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </form>
+      {/* ── Profiles ─────────────────────────────────────── */}
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Users className="w-4.5 h-4.5 text-primary" />
+            Profiles
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Separate contexts for your tasks — like Work, Personal, or Exercise.
+          </p>
+        </div>
 
-              {!hasDemoProfile && (
-                <Button 
-                  variant="outline" 
-                  onClick={() => createDemoMutation.mutate()}
-                  disabled={createDemoMutation.isPending}
-                  data-testid="button-create-demo-profile"
+        {/* Profile list */}
+        <div className="rounded-lg border divide-y">
+          {isLoading ? (
+            <div className="px-4 py-3 text-sm text-muted-foreground">Loading...</div>
+          ) : profiles?.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-muted-foreground text-center italic">
+              No profiles yet. Create one below.
+            </div>
+          ) : (
+            profiles?.map(profile => {
+              const isActive = currentProfile?.id === profile.id;
+              const canDelete = profile.isDemo || (profiles?.filter(p => !p.isDemo).length ?? 0) > 1;
+              return (
+                <div
+                  key={profile.id}
+                  className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-accent/50 ${isActive ? "bg-accent/30" : ""}`}
+                  onClick={() => setCurrentProfile(profile)}
+                  data-testid={`profile-item-${profile.id}`}
                 >
-                  {createDemoMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-4 h-4 mr-2" />
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${isActive ? "bg-primary" : "bg-transparent"}`} />
+                  <span className="font-medium text-sm flex-1 min-w-0 truncate">
+                    {profile.name}
+                  </span>
+                  {profile.isDemo && (
+                    <Badge variant="secondary" className="text-xs shrink-0">Demo</Badge>
                   )}
-                  Try Demo Profile
-                </Button>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                {profilesLoading || profileContextLoading ? (
-                  <span className="text-muted-foreground text-sm">Loading...</span>
-                ) : profiles?.length === 0 ? (
-                  <span className="text-muted-foreground text-sm italic">No profiles created yet.</span>
-                ) : (
-                  profiles?.map(profile => (
-                    <div 
-                      key={profile.id} 
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border flex items-center gap-2 group cursor-pointer transition-colors ${
-                        currentProfile?.id === profile.id
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-secondary text-secondary-foreground border-border/50"
-                      }`}
-                      onClick={() => setCurrentProfile(profile)}
-                      data-testid={`profile-item-${profile.id}`}
-                    >
-                      {currentProfile?.id === profile.id && (
-                        <Check className="w-3 h-3" />
+                  {isActive && (
+                    <Badge variant="outline" className="text-xs shrink-0 text-primary border-primary/40">Active</Badge>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
+                        data-testid={`profile-menu-${profile.id}`}
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                      {!isActive && (
+                        <DropdownMenuItem onClick={() => setCurrentProfile(profile)}>
+                          <Check className="w-4 h-4 mr-2" />
+                          Switch to this profile
+                        </DropdownMenuItem>
                       )}
-                      <Users className="w-3 h-3" />
-                      <span>{profile.name}</span>
-                      {profile.isDemo && (
-                        <Badge variant="secondary" className="text-xs">Demo</Badge>
+                      <DropdownMenuItem
+                        onClick={() => setClearProfileTarget({ id: profile.id, name: profile.name })}
+                      >
+                        <Eraser className="w-4 h-4 mr-2" />
+                        Clear data
+                      </DropdownMenuItem>
+                      {canDelete && (
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteProfileTarget({ id: profile.id, name: profile.name })}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete profile
+                        </DropdownMenuItem>
                       )}
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <button
-                            onClick={(e) => e.stopPropagation()}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ml-1"
-                            title="Clear profile data"
-                            data-testid={`button-clear-profile-${profile.id}`}
-                          >
-                            <Eraser className="w-3 h-3" />
-                          </button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle className="flex items-center gap-2">
-                              <AlertTriangle className="w-5 h-5 text-destructive" />
-                              Clear data in "{profile.name}"?
-                            </AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will delete all tasks, completions, categories, and tags in this profile. The profile itself will be kept. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => clearProfileDataMutation.mutate(profile.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              data-testid="button-confirm-clear-profile"
-                            >
-                              {clearProfileDataMutation.isPending && clearProfileDataMutation.variables === profile.id ? (
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              ) : null}
-                              Clear Data
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                      {(profile.isDemo || profiles.filter(p => !p.isDemo).length > 1) && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <button
-                              onClick={(e) => e.stopPropagation()}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 ml-1"
-                              title="Delete profile"
-                              data-testid={`button-delete-profile-${profile.id}`}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="flex items-center gap-2">
-                                <AlertTriangle className="w-5 h-5 text-destructive" />
-                                Delete profile "{profile.name}"?
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will permanently delete this profile and all tasks, completions, categories, and tags associated with it. This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteProfile(profile.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                data-testid="button-confirm-delete-profile"
-                              >
-                                {deleteProfileMutation.isPending && deleteProfileMutation.variables === profile.id ? (
-                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                ) : null}
-                                Delete Profile
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Click on a profile to switch to it. Each profile has its own tasks, categories, and tags.
-              </p>
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
-
-      {/* Categories */}
-      <Collapsible open={categoriesOpen} onOpenChange={setCategoriesOpen}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover-elevate">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Folder className="w-5 h-5 text-primary" /> Categories
-                  </CardTitle>
-                  <CardDescription>Group your tasks into logical areas.</CardDescription>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={(e) => { e.stopPropagation(); setCatDialogOpen(true); }}
-                    data-testid="button-add-category"
-                  >
-                    <Plus className="w-4 h-4 mr-2" /> Add
-                  </Button>
-                  <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${categoriesOpen ? 'rotate-180' : ''}`} />
-                </div>
-              </div>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {catsLoading ? (
-                  <span className="text-muted-foreground text-sm">Loading...</span>
-                ) : categories?.length === 0 ? (
-                  <span className="text-muted-foreground text-sm italic">No categories created yet.</span>
-                ) : (
-                  categories?.map(cat => (
-                    <div key={cat.id} className="bg-secondary text-secondary-foreground px-3 py-1.5 rounded-lg text-sm font-medium border border-border/50 flex items-center gap-2 group">
+              );
+            })
+          )}
+        </div>
+
+        {/* Create profile */}
+        <form onSubmit={handleAddProfile} className="space-y-3">
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Label htmlFor="profile-name" className="sr-only">New Profile Name</Label>
+              <Input 
+                id="profile-name" 
+                placeholder="New profile name..." 
+                value={newProfileName}
+                onChange={(e) => setNewProfileName(e.target.value)}
+                data-testid="input-profile-name"
+              />
+            </div>
+            <Button type="submit" size="default" disabled={createProfileMutation.isPending || importFromProfileMutation.isPending || !newProfileName.trim()} data-testid="button-create-profile">
+              {(createProfileMutation.isPending || importFromProfileMutation.isPending) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              <span className="ml-1.5">Create</span>
+            </Button>
+          </div>
+          {profiles && profiles.length > 0 && (
+            <div className="flex items-center gap-2 text-sm">
+              <Copy className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground whitespace-nowrap">Copy tasks from:</span>
+              <Select value={importFromProfileId} onValueChange={setImportFromProfileId}>
+                <SelectTrigger className="w-[200px] h-8 text-sm" data-testid="select-import-profile">
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None (empty)</SelectItem>
+                  {profiles.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()}>
+                      {p.name}{p.isDemo ? " (Demo)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </form>
+
+        {!hasDemoProfile && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => createDemoMutation.mutate(undefined, {
+              onSuccess: (data) => {
+                if (data?.profile?.id) {
+                  switchToProfileById(data.profile.id);
+                }
+              },
+            })}
+            disabled={createDemoMutation.isPending}
+            data-testid="button-create-demo-profile"
+          >
+            {createDemoMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4 mr-2" />
+            )}
+            {createDemoMutation.isPending ? "Creating demo..." : "Try Demo Profile"}
+          </Button>
+        )}
+      </section>
+
+      <Separator />
+
+      {/* ── Categories & Tags ────────────────────────────── */}
+      <section className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Folder className="w-4.5 h-4.5 text-primary" />
+            Organization
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Categories and tags help you organize and filter tasks.
+          </p>
+        </div>
+
+        <div className="grid gap-6 sm:grid-cols-2">
+          {/* Categories */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Categories</Label>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-7 px-2 text-xs"
+                onClick={() => setCatDialogOpen(true)}
+                data-testid="button-add-category"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add
+              </Button>
+            </div>
+            <div className="rounded-lg border min-h-[60px] p-2.5">
+              {catsLoading ? (
+                <span className="text-muted-foreground text-sm">Loading...</span>
+              ) : categories?.length === 0 ? (
+                <span className="text-muted-foreground text-sm italic">No categories yet.</span>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {categories?.map(cat => (
+                    <div key={cat.id} className="bg-secondary text-secondary-foreground pl-2.5 pr-1 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 group">
                       <span>{cat.name}</span>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <button
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 ml-1"
+                            className="p-0.5 rounded opacity-40 hover:opacity-100 transition-opacity text-destructive"
                             title="Delete category"
                           >
                             {deleteCategoryMutation.isPending && deleteCategoryMutation.variables === cat.id ? (
@@ -354,200 +316,256 @@ export default function Settings() {
                               {deleteCategoryMutation.isPending && deleteCategoryMutation.variables === cat.id ? (
                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                               ) : null}
-                              Delete Category
+                              Delete
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
                     </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
-
-      {/* Tags */}
-      <Collapsible open={tagsOpen} onOpenChange={setTagsOpen}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover-elevate">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <TagIcon className="w-5 h-5 text-primary" /> Tags
-                  </CardTitle>
-                  <CardDescription>Labels for filtering tasks across categories.</CardDescription>
-                </div>
-                <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${tagsOpen ? 'rotate-180' : ''}`} />
-              </div>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <CardContent className="space-y-6">
-              <form onSubmit={handleAddTag} className="flex gap-3 max-w-md">
-                <div className="flex-1">
-                  <Label htmlFor="tag-name" className="sr-only">New Tag Name</Label>
-                  <Input 
-                    id="tag-name" 
-                    placeholder="New tag name..." 
-                    value={newTagName}
-                    onChange={(e) => setNewTagName(e.target.value)}
-                    data-testid="input-tag-name"
-                  />
-                </div>
-                <Button type="submit" disabled={createTagMutation.isPending || !newTagName.trim()} data-testid="button-create-tag">
-                  {createTagMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                </Button>
-              </form>
-
-              <div className="flex flex-wrap gap-2">
-                {tagsLoading ? (
-                   <span className="text-muted-foreground text-sm">Loading...</span>
-                ) : tags?.length === 0 ? (
-                  <span className="text-muted-foreground text-sm italic">No tags created yet.</span>
-                ) : (
-                  tags?.map(tag => (
-                    <Badge key={tag.id} variant="secondary" className="px-3 py-1 text-sm font-normal">
-                      {tag.name}
-                    </Badge>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
-
-      {/* Data Management */}
-      <Collapsible open={dataOpen} onOpenChange={setDataOpen}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover-elevate">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Database className="w-5 h-5 text-primary" /> Data Management
-                  </CardTitle>
-                  <CardDescription>Manage your data. Choose to clear data for just the current profile or all profiles.</CardDescription>
-                </div>
-                <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${dataOpen ? 'rotate-180' : ''}`} />
-              </div>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <CardContent className="space-y-6">
-              {currentProfile?.isDemo && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium">Demo Profile</h4>
-                  <p className="text-xs text-muted-foreground">
-                    Regenerate fresh sample data in the demo profile.
-                  </p>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => regenerateDemoMutation.mutate(currentProfile.id)}
-                    disabled={regenerateDemoMutation.isPending}
-                    data-testid="button-regenerate-demo"
-                  >
-                    {regenerateDemoMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                    )}
-                    Regenerate Demo Data
-                  </Button>
+                  ))}
                 </div>
               )}
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium">Current Profile</h4>
-                <p className="text-xs text-muted-foreground">
-                  Clear all data from the currently selected profile ({currentProfile?.name || "none"}).
-                </p>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      className="text-destructive border-destructive/50 hover:bg-destructive/10"
-                      disabled={!currentProfile}
-                      data-testid="button-clear-profile-data"
-                    >
-                      <Eraser className="w-4 h-4 mr-2" />
-                      Clear "{currentProfile?.name}" Data
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle className="flex items-center gap-2">
-                        <AlertTriangle className="w-5 h-5 text-destructive" />
-                        Clear profile data?
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete all tasks, completions, streaks, categories, and tags in the <strong>"{currentProfile?.name}"</strong> profile only. The profile itself will remain. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => currentProfile && clearProfileDataMutation.mutate(currentProfile.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        data-testid="button-confirm-clear-profile"
-                      >
-                        {clearProfileDataMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : null}
-                        Clear Profile Data
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+          {/* Tags */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium flex items-center gap-1.5">
+              <TagIcon className="w-3.5 h-3.5" />
+              Tags
+            </Label>
+            <form onSubmit={handleAddTag} className="flex gap-2">
+              <div className="flex-1">
+                <Label htmlFor="tag-name" className="sr-only">New Tag Name</Label>
+                <Input 
+                  id="tag-name" 
+                  placeholder="New tag..." 
+                  className="h-8 text-sm"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  data-testid="input-tag-name"
+                />
               </div>
+              <Button type="submit" size="sm" className="h-8" disabled={createTagMutation.isPending || !newTagName.trim()} data-testid="button-create-tag">
+                {createTagMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              </Button>
+            </form>
+            <div className="rounded-lg border min-h-[60px] p-2.5">
+              {tagsLoading ? (
+                <span className="text-muted-foreground text-sm">Loading...</span>
+              ) : tags?.length === 0 ? (
+                <span className="text-muted-foreground text-sm italic">No tags yet.</span>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {tags?.map(tag => (
+                    <Badge key={tag.id} variant="secondary" className="text-xs font-normal">
+                      {tag.name}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
 
-              <div className="space-y-2 pt-4 border-t">
-                <h4 className="text-sm font-medium text-destructive">All Profiles</h4>
-                <p className="text-xs text-muted-foreground">
-                  Clear all data from all profiles. This is a destructive action.
-                </p>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" data-testid="button-clear-all-data">
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Clear All Profiles Data
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle className="flex items-center gap-2">
-                        <AlertTriangle className="w-5 h-5 text-destructive" />
-                        Clear ALL profiles data?
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete <strong>ALL</strong> your tasks, completions, streaks, categories, and tags across <strong>every profile</strong>. Your profiles will remain but will be empty. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => clearAllProfilesDataMutation.mutate()}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        data-testid="button-confirm-clear-all"
-                      >
-                        {clearAllProfilesDataMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : null}
-                        Yes, delete all data
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+      <Separator />
+
+      {/* ── Data Management / Danger Zone ───────────────── */}
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2 text-destructive">
+            <AlertTriangle className="w-4.5 h-4.5" />
+            Danger Zone
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Destructive actions that cannot be undone.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-destructive/30 divide-y divide-destructive/15">
+          {/* Demo regeneration — only visible for demo profiles */}
+          {currentProfile?.isDemo && (
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Regenerate demo data</p>
+                <p className="text-xs text-muted-foreground">Replace sample data in the demo profile with fresh content.</p>
               </div>
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="shrink-0"
+                onClick={() => regenerateDemoMutation.mutate(currentProfile.id)}
+                disabled={regenerateDemoMutation.isPending}
+                data-testid="button-regenerate-demo"
+              >
+                {regenerateDemoMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                )}
+                Regenerate
+              </Button>
+            </div>
+          )}
 
+          {/* Clear current profile */}
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Clear current profile data</p>
+              <p className="text-xs text-muted-foreground">
+                Remove all tasks, completions, and streaks from
+                {currentProfile ? <> "<strong>{currentProfile.name}</strong>"</> : " the active profile"}.
+                The profile itself is kept.
+              </p>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="shrink-0 text-destructive border-destructive/40 hover:bg-destructive/10"
+                  disabled={!currentProfile}
+                  data-testid="button-clear-profile-data"
+                >
+                  <Eraser className="w-4 h-4 mr-2" />
+                  Clear
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-destructive" />
+                    Clear profile data?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete all tasks, completions, streaks, categories, and tags in <strong>"{currentProfile?.name}"</strong>. The profile itself will remain. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => currentProfile && clearProfileDataMutation.mutate(currentProfile.id)}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    data-testid="button-confirm-clear-profile"
+                  >
+                    {clearProfileDataMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Clear Data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+
+          {/* Clear ALL profiles */}
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Clear all profiles data</p>
+              <p className="text-xs text-muted-foreground">
+                Remove all tasks, completions, and streaks across every profile. Profiles themselves are kept.
+              </p>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="shrink-0" data-testid="button-clear-all-data">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear All
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-destructive" />
+                    Clear ALL profile data?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete <strong>all</strong> tasks, completions, streaks, categories, and tags across <strong>every profile</strong>. Profiles will remain but will be empty. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => clearAllProfilesDataMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    data-testid="button-confirm-clear-all"
+                  >
+                    {clearAllProfilesDataMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Yes, delete all data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </div>
+      </section>
+
+      {/* Shared dialogs */}
       <CreateCategoryDialog open={catDialogOpen} onOpenChange={setCatDialogOpen} />
+
+      {/* Clear profile confirmation (from dropdown) */}
+      <AlertDialog open={!!clearProfileTarget} onOpenChange={(open) => !open && setClearProfileTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-destructive" />
+              Clear data in "{clearProfileTarget?.name}"?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete all tasks, completions, categories, and tags in this profile. The profile itself will be kept. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (clearProfileTarget) {
+                  clearProfileDataMutation.mutate(clearProfileTarget.id);
+                  setClearProfileTarget(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-clear-profile"
+            >
+              {clearProfileDataMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Clear Data
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete profile confirmation (from dropdown) */}
+      <AlertDialog open={!!deleteProfileTarget} onOpenChange={(open) => !open && setDeleteProfileTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-destructive" />
+              Delete profile "{deleteProfileTarget?.name}"?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this profile and all tasks, completions, categories, and tags associated with it. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteProfileTarget && handleDeleteProfile(deleteProfileTarget.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-profile"
+            >
+              {deleteProfileMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Delete Profile
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
