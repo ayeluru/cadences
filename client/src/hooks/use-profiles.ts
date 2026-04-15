@@ -20,10 +20,11 @@ export function useCreateProfile() {
   return useMutation({
     mutationFn: async (data: { name: string; slug?: string; isDemo?: boolean }) => {
       const res = await apiRequest('POST', '/api/profiles', data);
-      return res.json();
+      return res.json() as Promise<Profile>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/profiles/default'] });
       toast({ title: "Profile created", description: "New profile has been created." });
     },
     onError: (error: Error) => {
@@ -57,6 +58,7 @@ export function useDeleteProfile() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/profiles/default'] });
       toast({ title: "Profile deleted", description: "Profile and all its data have been removed." });
     },
     onError: (error: Error) => {
@@ -70,10 +72,11 @@ export function useCreateDemoProfile() {
   return useMutation({
     mutationFn: async () => {
       const res = await apiRequest('POST', '/api/profiles/demo');
-      return res.json();
+      return res.json() as Promise<{ success: boolean; profile: Profile }>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/profiles/default'] });
       toast({ title: "Demo profile created", description: "Sample data is ready to explore." });
     },
     onError: (error: Error) => {

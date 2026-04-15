@@ -393,7 +393,11 @@ async function profilesIndexHandleGet(req: VercelRequest, res: VercelResponse, u
 
 async function profilesIndexHandlePost(req: VercelRequest, res: VercelResponse, userId: string) {
   try {
-    const profile = await storage.createProfile(userId, req.body);
+    const body = req.body;
+    if (!body.slug && body.name) {
+      body.slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+    const profile = await storage.createProfile(userId, body);
     return res.status(201).json(profile);
   } catch (error) {
     console.error('Error creating profile:', error);
