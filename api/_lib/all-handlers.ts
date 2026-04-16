@@ -859,6 +859,11 @@ async function tasksIndexHandlePost(req: VercelRequest, res: VercelResponse, use
   try {
     const { tagIds, metrics, ...taskData } = req.body;
 
+    const validationError = validateTaskShape(taskData);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
     const task = await storage.createTask(userId, taskData, tagIds, metrics);
     const enrichedTask = await enrichTask(task, userId);
 
@@ -867,6 +872,32 @@ async function tasksIndexHandlePost(req: VercelRequest, res: VercelResponse, use
     console.error('Error creating task:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+function validateTaskShape(taskData: any): string | null {
+  if (!taskData) return 'Missing task data';
+  if (!taskData.title || typeof taskData.title !== 'string' || !taskData.title.trim()) {
+    return 'Title is required';
+  }
+  const taskType = taskData.taskType || 'interval';
+  if (taskType === 'interval') {
+    const v = Number(taskData.intervalValue);
+    if (!Number.isFinite(v) || v < 1) {
+      return 'Interval tasks require a positive intervalValue';
+    }
+  } else if (taskType === 'frequency') {
+    const c = Number(taskData.targetCount);
+    if (!Number.isFinite(c) || c < 1) {
+      return 'Frequency tasks require a positive targetCount';
+    }
+  } else if (taskType === 'scheduled') {
+    const hasDow = !!(taskData.scheduledDaysOfWeek && String(taskData.scheduledDaysOfWeek).trim());
+    const hasDom = !!(taskData.scheduledDaysOfMonth && String(taskData.scheduledDaysOfMonth).trim());
+    if (!hasDow && !hasDom) {
+      return 'Scheduled tasks require at least one of scheduledDaysOfWeek or scheduledDaysOfMonth';
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
