@@ -32,3 +32,5 @@ Without these, the frontend renders a blank page and the API server crashes on s
 - Do NOT use `vercel dev` — it has known proxy issues with this project.
 - Lint: this project does not have a dedicated ESLint config. Use `npm run check` (TypeScript type-checking) as the lint step.
 - No automated test suite exists in this codebase.
+- The `.env.local` file must be created from secrets before starting the API server. The update script (`npm install`) does not create it — secrets are injected as env vars and `.env.local` must be written at session start if missing.
+- Sign-up works without email confirmation in the dev environment (Supabase dev project has email confirmation disabled). You can create test accounts freely.
