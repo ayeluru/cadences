@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCreateTask, useTasks } from "@/hooks/use-tasks";
 import { useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { insertTaskSchema, InsertTask, TaskWithDetails } from "@shared/schema";
 import { z } from "zod";
 import { useCategories, useCreateCategory } from "@/hooks/use-categories";
@@ -123,9 +124,17 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     };
 
     if (taskType === 'interval') {
+      if (!data.intervalValue || data.intervalValue < 1) {
+        toast({ title: "Interval Required", description: "Please enter how often this task should repeat.", variant: "destructive" });
+        return;
+      }
       taskData.intervalValue = data.intervalValue;
       taskData.intervalUnit = data.intervalUnit;
     } else if (taskType === 'frequency') {
+      if (!data.targetCount || data.targetCount < 1) {
+        toast({ title: "Times Required", description: "Please enter how many times per period this task should be done.", variant: "destructive" });
+        return;
+      }
       taskData.targetCount = data.targetCount;
       taskData.targetPeriod = data.targetPeriod;
       // Convert refractory value to minutes
@@ -174,27 +183,24 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
 
     createMutation.mutate(taskData, {
       onSuccess: async (newTask: any) => {
+        let metricErrors = 0;
         if (metrics.length > 0 && newTask?.id) {
           for (const metric of metrics) {
-            await fetch(`/api/tasks/${newTask.id}/metrics`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(metric),
-              credentials: 'include'
-            });
+            try {
+              await apiRequest('POST', `/api/tasks/${newTask.id}/metrics`, metric);
+            } catch {
+              metricErrors++;
+            }
+          }
+          if (metricErrors > 0) {
+            toast({ title: "Warning", description: `${metricErrors} metric(s) failed to save`, variant: "destructive" });
           }
         }
         if (variations.length > 0 && newTask?.id) {
           let variationErrors = 0;
           for (const variationName of variations) {
             try {
-              const res = await fetch(`/api/tasks/${newTask.id}/variations`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: variationName }),
-                credentials: 'include'
-              });
-              if (!res.ok) variationErrors++;
+              await apiRequest('POST', `/api/tasks/${newTask.id}/variations`, { name: variationName });
             } catch {
               variationErrors++;
             }
@@ -202,6 +208,8 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
           if (variationErrors > 0) {
             toast({ title: "Warning", description: `${variationErrors} variation(s) failed to save`, variant: "destructive" });
           }
+        }
+        if (metrics.length > 0 || variations.length > 0) {
           queryClient.invalidateQueries({ queryKey: ['/api/tasks'] });
         }
         onOpenChange(false);
@@ -250,11 +258,14 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const handleCreateNewCategory = () => {
     if (!newCategoryName.trim()) return;
     createCategoryMutation.mutate(
-      { name: newCategoryName },
+      { name: newCategoryName, profileId: selectedProfileId },
       {
-        onSuccess: () => {
+        onSuccess: (newCategory: any) => {
           setNewCategoryName("");
           setShowNewCategoryInput(false);
+          if (newCategory?.id != null) {
+            setValue("categoryId", newCategory.id, { shouldDirty: true });
+          }
         }
       }
     );
