@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateTask, useTasks, useReassignTask } from "@/hooks/use-tasks";
 import { insertTaskSchema, TaskWithDetails, TaskMetric, TaskVariation } from "@shared/schema";
 import { z } from "zod";
-import { useCategories } from "@/hooks/use-categories";
+import { useCategories, useCreateCategory } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useState, useEffect } from "react";
@@ -15,6 +15,7 @@ import { Loader2, Plus, X, BarChart3, ArrowRightLeft, Clock, Calendar, Layers } 
 import { Badge } from "./ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
+import { apiRequest, getAuthHeaders } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "./ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -71,6 +72,7 @@ function convertToMinutes(value: string, unit: 'minutes' | 'hours' | 'days'): nu
 export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps) {
   const updateMutation = useUpdateTask();
   const reassignMutation = useReassignTask();
+  const createCategoryMutation = useCreateCategory();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const { data: profiles } = useProfiles();
@@ -93,8 +95,10 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const [variations, setVariations] = useState<TaskVariation[]>([]);
   const [newVariationName, setNewVariationName] = useState("");
   const [isLoadingVariations, setIsLoadingVariations] = useState(false);
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormValues>({
+  const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: task.title,
@@ -120,6 +124,8 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       });
       setSelectedTagIds(task.tags?.map(t => t.id) || []);
       setNewMetrics([]);
+      setShowNewCategoryInput(false);
+      setNewCategoryName("");
       setSelectedProfileId(task.profileId ?? undefined);
       setTaskType(task.taskType as any || 'interval');
       
@@ -143,7 +149,8 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
     if (!task.id) return;
     setIsLoadingVariations(true);
     try {
-      const res = await fetch(`/api/tasks/${task.id}/variations`, { credentials: 'include' });
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/tasks/${task.id}/variations`, { headers });
       if (res.ok) {
         const data = await res.json();
         setVariations(data || []);
@@ -158,18 +165,11 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const addVariation = async () => {
     if (!newVariationName.trim()) return;
     try {
-      const res = await fetch(`/api/tasks/${task.id}/variations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newVariationName.trim() }),
-        credentials: 'include',
-      });
-      if (res.ok) {
-        const newVar = await res.json();
-        setVariations(prev => [...prev, newVar]);
-        setNewVariationName("");
-        toast({ title: "Variation added", description: `"${newVar.name}" added to this task.` });
-      }
+      const res = await apiRequest('POST', `/api/tasks/${task.id}/variations`, { name: newVariationName.trim() });
+      const newVar = await res.json();
+      setVariations(prev => [...prev, newVar]);
+      setNewVariationName("");
+      toast({ title: "Variation added", description: `"${newVar.name}" added to this task.` });
     } catch (error) {
       toast({ title: "Error", description: "Failed to add variation", variant: "destructive" });
     }
@@ -177,14 +177,9 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
 
   const deleteVariation = async (variationId: number) => {
     try {
-      const res = await fetch(`/api/variations/${variationId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        setVariations(prev => prev.filter(v => v.id !== variationId));
-        toast({ title: "Variation removed", description: "Variation deleted from this task." });
-      }
+      await apiRequest('DELETE', `/api/variations/${variationId}`);
+      setVariations(prev => prev.filter(v => v.id !== variationId));
+      toast({ title: "Variation removed", description: "Variation deleted from this task." });
     } catch (error) {
       toast({ title: "Error", description: "Failed to delete variation", variant: "destructive" });
     }
@@ -200,12 +195,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       
       if (newMetrics.length > 0) {
         for (const metric of newMetrics) {
-          await fetch(`/api/tasks/${task.id}/metrics`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(metric),
-            credentials: 'include',
-          });
+          await apiRequest('POST', `/api/tasks/${task.id}/metrics`, metric);
         }
       }
 
@@ -219,6 +209,11 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       };
 
       if (taskType === 'interval') {
+        if (!data.intervalValue || data.intervalValue < 1) {
+          toast({ title: "Interval Required", description: "Please enter how often this task should repeat.", variant: "destructive" });
+          setIsSavingMetrics(false);
+          return;
+        }
         updateData.intervalValue = data.intervalValue;
         updateData.intervalUnit = data.intervalUnit;
         updateData.targetCount = null;
@@ -228,6 +223,11 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         updateData.scheduledTime = null;
         updateData.refractoryMinutes = null;
       } else if (taskType === 'frequency') {
+        if (!data.targetCount || data.targetCount < 1) {
+          toast({ title: "Times Required", description: "Please enter how many times per period this task should be done.", variant: "destructive" });
+          setIsSavingMetrics(false);
+          return;
+        }
         updateData.targetCount = data.targetCount;
         updateData.targetPeriod = data.targetPeriod;
         updateData.refractoryMinutes = convertToMinutes(refractoryValue, refractoryUnit);
@@ -278,6 +278,23 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
     }
   };
 
+  const handleCreateNewCategory = () => {
+    if (!newCategoryName.trim()) return;
+    const profileForCategory = selectedProfileId ?? task.profileId ?? undefined;
+    createCategoryMutation.mutate(
+      { name: newCategoryName.trim(), profileId: profileForCategory },
+      {
+        onSuccess: (newCategory: any) => {
+          setNewCategoryName("");
+          setShowNewCategoryInput(false);
+          if (newCategory?.id != null) {
+            setValue("categoryId", newCategory.id, { shouldDirty: true });
+          }
+        }
+      }
+    );
+  };
+
   const toggleTag = (id: number) => {
     setSelectedTagIds(prev => 
       prev.includes(id) ? prev.filter(tid => tid !== id) : [...prev, id]
@@ -301,14 +318,9 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
 
   const deleteExistingMetric = async (metricId: number) => {
     try {
-      const res = await fetch(`/api/metrics/${metricId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
-        toast({ title: "Metric deleted", description: "Statistic removed from task." });
-      }
+      await apiRequest('DELETE', `/api/metrics/${metricId}`);
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      toast({ title: "Metric deleted", description: "Statistic removed from task." });
     } catch (error) {
       toast({ title: "Error", description: "Failed to delete metric", variant: "destructive" });
     }
@@ -501,18 +513,56 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
 
 
             <div className="space-y-2">
-              <Label htmlFor="edit-category">Category</Label>
-              <select 
-                id="edit-category"
-                data-testid="select-edit-category"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                {...register("categoryId")}
-              >
-                <option value="">No category</option>
-                {categories?.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="edit-category">Category</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => setShowNewCategoryInput(!showNewCategoryInput)}
+                  data-testid="button-toggle-new-category"
+                >
+                  <Plus className="w-3 h-3 mr-1" /> New
+                </Button>
+              </div>
+              {showNewCategoryInput ? (
+                <div className="flex gap-2">
+                  <Input
+                    data-testid="input-edit-new-category"
+                    placeholder="Category name..."
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleCreateNewCategory();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    data-testid="button-edit-add-category"
+                    onClick={handleCreateNewCategory}
+                    disabled={createCategoryMutation.isPending || !newCategoryName.trim()}
+                  >
+                    {createCategoryMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                  </Button>
+                </div>
+              ) : (
+                <select
+                  id="edit-category"
+                  data-testid="select-edit-category"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  {...register("categoryId")}
+                >
+                  <option value="">No category</option>
+                  {categories?.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {profiles && profiles.length > 1 && (
