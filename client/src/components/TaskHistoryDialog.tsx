@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, getAuthHeaders, queryClient } from "@/lib/queryClient";
 import { TaskWithDetails, Completion, TaskMetric, MetricValue } from "@shared/schema";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +51,8 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
   const { data: historyData, isLoading } = useQuery<TaskHistoryData>({
     queryKey: ["/api/tasks", taskId, "history"],
     queryFn: async () => {
-      const res = await fetch(`/api/tasks/${taskId}/history`);
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/tasks/${taskId}/history`, { headers });
       if (!res.ok) throw new Error("Failed to fetch task history");
       return res.json();
     },
