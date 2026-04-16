@@ -36,7 +36,19 @@ export function useCreateCategory() {
       const res = await apiRequest(api.categories.create.method, api.categories.create.path, { ...data, profileId });
       return api.categories.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => {
+    onSuccess: (newCategory: any) => {
+      // Optimistically prepend the new category to every cached categories list so
+      // any <select> bound to its id immediately renders the matching <option>.
+      // Without this, callers that setValue('categoryId', newId) right after the
+      // mutation see a blank-looking select until the list query refetches.
+      queryClient.setQueriesData<any[]>(
+        { queryKey: [api.categories.list.path] },
+        (old) => {
+          if (!Array.isArray(old)) return old;
+          if (old.some((c) => c?.id === newCategory?.id)) return old;
+          return [...old, newCategory];
+        }
+      );
       queryClient.invalidateQueries({ queryKey: [api.categories.list.path] });
       toast({ title: "Category created" });
     },
