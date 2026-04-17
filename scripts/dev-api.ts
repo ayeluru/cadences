@@ -79,8 +79,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     return;
   }
 
-  const hasBody = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH';
-  const rawBody = hasBody ? await collectBody(req) : '';
+  const rawBody = await collectBody(req);
   const parsed = parseUrl(req.url || '/', true);
 
   // Extend req with VercelRequest-like properties
