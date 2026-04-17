@@ -36,6 +36,8 @@ import {
   variationsId,
   adminUsers,
   adminUserRole,
+  adminUserResetPassword,
+  adminUserDelete,
   feedbackStats,
   feedbackList,
   feedbackDetail,
@@ -55,7 +57,9 @@ interface Route {
 const routes: Route[] = [
   { pattern: /^auth\/role$/, handler: authRole, params: [] },
   { pattern: /^auth\/user$/, handler: authUser, params: [] },
+  { pattern: /^admin\/users\/([^/]+)\/reset-password$/, handler: adminUserResetPassword, params: ['userId'] },
   { pattern: /^admin\/users\/([^/]+)\/role$/, handler: adminUserRole, params: ['userId'] },
+  { pattern: /^admin\/users\/([^/]+)$/, handler: adminUserDelete, params: ['userId'] },
   { pattern: /^admin\/users$/, handler: adminUsers, params: [] },
   { pattern: /^feedback\/(\d+)\/vote$/, handler: feedbackVote, params: ['id'] },
   { pattern: /^feedback\/(\d+)\/comments\/(\d+)$/, handler: feedbackCommentDelete, params: ['id', 'commentId'] },

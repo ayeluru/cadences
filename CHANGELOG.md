@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.0
+
+- Users can now change their own password from the Account page (verifies current password first)
+- Admins can reset any user's password from the Admin panel (requires typing RESET to confirm)
+- Admins can permanently delete any user's account from the Admin panel (requires typing DELETE to confirm)
+- Both admin actions are blocked for the admin's own account to prevent accidents
+- Redesigned Account page: flat section-based layout, consistent with rest of the app
+
 ## 1.8.4
 
 - Redesigned task history timeline: lightweight vertical timeline replaces heavy bordered cards

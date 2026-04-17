@@ -1394,6 +1394,62 @@ export async function adminUserRole(req: VercelRequest, res: VercelResponse) {
 }
 
 // ---------------------------------------------------------------------------
+// admin-user-reset-password (POST, admin only)
+// ---------------------------------------------------------------------------
+
+export async function adminUserResetPassword(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const admin = await verifyAdmin(req);
+  if (!admin) return forbidden(res);
+
+  const targetUserId = req.query.userId as string;
+  if (!targetUserId) return res.status(400).json({ error: 'userId is required' });
+
+  const { password } = req.body;
+  if (!password || typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ error: 'password must be at least 6 characters' });
+  }
+
+  try {
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, { password });
+    if (error) return res.status(400).json({ error: error.message });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error resetting user password:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// admin-user-delete (DELETE, admin only)
+// ---------------------------------------------------------------------------
+
+export async function adminUserDelete(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'DELETE') return res.status(405).json({ error: 'Method not allowed' });
+
+  const admin = await verifyAdmin(req);
+  if (!admin) return forbidden(res);
+
+  const targetUserId = req.query.userId as string;
+  if (!targetUserId) return res.status(400).json({ error: 'userId is required' });
+
+  if (targetUserId === admin.id) {
+    return res.status(400).json({ error: 'Cannot delete your own account from admin panel' });
+  }
+
+  try {
+    await storage.deleteAllUserData(targetUserId);
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
+    if (error) return res.status(400).json({ error: error.message });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error deleting user account:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // helper: resolve user IDs → { name, email } via Supabase Auth
 // ---------------------------------------------------------------------------
 
