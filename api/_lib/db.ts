@@ -6,10 +6,11 @@ if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL must be set');
 }
 
-// Use postgres.js for serverless (better connection handling)
+const isServerless = !!process.env.VERCEL;
+
 const client = postgres(process.env.DATABASE_URL, {
-  prepare: false, // Required for Supabase transaction pooler
-  max: 1, // Limit connections in serverless
+  prepare: false,
+  max: isServerless ? 1 : 5,
   ssl: 'require',
 });
 

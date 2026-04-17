@@ -29,23 +29,39 @@ try {
 // Dynamic import of the handler (after env vars are loaded)
 const { default: handler } = await import('../api/[[...path]].ts');
 
+// Prevent DB timeouts / transient errors from crashing the dev server
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection (dev server survived):', (err as Error).message || err);
+});
+
 // Warm up the database connection on startup so the first real request isn't slow.
 // Supabase dev databases go to sleep when idle; this wakes them up eagerly.
-try {
-  const { db } = await import('../api/_lib/db.ts');
-  const { sql } = await import('drizzle-orm');
-  console.log('Warming up database connection...');
-  await db.execute(sql`SELECT 1`);
-  console.log('Database connection ready.');
-} catch (err) {
-  console.warn('Database warmup failed (will retry on first request):', (err as Error).message);
+const { db } = await import('../api/_lib/db.ts');
+const { sql } = await import('drizzle-orm');
+for (let attempt = 1; attempt <= 5; attempt++) {
+  try {
+    console.log(`Warming up database connection (attempt ${attempt}/5)...`);
+    await db.execute(sql`SELECT 1`);
+    console.log('Database connection ready.');
+    break;
+  } catch (err) {
+    console.warn(`  Attempt ${attempt} failed: ${(err as Error).message}`);
+    if (attempt < 5) {
+      console.log(`  Retrying in ${attempt * 2}s...`);
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    } else {
+      console.warn('Database warmup exhausted — will retry on first request.');
+    }
+  }
 }
 
 function collectBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
+    const timeout = setTimeout(() => resolve(Buffer.concat(chunks).toString()), 5000);
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString()));
+    req.on('end', () => { clearTimeout(timeout); resolve(Buffer.concat(chunks).toString()); });
+    req.on('error', () => { clearTimeout(timeout); resolve(''); });
   });
 }
 
@@ -63,7 +79,8 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     return;
   }
 
-  const rawBody = await collectBody(req);
+  const hasBody = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH';
+  const rawBody = hasBody ? await collectBody(req) : '';
   const parsed = parseUrl(req.url || '/', true);
 
   // Extend req with VercelRequest-like properties
@@ -94,10 +111,12 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     res.end();
   };
 
+  const start = Date.now();
   try {
     await handler(vercelReq, vercelRes);
+    console.log(`${req.method} ${req.url} → ${statusCode} (${Date.now() - start}ms)`);
   } catch (err: any) {
-    console.error(`API Error [${req.method} ${req.url}]:`, err);
+    console.error(`API Error [${req.method} ${req.url}] (${Date.now() - start}ms):`, err);
     if (!res.headersSent) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message || 'Internal Server Error' }));
@@ -105,11 +124,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
   }
 });
 
-// Prevent DB timeouts / transient errors from crashing the dev server
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled rejection (dev server survived):', err);
-});
-
+server.keepAliveTimeout = 5000;
 server.listen(PORT, () => {
   console.log(`API dev server running at http://localhost:${PORT}`);
 });
