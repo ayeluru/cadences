@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { FeedbackSubmission, FeedbackComment } from "@shared/schema";
 
 export type FeedbackWithCounts = FeedbackSubmission & {
@@ -54,6 +55,7 @@ export function useFeedbackComments(feedbackId: number | null) {
 
 export function useCreateFeedback() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (data: { type: string; title: string; description: string; isAnonymous?: boolean }) => {
       const res = await apiRequest("POST", "/api/feedback", data);
@@ -62,11 +64,15 @@ export function useCreateFeedback() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
     },
+    onError: (err) => {
+      toast({ title: "Failed to submit feedback", description: err.message, variant: "destructive" });
+    },
   });
 }
 
 export function useUpdateFeedback() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async ({ id, ...data }: { id: number; [key: string]: any }) => {
       const res = await apiRequest("PATCH", `/api/feedback/${id}`, data);
@@ -76,11 +82,15 @@ export function useUpdateFeedback() {
       queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
       queryClient.invalidateQueries({ queryKey: [`/api/feedback/${variables.id}`] });
     },
+    onError: (err) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
   });
 }
 
 export function useDeleteFeedback() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (id: number) => {
       await apiRequest("DELETE", `/api/feedback/${id}`);
@@ -88,11 +98,15 @@ export function useDeleteFeedback() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
     },
+    onError: (err) => {
+      toast({ title: "Failed to delete feedback", description: err.message, variant: "destructive" });
+    },
   });
 }
 
 export function useToggleVote() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (feedbackId: number) => {
       const res = await apiRequest("POST", `/api/feedback/${feedbackId}/vote`);
@@ -102,11 +116,15 @@ export function useToggleVote() {
       queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
       queryClient.invalidateQueries({ queryKey: [`/api/feedback/${feedbackId}`] });
     },
+    onError: (err) => {
+      toast({ title: "Failed to vote", description: err.message, variant: "destructive" });
+    },
   });
 }
 
 export function useCreateComment() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async ({ feedbackId, content, isAnonymous, isOfficialResponse }: { feedbackId: number; content: string; isAnonymous?: boolean; isOfficialResponse?: boolean }) => {
       const res = await apiRequest("POST", `/api/feedback/${feedbackId}/comments`, { content, isAnonymous, isOfficialResponse });
@@ -116,6 +134,9 @@ export function useCreateComment() {
       queryClient.invalidateQueries({ queryKey: [`/api/feedback/${variables.feedbackId}/comments`] });
       queryClient.invalidateQueries({ queryKey: [`/api/feedback/${variables.feedbackId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
+    },
+    onError: (err) => {
+      toast({ title: "Failed to post comment", description: err.message, variant: "destructive" });
     },
   });
 }
