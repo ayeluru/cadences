@@ -56,32 +56,33 @@ echo "[sync] Syncing production data into dev database..."
 DUMP_FILE=$(mktemp /tmp/cadences-prod-snapshot.XXXXXX.dump)
 trap 'rm -f "$DUMP_FILE"' EXIT
 
-echo "[sync] 1/6 Dumping production database..."
+echo "[sync] 1/5 Dumping production database..."
 pg_dump "$PROD_DATABASE_URL" \
   --format=custom \
   --no-owner \
   --no-privileges \
   --no-comments \
   --schema=public \
+  --schema=drizzle \
   --file="$DUMP_FILE"
 
-echo "[sync] 2/6 Wiping dev database (public schema)..."
-psql "$DEV_DIRECT" --quiet -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;" 2>&1 | grep -v '^NOTICE\|^DETAIL\|^drop cascades' || true
+echo "[sync] 2/5 Wiping dev database (public + drizzle schemas)..."
+psql "$DEV_DIRECT" --quiet -c "
+  DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;
+  DROP SCHEMA IF EXISTS drizzle CASCADE;
+" 2>&1 | grep -v '^NOTICE\|^DETAIL\|^drop cascades' || true
 
-echo "[sync] 3/6 Restoring production data into dev..."
+echo "[sync] 3/5 Restoring production data into dev..."
 pg_restore \
   -d "$DEV_DIRECT" \
   --no-owner \
   --no-privileges \
-  "$DUMP_FILE" 2>&1 | grep -v 'schema "public" already exists\|errors ignored on restore\|Command was:' | sed '/^$/d' || true
+  "$DUMP_FILE" 2>&1 | grep -v 'schema "public" already exists\|schema "drizzle" already exists\|errors ignored on restore\|Command was:' | sed '/^$/d' || true
 
-echo "[sync] 4/6 Resetting migration tracking..."
-psql "$DEV_DIRECT" --quiet -c "DELETE FROM drizzle.__drizzle_migrations WHERE id > 1;" 2>/dev/null || true
-
-echo "[sync] 5/6 Applying migrations..."
+echo "[sync] 4/5 Applying new migrations..."
 (cd "$PROJECT_ROOT" && npm run db:migrate 2>&1) | grep -E '^\[✓\]|applied successfully' || true
 
-echo "[sync] 6/6 Refreshing query planner statistics..."
+echo "[sync] 5/5 Refreshing query planner statistics..."
 psql "$DEV_DIRECT" --quiet -c "ANALYZE;" 2>/dev/null || true
 
 echo "[sync] Done — dev database mirrors production."

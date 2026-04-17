@@ -50,6 +50,20 @@
       "when": 1776386508200,
       "tag": "0006_eminent_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776414054414,
+      "tag": "0007_glossy_praxagora",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776423661391,
+      "tag": "0008_elite_paibok",
+      "breakpoints": true
     }
   ]
 }

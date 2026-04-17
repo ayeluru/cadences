@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.0.0
+
+- **Weekly planner**: 7-day calendar grid with auto-populated tasks from schedules/intervals; completed unscheduled tasks appear on the calendar at their completion date
+- **Task rearranging**: move tasks between days with undo and reset; dedicated "Rearrange" mode highlights movable tasks and valid destinations
+- **Today view**: focused daily view with Due Today, Could Do, Due Soon sections and daily progress tracking
+- **Dashboard tabs**: restructured into Today, This Week, and All Tasks views
+- **Week-aware Today view**: tasks moved to/from today in the weekly planner are reflected in the Today tab
+- **Frequency task tracking**: partially-done frequency tasks show completion progress (e.g. "2/3") in the unscheduled section; fully-done tasks placed on calendar at completion date
+- **Dynamic layout**: weekly grid fills available viewport height automatically
+- Task assignments backend with create, list, delete, and week-reset API endpoints
+- Override assignments preserve original date for accurate undo
+- Task enrichment includes `completedToday` flag and assignment overrides for `nextDue` calculation
+- Auth session timeout handling prevents indefinite loading on flaky connections
+- Fixed dev API server: request body now consumed for all HTTP methods (fixes 405 on DELETE)
+- Fixed prod→dev sync: migration tracking included in dump/restore cycle
+- Fixed migration 0006 to use `IF NOT EXISTS` for idempotent enum values
+
 ## 1.10.1
 
 - Fix feedback status dropdown on production: applied missing enum migration (needs_info, duplicate, backlog, released)

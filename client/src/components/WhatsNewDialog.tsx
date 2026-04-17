@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import changelog from "../../../CHANGELOG.md?raw";
 
@@ -63,6 +63,7 @@ export function WhatsNewDialog({ externalOpen, onOpenChange }: { externalOpen?: 
       <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>What's New</DialogTitle>
+          <DialogDescription>Recent updates and improvements</DialogDescription>
         </DialogHeader>
         <div className="overflow-y-auto -mx-1 px-1 space-y-5 pb-1">
           {entries.map((entry) => (

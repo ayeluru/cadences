@@ -68,11 +68,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    const sessionTimeout = setTimeout(() => {
+      console.warn('Auth session check timed out — showing login');
+      setSession(null);
+      setUser(null);
+      setIsLoading(false);
+    }, 5000);
+
     supabase.auth.getSession().then(async ({ data: { session: cached } }) => {
+      clearTimeout(sessionTimeout);
       if (cached) {
         const now = Math.floor(Date.now() / 1000);
         if (cached.expires_at && now >= cached.expires_at) {
+          const refreshTimeout = setTimeout(() => {
+            console.warn('Session refresh timed out — forcing re-login');
+            supabase.auth.signOut({ scope: 'local' });
+            setSession(null);
+            setUser(null);
+            setIsLoading(false);
+          }, 5000);
           const { data } = await supabase.auth.refreshSession();
+          clearTimeout(refreshTimeout);
           if (!data.session) {
             await supabase.auth.signOut({ scope: 'local' });
             setSession(null);
@@ -90,6 +106,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setSession(cached);
       setUser(cached?.user ?? null);
+      setIsLoading(false);
+    }).catch(() => {
+      clearTimeout(sessionTimeout);
+      setSession(null);
+      setUser(null);
       setIsLoading(false);
     });
 

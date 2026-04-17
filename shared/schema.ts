@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, real, index, unique, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, real, date, index, unique, pgEnum } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -215,6 +215,18 @@ export const feedbackComments = pgTable("feedback_comments", {
   index("feedback_comments_feedback_id_idx").on(table.feedbackId),
 ]);
 
+export const taskAssignments = pgTable("task_assignments", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  plannedDate: date("planned_date").notNull(),
+  originalDate: date("original_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("task_assignments_user_id_date_idx").on(table.userId, table.plannedDate),
+  index("task_assignments_task_id_idx").on(table.taskId),
+]);
+
 // Relations (users managed by Supabase Auth, no ORM relation needed)
 export const profilesRelations = relations(profiles, ({ many }) => ({
   tasks: many(tasks),
@@ -297,6 +309,7 @@ export const insertCompletionSchema = createInsertSchema(completions).omit({ id:
 export const insertMetricValueSchema = createInsertSchema(metricValues).omit({ id: true });
 export const insertTaskVariationSchema = createInsertSchema(taskVariations).omit({ id: true, createdAt: true });
 
+export const insertTaskAssignmentSchema = createInsertSchema(taskAssignments).omit({ id: true, userId: true, createdAt: true });
 export const insertFeedbackSchema = createInsertSchema(feedbackSubmissions).omit({ id: true, userId: true, status: true, isPublic: true, isAnonymous: true, adminResponse: true, adminResponseBy: true, createdAt: true, updatedAt: true });
 export const insertFeedbackCommentSchema = createInsertSchema(feedbackComments).omit({ id: true, userId: true, createdAt: true });
 
@@ -314,6 +327,7 @@ export type TaskStreak = typeof taskStreaks.$inferSelect;
 export type UserRole = typeof userRoles.$inferSelect;
 export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
 export type FeedbackVote = typeof feedbackVotes.$inferSelect;
+export type TaskAssignment = typeof taskAssignments.$inferSelect;
 export type FeedbackComment = typeof feedbackComments.$inferSelect;
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
@@ -323,6 +337,7 @@ export type InsertTag = z.infer<typeof insertTagSchema>;
 export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
 export type InsertTaskVariation = z.infer<typeof insertTaskVariationSchema>;
+export type InsertTaskAssignment = z.infer<typeof insertTaskAssignmentSchema>;
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type InsertFeedbackComment = z.infer<typeof insertFeedbackCommentSchema>;
 
@@ -341,4 +356,5 @@ export type TaskWithDetails = Task & {
   targetProgress?: number; // percentage 0-100
   streak?: TaskStreak | null;
   variationStats?: { variationId: number; name: string; count: number; percentage: number }[];
+  completedToday?: boolean;
 };

@@ -1,4 +1,4 @@
-import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
+import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO } from 'date-fns';
 import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
 
@@ -12,6 +12,7 @@ export interface BatchData {
   streaksMap: Map<number, TaskStreak>;
   completionsInPeriodMap: Map<number, Completion[]>;
   completionsMap: Map<number, Completion[]>;
+  overridesMap: Map<number, { plannedDate: string; originalDate: string }[]>;
 }
 
 // Get period boundaries for frequency-based tasks
@@ -94,10 +95,14 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     completionsThisPeriod = validCompletions.length;
     targetProgress = Math.min(100, (completionsThisPeriod / task.targetCount) * 100);
 
+    const periodDays = task.targetPeriod === 'week' ? 7 : 30;
+    const spacing = periodDays / task.targetCount;
+
     if (completionsThisPeriod >= task.targetCount) {
       nextDue = end;
     } else {
-      nextDue = new Date();
+      const evenlySpaced = addDays(start, (completionsThisPeriod + 1) * spacing);
+      nextDue = isBefore(evenlySpaced, end) ? evenlySpaced : end;
     }
   } else if (task.taskType === 'scheduled') {
     // Scheduled task - find next occurrence based on schedule
@@ -209,6 +214,16 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     }
   }
 
+  // Apply override: if an assignment moves this task's nextDue to a different day, use that instead
+  const overrides = batch?.overridesMap.get(task.id) || [];
+  for (const override of overrides) {
+    const overrideOriginal = parseISO(override.originalDate);
+    if (isSameDay(nextDue, overrideOriginal)) {
+      nextDue = parseISO(override.plannedDate);
+      break;
+    }
+  }
+
   const now = new Date();
   const daysUntilDue = differenceInDays(nextDue, now);
   const cadenceDays = getCadenceDays(task);
@@ -238,10 +253,14 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
   } else if (task.taskType === 'frequency') {
     if (completionsThisPeriod >= (task.targetCount || 0)) {
       status = 'later';
-    } else if (completionsThisPeriod === 0) {
-      status = 'never_done';
+    } else if (isBefore(nextDue, now)) {
+      status = 'overdue';
     } else {
-      status = 'due_soon';
+      const frequencySpacing = (task.targetPeriod === 'week' ? 7 : 30) / (task.targetCount || 1);
+      const frequencyThreshold = getDueSoonThreshold(frequencySpacing);
+      if (daysUntilDue <= frequencyThreshold) {
+        status = 'due_soon';
+      }
     }
   } else if (isBefore(nextDue, now)) {
     status = 'overdue';
@@ -250,14 +269,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
   }
 
   let urgency = 0;
-  if (task.taskType === 'frequency') {
-    const remaining = (task.targetCount || 0) - completionsThisPeriod;
-    if (remaining > 0) {
-      urgency = 200 + remaining * 50;
-    } else {
-      urgency = -100;
-    }
-  } else if (status === 'never_done') {
+  if (status === 'never_done') {
     urgency = 1000;
   } else if (status === 'overdue') {
     urgency = 500 + Math.abs(daysUntilDue);
@@ -295,6 +307,12 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     }
   }
 
+  const today = startOfDay(now);
+  let completedToday = false;
+  if (task.lastCompletedAt) {
+    completedToday = isSameDay(new Date(task.lastCompletedAt), today);
+  }
+
   return {
     ...task,
     category,
@@ -308,6 +326,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     daysUntilDue,
     completionsThisPeriod,
     targetProgress,
+    completedToday,
     streak: streak ? {
       currentStreak: streak.currentStreak,
       longestStreak: streak.longestStreak,
@@ -322,12 +341,13 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
 
   const taskIds = tasks.map(t => t.id);
 
-  const [categories, tagsMap, metricsMap, variationsMap, streaksMap] = await Promise.all([
+  const [categories, tagsMap, metricsMap, variationsMap, streaksMap, overrideAssignments] = await Promise.all([
     storage.getCategories(userId),
     storage.getTaskTagsBatch(taskIds),
     storage.getTaskMetricsBatch(taskIds),
     storage.getTaskVariationsBatch(taskIds),
     storage.getTaskStreaksBatch(taskIds, userId),
+    storage.getOverrideAssignments(userId),
   ]);
 
   // Batch-fetch completions for frequency tasks, grouped by period type
@@ -355,6 +375,13 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
     ? await storage.getCompletionsBatch(tasksWithVariationIds)
     : new Map<number, Completion[]>();
 
+  const overridesMap = new Map<number, { plannedDate: string; originalDate: string }[]>();
+  for (const a of overrideAssignments) {
+    if (!a.originalDate) continue;
+    if (!overridesMap.has(a.taskId)) overridesMap.set(a.taskId, []);
+    overridesMap.get(a.taskId)!.push({ plannedDate: a.plannedDate, originalDate: a.originalDate });
+  }
+
   const batch: BatchData = {
     categories,
     tagsMap,
@@ -363,6 +390,7 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
     streaksMap,
     completionsInPeriodMap,
     completionsMap,
+    overridesMap,
   };
 
   return Promise.all(tasks.map(task => enrichTask(task, userId, batch)));
