@@ -255,6 +255,35 @@ export function useCompleteTask() {
   });
 }
 
+export function useUpdateCompletion() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ completionId, ...data }: {
+      completionId: number;
+      completedAt?: string;
+      notes?: string | null;
+      variationId?: number | null;
+      metrics?: { metricId: number; value: number | string }[];
+    }) => {
+      const res = await apiRequest("PATCH", `/api/completions/${completionId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/completions/calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
+      toast({ title: "Completion updated", description: "Changes saved." });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
 export function useReassignTask() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

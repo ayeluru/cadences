@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.10.0
+
+- Edit Task dialog now matches the Create Task dialog layout: same section ordering, DialogDescription, collapsible Advanced Options, inline tag creation, and consistent icon usage
+- Past completions can now be edited: date/time, notes, variation, and metric values can all be updated from the task history timeline
+- Metric names and units can now be renamed inline from the edit task dialog — changes apply retroactively to all historical data without data loss
+- Deleting a metric now shows a confirmation warning that historical values will be lost
+- Added PATCH endpoint for completions with full metric value upsert support
+- Added PATCH endpoint for metrics to update name and unit
+- Streak and lastCompletedAt are automatically recalculated when a completion's date is changed
+
 ## 1.9.2
 
 - Account deletion now fully cleans up feedback submissions, votes, comments, and role records (previously only cascade-deleted profile data)

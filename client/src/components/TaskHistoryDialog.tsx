@@ -1,22 +1,26 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { History, Calendar, Trash2, TrendingUp, Loader2, Circle } from "lucide-react";
+import { History, Calendar, Trash2, TrendingUp, Loader2, Circle, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { TaskWithDetails, Completion, TaskMetric, MetricValue } from "@shared/schema";
+import { TaskWithDetails, Completion, TaskMetric, MetricValue, TaskVariation } from "@shared/schema";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { useUpdateCompletion } from "@/hooks/use-tasks";
 import { 
   CHART_COLORS, 
   TimeRange, 
@@ -42,10 +46,168 @@ interface TaskHistoryDialogProps {
   taskTitle: string;
 }
 
+interface EditCompletionDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  completion: CompletionWithMetrics;
+  metrics: TaskMetric[];
+  variations: TaskVariation[];
+  taskId: number;
+}
+
+function EditCompletionDialog({ open, onOpenChange, completion, metrics, variations, taskId }: EditCompletionDialogProps) {
+  const updateMutation = useUpdateCompletion();
+
+  const completedDate = new Date(completion.completedAt);
+  const [date, setDate] = useState(format(completedDate, "yyyy-MM-dd"));
+  const [time, setTime] = useState(format(completedDate, "HH:mm"));
+  const [notes, setNotes] = useState(completion.notes || "");
+  const [variationId, setVariationId] = useState<number | null>(completion.variationId);
+  const [metricInputs, setMetricInputs] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    const d = new Date(completion.completedAt);
+    setDate(format(d, "yyyy-MM-dd"));
+    setTime(format(d, "HH:mm"));
+    setNotes(completion.notes || "");
+    setVariationId(completion.variationId);
+    const inputs: Record<number, string> = {};
+    for (const metric of metrics) {
+      const mv = completion.metricValues.find(v => v.metricId === metric.id);
+      if (mv) {
+        inputs[metric.id] = mv.numericValue !== null ? String(mv.numericValue) : (mv.textValue || "");
+      } else {
+        inputs[metric.id] = "";
+      }
+    }
+    setMetricInputs(inputs);
+  }, [completion, metrics]);
+
+  const handleSave = () => {
+    const completedAt = new Date(`${date}T${time}`);
+    const metricData = metrics
+      .filter(m => metricInputs[m.id] !== undefined && metricInputs[m.id] !== "")
+      .map(m => ({
+        metricId: m.id,
+        value: m.dataType === "number" ? Number(metricInputs[m.id]) : metricInputs[m.id],
+      }));
+
+    updateMutation.mutate(
+      {
+        completionId: completion.id,
+        completedAt: completedAt.toISOString(),
+        notes: notes || null,
+        variationId,
+        metrics: metricData.length > 0 ? metricData : undefined,
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["/api/tasks", taskId, "history"] });
+          onOpenChange(false);
+        },
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Edit Completion</DialogTitle>
+          <DialogDescription>
+            Update the details for this completion entry.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="edit-comp-date">Date</Label>
+              <Input
+                id="edit-comp-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-comp-time">Time</Label>
+              <Input
+                id="edit-comp-time"
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-comp-notes">Notes</Label>
+            <Input
+              id="edit-comp-notes"
+              placeholder="Optional notes..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+
+          {variations.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="edit-comp-variation">Variation</Label>
+              <select
+                id="edit-comp-variation"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={variationId ?? ""}
+                onChange={(e) => setVariationId(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">No variation</option>
+                {variations.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {metrics.length > 0 && (
+            <div className="space-y-3">
+              <Label>Metrics</Label>
+              {metrics.map((metric) => (
+                <div key={metric.id} className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground min-w-[80px]">
+                    {metric.name}{metric.unit ? ` (${metric.unit})` : ""}
+                  </span>
+                  <Input
+                    type={metric.dataType === "number" ? "number" : "text"}
+                    value={metricInputs[metric.id] || ""}
+                    onChange={(e) => setMetricInputs(prev => ({ ...prev, [metric.id]: e.target.value }))}
+                    placeholder={metric.dataType === "number" ? "0" : "Value"}
+                    className="flex-1"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={updateMutation.isPending}>
+            {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: TaskHistoryDialogProps) {
   const { toast } = useToast();
   const [selectedMetric, setSelectedMetric] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
+  const [editingCompletion, setEditingCompletion] = useState<CompletionWithMetrics | null>(null);
 
   const { data: historyData, isLoading, isError } = useQuery<TaskHistoryData>({
     queryKey: ["/api/tasks", taskId, "history"],
@@ -214,20 +376,31 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                           )}
                         </div>
                         
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-destructive shrink-0 transition-colors"
-                          onClick={() => {
-                            if (confirm("Delete this completion?")) {
-                              deleteCompletionMutation.mutate(completion.id);
-                            }
-                          }}
-                          disabled={deleteCompletionMutation.isPending}
-                          data-testid={`button-delete-completion-${completion.id}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-foreground transition-colors"
+                            onClick={() => setEditingCompletion(completion)}
+                            data-testid={`button-edit-completion-${completion.id}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-destructive transition-colors"
+                            onClick={() => {
+                              if (confirm("Delete this completion?")) {
+                                deleteCompletionMutation.mutate(completion.id);
+                              }
+                            }}
+                            disabled={deleteCompletionMutation.isPending}
+                            data-testid={`button-delete-completion-${completion.id}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -352,6 +525,17 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
           </Tabs>
         )}
       </DialogContent>
+
+      {editingCompletion && historyData && (
+        <EditCompletionDialog
+          open={!!editingCompletion}
+          onOpenChange={(open) => { if (!open) setEditingCompletion(null); }}
+          completion={editingCompletion}
+          metrics={historyData.metrics}
+          variations={variations}
+          taskId={taskId}
+        />
+      )}
     </Dialog>
   );
 }
