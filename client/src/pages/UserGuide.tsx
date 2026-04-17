@@ -1,9 +1,8 @@
 import { 
   Clock, Target, Flame, AlertCircle, CheckCircle2, Calendar,
   BarChart2, FolderOpen, Tag, ArrowRight, Trophy,
-  HelpCircle, Zap, TrendingUp, CalendarDays, Users, Sparkles
+  Zap, TrendingUp, CalendarDays, Users
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Accordion,
@@ -14,492 +13,349 @@ import {
 
 export default function UserGuide() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-3xl mx-auto">
       <div>
-        <h1 className="text-3xl font-display font-bold text-foreground mb-2">
+        <h1 className="text-3xl font-display font-bold text-foreground mb-1">
           User Guide
         </h1>
-        <p className="text-muted-foreground">
-          Everything you need to know about using Cadences to track your recurring tasks.
+        <p className="text-muted-foreground text-sm">
+          How to get the most out of Cadences.
         </p>
       </div>
 
-      <Accordion type="single" collapsible className="space-y-4" defaultValue="profiles">
-        <AccordionItem value="profiles" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-profiles">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Users className="w-5 h-5 text-primary" />
-              </div>
+      <Accordion type="single" collapsible className="space-y-2" defaultValue="profiles">
+        {/* Profiles */}
+        <AccordionItem value="profiles" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-profiles">
+            <span className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
               Profiles
-            </div>
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
-            <p className="text-muted-foreground">
-              Profiles let you organize your tasks into separate contexts. Each profile has its own tasks, categories, and tags - completely isolated from other profiles.
+          <AccordionContent className="pb-6 space-y-4 text-sm text-muted-foreground">
+            <p>
+              Profiles separate your tasks into independent contexts — each with its own tasks, categories, and tags.
             </p>
-            <div className="grid gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Creating Profiles
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-2">
-                  <p>Create profiles for different areas of your life:</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge>Work</Badge>
-                    <Badge>Personal</Badge>
-                    <Badge>Exercise</Badge>
-                    <Badge>Home</Badge>
-                  </div>
-                  <div className="bg-muted/50 rounded-lg p-2 mt-2">
-                    <p className="text-xs">
-                      Go to <strong>Settings</strong>, scroll to <strong>Profiles</strong>, and enter a name to create a new profile.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <ArrowRight className="w-4 h-4" />
-                    Switching Profiles
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-2">
-                  <p>Use the profile switcher in the sidebar header to switch between profiles. Each profile shows only its own data.</p>
-                  <p className="text-xs">On mobile, the profile switcher is in the top header bar.</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <FolderOpen className="w-4 h-4" />
-                    All Profiles View
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-2">
-                  <p>Select "All Profiles" in the profile switcher to see an aggregated view of tasks from all your non-demo profiles combined.</p>
-                  <p className="text-xs">Note: Demo profile data is excluded from the All Profiles view.</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" />
-                    Demo Profile
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-2">
-                  <p>Create a Demo profile from Settings to explore the app with sample data. The demo includes:</p>
-                  <ul className="list-disc list-inside text-xs space-y-1 ml-2">
-                    <li>Daily, weekly, and monthly tasks</li>
-                    <li>Exercise tasks with metrics</li>
-                    <li>Sample categories and tags</li>
-                    <li>Completion history with streaks</li>
-                  </ul>
-                  <p className="text-xs mt-2">Demo data won't appear in the "All Profiles" view - it's just for testing.</p>
-                </CardContent>
-              </Card>
+            <div className="space-y-3 pl-1">
+              <div>
+                <p className="font-medium text-foreground text-xs mb-1">Creating profiles</p>
+                <p>Go to <strong>Settings → Profiles</strong> and enter a name. Common setups:</p>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  <Badge variant="secondary" className="text-xs">Work</Badge>
+                  <Badge variant="secondary" className="text-xs">Personal</Badge>
+                  <Badge variant="secondary" className="text-xs">Exercise</Badge>
+                  <Badge variant="secondary" className="text-xs">Home</Badge>
+                </div>
+              </div>
+              <div>
+                <p className="font-medium text-foreground text-xs mb-1">Switching profiles</p>
+                <p>Use the profile switcher in the sidebar (or top header on mobile). Each profile only shows its own data.</p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground text-xs mb-1">All Profiles view</p>
+                <p>Select "All Profiles" to see tasks from every profile combined (except demo profiles).</p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground text-xs mb-1">Demo profile</p>
+                <p>Create one from Settings to explore the app with sample data — daily/weekly/monthly tasks, metrics, streaks, and more. Demo data never appears in the All Profiles view.</p>
+              </div>
             </div>
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="task-types" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-task-types">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Clock className="w-5 h-5 text-primary" />
-              </div>
+        {/* Task Types */}
+        <AccordionItem value="task-types" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-task-types">
+            <span className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-primary" />
               Task Types
-            </div>
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
+          <AccordionContent className="pb-6 space-y-4 text-sm text-muted-foreground">
             <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-primary" />
-                    Interval-Based Tasks
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-2">
-                  <p>Complete these every X days, weeks, months, or years.</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">Every 1 day</Badge>
-                    <Badge variant="outline">Every 2 weeks</Badge>
-                    <Badge variant="outline">Every 3 months</Badge>
-                  </div>
-                  <p className="text-xs">
-                    Examples: Brush teeth (daily), Change sheets (weekly), Oil change (every 3 months)
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Target className="w-4 h-4 text-primary" />
-                    Frequency-Based Goals
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-2">
-                  <p>Complete X times per week or month.</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">3x per week</Badge>
-                    <Badge variant="secondary">5x per month</Badge>
-                  </div>
-                  <p className="text-xs">
-                    Examples: Exercise 3x/week, Call parents 2x/month
-                  </p>
-                  <div className="bg-muted/50 rounded-lg p-2 mt-2">
-                    <p className="text-xs">
-                      <strong>Refractory Period:</strong> For frequency tasks, you can set a minimum time between completions to prevent gaming. 
-                      E.g., if you set 60 minutes, doing squats 3 times in 3 minutes only counts as 1 completion toward your weekly goal.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="urgency" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-urgency">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <AlertCircle className="w-5 h-5 text-primary" />
-              </div>
-              Urgency Status
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
-            <p className="text-muted-foreground">
-              Tasks are automatically sorted by urgency based on when they were last completed and their interval. 
-              The "due soon" threshold is dynamic - it's 20% of the task's cadence, clamped between 1 and 14 days.
-            </p>
-            <Card className="bg-muted/50 mb-4">
-              <CardContent className="pt-4">
-                <p className="text-sm">
-                  <strong>Dynamic threshold examples:</strong> A daily task shows "due soon" when less than 1 day remains. 
-                  A monthly task (30 days) shows "due soon" when less than 6 days remain. 
-                  A yearly task shows "due soon" 14 days before it's due.
+              <div>
+                <p className="font-medium text-foreground flex items-center gap-1.5 text-xs mb-1.5">
+                  <Clock className="w-3.5 h-3.5 text-primary" />
+                  Interval-based
                 </p>
-              </CardContent>
-            </Card>
-            <div className="grid gap-3">
-              <div className="flex items-center gap-3 p-3 rounded-lg border-l-4 border-l-red-500 bg-red-50/50 dark:bg-red-900/10">
-                <AlertCircle className="w-5 h-5 text-red-500" />
+                <p>Recurs every X days, weeks, months, or years. The next due date is calculated from your last completion.</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <Badge variant="outline" className="text-[11px]">Every 1 day</Badge>
+                  <Badge variant="outline" className="text-[11px]">Every 2 weeks</Badge>
+                  <Badge variant="outline" className="text-[11px]">Every 3 months</Badge>
+                </div>
+                <p className="text-xs mt-1.5 text-muted-foreground/70">
+                  e.g. brush teeth, change sheets, oil change
+                </p>
+              </div>
+
+              <div>
+                <p className="font-medium text-foreground flex items-center gap-1.5 text-xs mb-1.5">
+                  <Target className="w-3.5 h-3.5 text-primary" />
+                  Frequency-based
+                </p>
+                <p>Hit a target number of completions per week or month. A progress bar tracks how close you are.</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <Badge variant="secondary" className="text-[11px]">3× per week</Badge>
+                  <Badge variant="secondary" className="text-[11px]">5× per month</Badge>
+                </div>
+                <p className="text-xs mt-1.5 text-muted-foreground/70">
+                  e.g. exercise 3×/week, call parents 2×/month
+                </p>
+                <p className="text-xs mt-2 bg-muted/50 rounded-md px-2.5 py-1.5">
+                  <strong>Refractory period:</strong> optional minimum time between completions to prevent rapid-fire logging. Useful for exercise tasks.
+                </p>
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Urgency */}
+        <AccordionItem value="urgency" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-urgency">
+            <span className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-primary" />
+              Urgency & Status
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="pb-6 space-y-4 text-sm text-muted-foreground">
+            <p>
+              Tasks are auto-sorted by urgency. The "due soon" window is 20% of a task's interval, clamped to 1–14 days.
+              A daily task becomes "due soon" with 1 day left; a monthly task with ~6 days left; yearly tasks with 14 days left.
+            </p>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5 py-1.5">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
                 <div>
-                  <p className="font-medium">Overdue</p>
-                  <p className="text-sm text-muted-foreground">Past the due date. Needs attention now.</p>
+                  <span className="font-medium text-foreground text-xs">Overdue</span>
+                  <span className="text-xs ml-2">— past due, needs attention now</span>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg border-l-4 border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/10">
-                <Clock className="w-5 h-5 text-amber-500" />
+              <div className="flex items-center gap-2.5 py-1.5">
+                <Clock className="w-4 h-4 text-amber-500 shrink-0" />
                 <div>
-                  <p className="font-medium">Due Soon</p>
-                  <p className="text-sm text-muted-foreground">Due within the next day. Plan to do this soon.</p>
+                  <span className="font-medium text-foreground text-xs">Due Soon</span>
+                  <span className="text-xs ml-2">— coming up, plan for it</span>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-900/10">
-                <CheckCircle2 className="w-5 h-5 text-green-500" />
+              <div className="flex items-center gap-2.5 py-1.5">
+                <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
                 <div>
-                  <p className="font-medium">Later</p>
-                  <p className="text-sm text-muted-foreground">Not due yet. You're on track.</p>
+                  <span className="font-medium text-foreground text-xs">Later</span>
+                  <span className="text-xs ml-2">— not due yet, you're on track</span>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg border-l-4 border-l-gray-400 bg-gray-50/50 dark:bg-gray-900/10">
-                <Calendar className="w-5 h-5 text-gray-400" />
+              <div className="flex items-center gap-2.5 py-1.5">
+                <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
                 <div>
-                  <p className="font-medium">Never Done</p>
-                  <p className="text-sm text-muted-foreground">New task that hasn't been completed yet.</p>
+                  <span className="font-medium text-foreground text-xs">Never Done</span>
+                  <span className="text-xs ml-2">— newly created, not yet completed</span>
                 </div>
               </div>
             </div>
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="streaks" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-streaks">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Flame className="w-5 h-5 text-primary" />
-              </div>
+        {/* Streaks */}
+        <AccordionItem value="streaks" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-streaks">
+            <span className="flex items-center gap-2">
+              <Flame className="w-4 h-4 text-primary" />
               Streaks
-            </div>
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
-            <p className="text-muted-foreground">
-              Build momentum by completing tasks consistently. Streaks help motivate you to maintain habits.
+          <AccordionContent className="pb-6 space-y-4 text-sm text-muted-foreground">
+            <p>
+              Complete a task before it becomes overdue to maintain your streak. Miss the window (1.5× the interval) and it resets.
             </p>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <Badge variant="secondary" className="h-6">
-                  <Flame className="w-3 h-3 mr-1" /> 5
+            <div className="space-y-2 pl-1">
+              <div className="flex items-center gap-2.5">
+                <Badge variant="secondary" className="h-5 text-[10px] px-1.5">
+                  <Flame className="w-3 h-3 mr-0.5" /> 5
                 </Badge>
-                <span className="text-sm text-muted-foreground">Standard streak (5 consecutive completions)</span>
+                <span className="text-xs">Standard streak</span>
               </div>
-              <div className="flex items-center gap-3">
-                <Badge className="h-6 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-                  <Flame className="w-3 h-3 mr-1 text-orange-500" /> 7
+              <div className="flex items-center gap-2.5">
+                <Badge className="h-5 text-[10px] px-1.5 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                  <Flame className="w-3 h-3 mr-0.5 text-orange-500" /> 7
                 </Badge>
-                <span className="text-sm text-muted-foreground">Week-long streak (orange flame at 7+)</span>
+                <span className="text-xs">7+ streak (orange)</span>
               </div>
-              <div className="flex items-center gap-3">
-                <Badge className="h-6 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                  <Flame className="w-3 h-3 mr-1 text-red-500" /> 30
+              <div className="flex items-center gap-2.5">
+                <Badge className="h-5 text-[10px] px-1.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                  <Flame className="w-3 h-3 mr-0.5 text-red-500" /> 30
                 </Badge>
-                <span className="text-sm text-muted-foreground">Month-long streak (red flame at 30+)</span>
+                <span className="text-xs">30+ streak (red)</span>
               </div>
-              <div className="flex items-center gap-3">
-                <Badge variant="outline" className="h-6 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-300">
-                  <Trophy className="w-3 h-3 mr-1 text-yellow-500" /> Best
+              <div className="flex items-center gap-2.5">
+                <Badge variant="outline" className="h-5 text-[10px] px-1.5 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-300">
+                  <Trophy className="w-3 h-3 mr-0.5 text-yellow-500" /> Best
                 </Badge>
-                <span className="text-sm text-muted-foreground">Personal record - your longest streak for this task</span>
+                <span className="text-xs">Your personal record for this task</span>
               </div>
             </div>
-            <Card className="bg-muted/50">
-              <CardContent className="pt-4">
-                <p className="text-sm">
-                  <strong>How streaks work:</strong> Complete a task before it becomes overdue to maintain your streak. 
-                  You have a grace period of 1.5x the interval to complete it. Miss that window and your streak resets to zero.
-                </p>
-              </CardContent>
-            </Card>
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="metrics" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-metrics">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <BarChart2 className="w-5 h-5 text-primary" />
-              </div>
-              Tracking Metrics
-            </div>
+        {/* Metrics */}
+        <AccordionItem value="metrics" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-metrics">
+            <span className="flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-primary" />
+              Metrics
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
-            <p className="text-muted-foreground">
-              Add custom metrics to tasks to track data with each completion. Perfect for exercises, measurements, or any value you want to monitor over time.
+          <AccordionContent className="pb-6 space-y-4 text-sm text-muted-foreground">
+            <p>
+              Attach custom metrics to any task to log data with each completion — weight, reps, duration, mileage, etc.
+              View trends over time in task history or the dedicated Metrics page.
             </p>
             <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Exercise Example</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Weight</Badge>
-                    <span className="text-muted-foreground">135 lbs</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Sets</Badge>
-                    <span className="text-muted-foreground">3</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Reps</Badge>
-                    <span className="text-muted-foreground">10</span>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Maintenance Example</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Front Left PSI</Badge>
-                    <span className="text-muted-foreground">32</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Front Right PSI</Badge>
-                    <span className="text-muted-foreground">32</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Mileage</Badge>
-                    <span className="text-muted-foreground">45,230</span>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="bg-muted/30 rounded-lg p-3">
+                <p className="font-medium text-foreground text-xs mb-2">Exercise example</p>
+                <div className="space-y-1">
+                  <p className="text-xs"><span className="text-muted-foreground">Weight:</span> <span className="text-foreground font-medium">135 lbs</span></p>
+                  <p className="text-xs"><span className="text-muted-foreground">Sets:</span> <span className="text-foreground font-medium">3</span></p>
+                  <p className="text-xs"><span className="text-muted-foreground">Reps:</span> <span className="text-foreground font-medium">10</span></p>
+                </div>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-3">
+                <p className="font-medium text-foreground text-xs mb-2">Maintenance example</p>
+                <div className="space-y-1">
+                  <p className="text-xs"><span className="text-muted-foreground">Tire PSI:</span> <span className="text-foreground font-medium">32</span></p>
+                  <p className="text-xs"><span className="text-muted-foreground">Mileage:</span> <span className="text-foreground font-medium">45,230</span></p>
+                </div>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              View metric trends over time in the task history to see your progress.
+            <p className="text-xs">
+              Add metrics via <strong>Advanced Options</strong> when creating or editing a task.
             </p>
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="organization" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-organization">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <FolderOpen className="w-5 h-5 text-primary" />
-              </div>
+        {/* Categories & Tags */}
+        <AccordionItem value="organization" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-organization">
+            <span className="flex items-center gap-2">
+              <FolderOpen className="w-4 h-4 text-primary" />
               Categories & Tags
-            </div>
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
-            <div className="grid gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <FolderOpen className="w-4 h-4" />
-                    Categories
-                  </CardTitle>
-                  <CardDescription>Group tasks by area of life</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge>Health</Badge>
-                    <Badge>Home</Badge>
-                    <Badge>Vehicle</Badge>
-                    <Badge>Finance</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Tag className="w-4 h-4" />
-                    Tags
-                  </CardTitle>
-                  <CardDescription>Add labels for flexible filtering</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">morning</Badge>
-                    <Badge variant="secondary">quick</Badge>
-                    <Badge variant="secondary">outdoors</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="variations" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-variations">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Zap className="w-5 h-5 text-primary" />
-              </div>
-              Task Variations
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
-            <p className="text-muted-foreground">
-              Some tasks have multiple ways to complete them. Add variations to track which specific method you used each time.
-            </p>
-            <Card className="bg-muted/50">
-              <CardContent className="pt-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Target className="w-5 h-5 text-primary" />
-                  <span className="font-medium">Squats</span>
+          <AccordionContent className="pb-6 space-y-3 text-sm text-muted-foreground">
+            <div className="space-y-3 pl-1">
+              <div>
+                <p className="font-medium text-foreground flex items-center gap-1.5 text-xs mb-1">
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  Categories
+                </p>
+                <p>Each task belongs to at most one category. Use them for broad areas:</p>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  <Badge variant="secondary" className="text-xs">Health</Badge>
+                  <Badge variant="secondary" className="text-xs">Home</Badge>
+                  <Badge variant="secondary" className="text-xs">Vehicle</Badge>
+                  <Badge variant="secondary" className="text-xs">Finance</Badge>
                 </div>
-                <div className="ml-6 space-y-2 border-l-2 border-primary/30 pl-4">
-                  <div className="flex items-center gap-2">
-                    <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">Back Squat</span>
-                    <Badge variant="outline" className="text-xs">Variation</Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">Goblet Squat</span>
-                    <Badge variant="outline" className="text-xs">Variation</Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">Front Squat</span>
-                    <Badge variant="outline" className="text-xs">Variation</Badge>
-                  </div>
+              </div>
+              <div>
+                <p className="font-medium text-foreground flex items-center gap-1.5 text-xs mb-1">
+                  <Tag className="w-3.5 h-3.5" />
+                  Tags
+                </p>
+                <p>A task can have multiple tags. Use them for cross-cutting labels:</p>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  <Badge variant="outline" className="text-xs">morning</Badge>
+                  <Badge variant="outline" className="text-xs">quick</Badge>
+                  <Badge variant="outline" className="text-xs">outdoors</Badge>
                 </div>
-              </CardContent>
-            </Card>
-            <p className="text-sm text-muted-foreground">
-              When completing a task with variations, you can select which variation you performed. Add variations in the Advanced Options when creating or editing any task type.
+              </div>
+            </div>
+            <p className="text-xs">
+              Filter by category and/or tags on the Dashboard using the Filter button.
+              You can create new categories inline during task creation or editing.
             </p>
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="views" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-views">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <CalendarDays className="w-5 h-5 text-primary" />
-              </div>
-              Views & Navigation
-            </div>
+        {/* Variations */}
+        <AccordionItem value="variations" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-variations">
+            <span className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" />
+              Variations
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
-            <p className="text-muted-foreground">
-              Filter tasks by their cadence to focus on what's relevant now.
+          <AccordionContent className="pb-6 space-y-3 text-sm text-muted-foreground">
+            <p>
+              When a task can be done different ways, add variations to track which method you used each time.
             </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="p-3 rounded-lg border">
-                <p className="font-medium">Dashboard</p>
-                <p className="text-sm text-muted-foreground">All tasks sorted by urgency</p>
+            <div className="bg-muted/30 rounded-lg p-3">
+              <p className="font-medium text-foreground text-xs flex items-center gap-1.5 mb-2">
+                <Target className="w-3.5 h-3.5 text-primary" />
+                Squats
+              </p>
+              <div className="ml-4 space-y-1 border-l-2 border-primary/20 pl-3">
+                <p className="text-xs flex items-center gap-1.5"><ArrowRight className="w-3 h-3 text-muted-foreground" /> Back Squat</p>
+                <p className="text-xs flex items-center gap-1.5"><ArrowRight className="w-3 h-3 text-muted-foreground" /> Goblet Squat</p>
+                <p className="text-xs flex items-center gap-1.5"><ArrowRight className="w-3 h-3 text-muted-foreground" /> Front Squat</p>
               </div>
-              <div className="p-3 rounded-lg border">
-                <p className="font-medium">Daily</p>
-                <p className="text-sm text-muted-foreground">Tasks done every 1-6 days</p>
-              </div>
-              <div className="p-3 rounded-lg border">
-                <p className="font-medium">Weekly</p>
-                <p className="text-sm text-muted-foreground">Tasks done every 1-4 weeks</p>
-              </div>
-              <div className="p-3 rounded-lg border">
-                <p className="font-medium">Monthly</p>
-                <p className="text-sm text-muted-foreground">Tasks done every 1-12 months</p>
-              </div>
-              <div className="p-3 rounded-lg border">
-                <p className="font-medium">Long-term</p>
-                <p className="text-sm text-muted-foreground">Tasks done yearly or less often</p>
-              </div>
-              <div className="p-3 rounded-lg border">
-                <p className="font-medium">Calendar</p>
-                <p className="text-sm text-muted-foreground">See completions on a calendar</p>
-              </div>
+            </div>
+            <p className="text-xs">
+              When completing a task with variations, you'll be prompted to select which one you did.
+              Add variations in Advanced Options when creating or editing a task.
+            </p>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Views */}
+        <AccordionItem value="views" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-views">
+            <span className="flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-primary" />
+              Views
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="pb-6 space-y-3 text-sm text-muted-foreground">
+            <p>Navigate by cadence to focus on what's relevant.</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2 text-xs pl-1">
+              <div><span className="font-medium text-foreground">Dashboard</span> — all tasks by urgency</div>
+              <div><span className="font-medium text-foreground">Daily</span> — every 1–6 days</div>
+              <div><span className="font-medium text-foreground">Weekly</span> — every 1–4 weeks</div>
+              <div><span className="font-medium text-foreground">Monthly</span> — every 1–12 months</div>
+              <div><span className="font-medium text-foreground">Yearly</span> — yearly or less often</div>
+              <div><span className="font-medium text-foreground">Calendar</span> — completion history</div>
             </div>
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="tips" className="border rounded-xl px-4 bg-card">
-          <AccordionTrigger className="text-lg font-semibold" data-testid="accordion-tips">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <TrendingUp className="w-5 h-5 text-primary" />
-              </div>
-              Tips for Success
-            </div>
+        {/* Tips */}
+        <AccordionItem value="tips" className="border-b-0">
+          <AccordionTrigger className="text-sm font-semibold hover:no-underline py-3" data-testid="accordion-tips">
+            <span className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              Tips
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="pt-2 pb-4 space-y-4">
-            <ul className="space-y-3 text-muted-foreground">
+          <AccordionContent className="pb-6 text-sm text-muted-foreground">
+            <ul className="space-y-2">
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                <span>Start with just a few tasks and add more as you build the habit of checking in.</span>
+                <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                <span>Start with a few tasks. Add more as the habit sticks.</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                <span>Check the Daily view each morning to see what needs attention today.</span>
+                <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                <span>Check the Daily view each morning for what needs attention.</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                <span>Use metrics for exercises and maintenance tasks to track progress over time.</span>
+                <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                <span>Use metrics on exercise or maintenance tasks to see progress over time.</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                <span>Build streaks for motivation, but don't stress if one breaks - just start again.</span>
+                <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                <span>Don't stress about broken streaks — just start again.</span>
               </li>
               <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                <span>Backdate completions if you forgot to log something - your history stays accurate.</span>
+                <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                <span>You can backdate completions if you forgot to log something.</span>
               </li>
             </ul>
           </AccordionContent>

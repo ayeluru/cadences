@@ -1142,12 +1142,11 @@ export async function tasksIdHistory(req: VercelRequest, res: VercelResponse) {
     const taskCompletions = await storage.getCompletions(taskId);
     const taskMetrics = await storage.getTaskMetrics(taskId);
 
-    const completionsWithMetrics = await Promise.all(
-      taskCompletions.map(async (completion) => {
-        const metricValuesData = await storage.getMetricValues(completion.id);
-        return { ...completion, metricValues: metricValuesData };
-      })
-    );
+    const metricValuesMap = await storage.getMetricValuesBatch(taskCompletions.map(c => c.id));
+    const completionsWithMetrics = taskCompletions.map(completion => ({
+      ...completion,
+      metricValues: metricValuesMap.get(completion.id) || [],
+    }));
 
     res.json({
       task: await enrichTask(task, user.id),

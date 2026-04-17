@@ -124,7 +124,7 @@ export function useDeleteTaskWithCascade() {
       await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
       const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
       queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
-        old?.filter(t => t.id !== id && t.parentTaskId !== id)
+        Array.isArray(old) ? old.filter(t => t.id !== id && t.parentTaskId !== id) : old
       );
       return { previous };
     },
@@ -158,7 +158,7 @@ export function useArchiveTask() {
       await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
       const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
       queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
-        old?.filter(t => t.id !== id)
+        Array.isArray(old) ? old.filter(t => t.id !== id) : old
       );
       return { previous };
     },
@@ -203,7 +203,7 @@ export function useCompleteTask() {
       const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
       const nowDate = completedAt ? new Date(completedAt) : new Date();
       queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
-        old?.map((t): TaskWithDetails => {
+        Array.isArray(old) ? old.map((t): TaskWithDetails => {
           if (t.id !== id) return t;
           const isFrequency = t.taskType === 'frequency';
           const newCompletionsThisPeriod = (t.completionsThisPeriod || 0) + 1;
@@ -235,7 +235,7 @@ export function useCompleteTask() {
               };
             })(),
           };
-        })
+        }) : old
       );
       return { previous };
     },

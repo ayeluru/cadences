@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useStats } from "@/hooks/use-stats";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { CheckCircle2, AlertTriangle, Flame, Trophy, ChevronDown, ChevronUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -107,169 +106,162 @@ export default function Stats() {
         <p className="text-muted-foreground mt-1">Insights into your maintenance habits and streaks.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Completions</CardTitle>
-            <CheckCircle2 className="w-4 h-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold" data-testid="text-total-completions">{stats?.totalCompletions || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">All time maintenance</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+            Completions
+          </div>
+          <div className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-total-completions">{stats?.totalCompletions || 0}</div>
+          <p className="text-[11px] text-muted-foreground">all time</p>
+        </div>
         
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active Streaks</CardTitle>
-            <Flame className="w-4 h-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold" data-testid="text-active-streaks">{totalActiveStreaks}</div>
-            <p className="text-xs text-muted-foreground mt-1">Tasks with active streaks</p>
-          </CardContent>
-        </Card>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Flame className="w-3.5 h-3.5 text-orange-500" />
+            Active Streaks
+          </div>
+          <div className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-active-streaks">{totalActiveStreaks}</div>
+          <p className="text-[11px] text-muted-foreground">tasks on a roll</p>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Best Streak</CardTitle>
-            <Trophy className="w-4 h-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold" data-testid="text-best-streak">{longestAllTimeStreak}</div>
-            <p className="text-xs text-muted-foreground mt-1">Longest streak ever</p>
-          </CardContent>
-        </Card>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Trophy className="w-3.5 h-3.5 text-yellow-500" />
+            Best Streak
+          </div>
+          <div className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-best-streak">{longestAllTimeStreak}</div>
+          <p className="text-[11px] text-muted-foreground">longest ever</p>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue Rate</CardTitle>
-            <AlertTriangle className="w-4 h-4 text-[hsl(var(--urgency-overdue))]" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold" data-testid="text-overdue-rate">{Math.round((stats?.overdueRate || 0) * 100)}%</div>
-            <p className="text-xs text-muted-foreground mt-1">Tasks currently overdue</p>
-          </CardContent>
-        </Card>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <AlertTriangle className="w-3.5 h-3.5 text-[hsl(var(--urgency-overdue))]" />
+            Overdue
+          </div>
+          <div className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-overdue-rate">{Math.round((stats?.overdueRate || 0) * 100)}%</div>
+          <p className="text-[11px] text-muted-foreground">overdue rate</p>
+        </div>
       </div>
 
       {activeStreaks.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Flame className="w-5 h-5 text-orange-500" />
+        <section>
+          <div className="mb-4">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+              <Flame className="w-4 h-4 text-orange-500" />
               Active Streaks
-            </CardTitle>
-            <CardDescription>
-              Ranked by time maintained - your longest-running habits first
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-4">
-              {topStreaks.map((streak, index) => (
-                <div key={streak.id} className="flex items-center gap-4" data-testid={`streak-item-${streak.taskId}`}>
-                  <div className="w-6 text-center text-sm text-muted-foreground font-medium">
-                    #{index + 1}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Ranked by duration — your longest-running habits first
+            </p>
+          </div>
+          <div className="space-y-3">
+            {topStreaks.map((streak, index) => (
+              <div key={streak.id} className="flex items-center gap-3" data-testid={`streak-item-${streak.taskId}`}>
+                <span className="text-xs text-muted-foreground w-5 text-right tabular-nums shrink-0">
+                  {index + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="text-sm font-medium truncate">{streak.taskTitle}</span>
+                    {streak.currentStreak === streak.longestStreak && streak.longestStreak >= 3 && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 h-5 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-300">
+                        <Trophy className="w-3 h-3 mr-1 text-yellow-500" /> Best
+                      </Badge>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-medium truncate">{streak.taskTitle}</span>
-                      {streak.currentStreak === streak.longestStreak && streak.longestStreak >= 3 && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 h-5 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-300">
-                          <Trophy className="w-3 h-3 mr-1 text-yellow-500" /> Personal Best
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Progress 
-                        value={Math.min(100, (streak.currentStreak / Math.max(streak.longestStreak, 10)) * 100)} 
-                        className="h-2 flex-1 min-w-[60px]" 
-                      />
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {streak.duration.label} running
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Progress 
+                      value={Math.min(100, (streak.currentStreak / Math.max(streak.longestStreak, 10)) * 100)} 
+                      className="h-1.5 flex-1 min-w-[60px]" 
+                    />
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                      {streak.duration.label}
+                    </span>
                   </div>
-                  <Badge 
-                    variant="secondary" 
-                    className={`text-sm px-2 h-7 ${
-                      streak.currentStreak >= 30 
-                        ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" 
-                        : streak.currentStreak >= 7 
-                          ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
-                          : ""
-                    }`}
-                  >
-                    <Flame className={`w-4 h-4 mr-1 ${
-                      streak.currentStreak >= 30 ? "text-red-500" : streak.currentStreak >= 7 ? "text-orange-500" : ""
-                    }`} />
-                    {streak.currentStreak}
-                  </Badge>
                 </div>
-              ))}
-            </div>
-            {hasMoreStreaks && (
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => setShowAllStreaks(!showAllStreaks)}
-                className="w-full"
-                data-testid="button-toggle-streaks"
-              >
-                {showAllStreaks ? (
-                  <>
-                    <ChevronUp className="w-4 h-4 mr-2" />
-                    Show Less
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-4 h-4 mr-2" />
-                    Show All {activeStreaks.length} Streaks
-                  </>
-                )}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+                <span className={`text-sm font-semibold tabular-nums flex items-center gap-1 ${
+                  streak.currentStreak >= 30 
+                    ? "text-red-600 dark:text-red-400" 
+                    : streak.currentStreak >= 7 
+                      ? "text-orange-600 dark:text-orange-400"
+                      : "text-muted-foreground"
+                }`}>
+                  <Flame className={`w-3.5 h-3.5 ${
+                    streak.currentStreak >= 30 ? "text-red-500" : streak.currentStreak >= 7 ? "text-orange-500" : "text-muted-foreground/60"
+                  }`} />
+                  {streak.currentStreak}
+                </span>
+              </div>
+            ))}
+          </div>
+          {hasMoreStreaks && (
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setShowAllStreaks(!showAllStreaks)}
+              className="w-full mt-3 text-xs"
+              data-testid="button-toggle-streaks"
+            >
+              {showAllStreaks ? (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5 mr-1.5" />
+                  Show Less
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5 mr-1.5" />
+                  Show All {activeStreaks.length} Streaks
+                </>
+              )}
+            </Button>
+          )}
+        </section>
       )}
 
-      <Card className="col-span-1">
-        <CardHeader>
-          <CardTitle>Activity History</CardTitle>
-          <CardDescription>Monthly completion volume over time</CardDescription>
-        </CardHeader>
-        <CardContent className="h-[350px]">
+      <section>
+        <div className="mb-4">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Activity History</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Monthly completions over time</p>
+        </div>
+        <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData}>
               <XAxis 
                 dataKey="name" 
-                fontSize={12}
+                fontSize={11}
                 tickLine={false}
                 axisLine={false}
               />
               <YAxis 
-                fontSize={12}
+                fontSize={11}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(value) => `${value}`}
               />
               <Tooltip 
                 cursor={{ fill: 'transparent' }}
-                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                contentStyle={{ 
+                  borderRadius: '8px', 
+                  border: '1px solid hsl(var(--border))',
+                  backgroundColor: 'hsl(var(--card))',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                  fontSize: '12px',
+                }}
               />
               <Bar 
                 dataKey="completions" 
                 fill="hsl(var(--primary))" 
-                radius={[4, 4, 0, 0]}
+                radius={[3, 3, 0, 0]}
               >
                 {chartData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fillOpacity={index === chartData.length - 1 ? 1 : 0.6} />
+                  <Cell key={`cell-${index}`} fillOpacity={index === chartData.length - 1 ? 1 : 0.5} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

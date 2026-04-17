@@ -1,7 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useAdminUsers, useSetUserRole, type AdminUser } from "@/hooks/use-admin";
 import { useFeedbackStats } from "@/hooks/use-feedback";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -31,44 +30,43 @@ function UserRow({ adminUser, currentUserId }: { adminUser: AdminUser; currentUs
   };
 
   return (
-    <div className="flex items-center justify-between py-3 px-4 border-b last:border-b-0">
+    <div className="flex items-center justify-between py-3 group">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-muted-foreground/20 to-muted-foreground/10 flex items-center justify-center text-sm font-bold text-muted-foreground shrink-0">
+        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
           {(adminUser.firstName?.[0] ?? adminUser.email[0]).toUpperCase()}
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <p className="font-medium truncate">{displayName}</p>
-            {isSelf && <Badge variant="outline" className="text-[10px] py-0">You</Badge>}
+            <p className="text-sm font-medium truncate">{displayName}</p>
+            {isSelf && <Badge variant="outline" className="text-[10px] py-0 h-4">You</Badge>}
+            <Badge variant={isAdminRole ? "default" : "secondary"} className="text-[10px] h-4 px-1.5">
+              {isAdminRole ? "Admin" : "User"}
+            </Badge>
           </div>
           <p className="text-xs text-muted-foreground truncate">{adminUser.email}</p>
         </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <Badge variant={isAdminRole ? "default" : "secondary"} className="text-xs">
-          {isAdminRole ? "Admin" : "User"}
-        </Badge>
-        <Button
-          variant={isAdminRole ? "destructive" : "outline"}
-          size="sm"
-          onClick={handleToggle}
-          disabled={isSelf || setRole.isPending}
-        >
-          {setRole.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : isAdminRole ? (
-            <>
-              <ShieldOff className="w-3.5 h-3.5 mr-1" />
-              Revoke
-            </>
-          ) : (
-            <>
-              <Shield className="w-3.5 h-3.5 mr-1" />
-              Grant Admin
-            </>
-          )}
-        </Button>
-      </div>
+      <Button
+        variant={isAdminRole ? "destructive" : "outline"}
+        size="sm"
+        onClick={handleToggle}
+        disabled={isSelf || setRole.isPending}
+        className="shrink-0 text-xs h-7"
+      >
+        {setRole.isPending ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : isAdminRole ? (
+          <>
+            <ShieldOff className="w-3 h-3 mr-1" />
+            Revoke
+          </>
+        ) : (
+          <>
+            <Shield className="w-3 h-3 mr-1" />
+            Grant Admin
+          </>
+        )}
+      </Button>
     </div>
   );
 }
@@ -110,111 +108,101 @@ export default function AdminPage() {
   };
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Admin Panel</h1>
-        <p className="text-muted-foreground mt-1">Manage user roles, permissions, and feedback</p>
+    <div className="space-y-8 max-w-3xl mx-auto">
+      <div>
+        <h1 className="text-3xl font-display font-bold text-foreground mb-1">Admin</h1>
+        <p className="text-muted-foreground text-sm">Manage users, roles, and feedback.</p>
       </div>
 
-      {/* Feedback overview */}
-      {feedbackStats && (
-        <Card className="mb-6">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquarePlus className="w-5 h-5" />
-                Feedback Overview
-              </CardTitle>
-              <Link href="/feedback">
-                <Button variant="ghost" size="sm" className="text-xs">
-                  View Board <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                </Button>
-              </Link>
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Users className="w-3.5 h-3.5" />
+            Users
+          </div>
+          <div className="text-2xl font-bold tracking-tight">{totalCount}</div>
+        </div>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Shield className="w-3.5 h-3.5 text-primary" />
+            Admins
+          </div>
+          <div className="text-2xl font-bold tracking-tight">{adminCount}</div>
+        </div>
+        {feedbackStats && (
+          <>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <MessageSquarePlus className="w-3.5 h-3.5" />
+                Feedback
+              </div>
+              <div className="text-2xl font-bold tracking-tight">{feedbackStats.total}</div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg border p-3 text-center">
-                <p className="text-2xl font-bold">{feedbackStats.total}</p>
-                <p className="text-xs text-muted-foreground">Total</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                {feedbackStats.unreviewed > 0 && <AlertCircle className="w-3.5 h-3.5 text-destructive" />}
+                {feedbackStats.unreviewed === 0 && <Eye className="w-3.5 h-3.5" />}
+                Needs Review
               </div>
-              <div className={`rounded-lg border p-3 text-center ${feedbackStats.unreviewed > 0 ? "border-destructive/40 bg-destructive/5" : ""}`}>
-                <p className={`text-2xl font-bold ${feedbackStats.unreviewed > 0 ? "text-destructive" : ""}`}>{feedbackStats.unreviewed}</p>
-                <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
-                  {feedbackStats.unreviewed > 0 && <AlertCircle className="w-3 h-3 text-destructive" />}
-                  Needs Review
-                </p>
-              </div>
-              <div className="rounded-lg border p-3 text-center">
-                <div className="flex items-center justify-center gap-1">
-                  <Eye className="w-4 h-4 text-muted-foreground" />
-                  <p className="text-2xl font-bold">{feedbackStats.public}</p>
-                </div>
-                <p className="text-xs text-muted-foreground">Public</p>
+              <div className={`text-2xl font-bold tracking-tight ${feedbackStats.unreviewed > 0 ? "text-destructive" : ""}`}>
+                {feedbackStats.unreviewed}
               </div>
             </div>
+          </>
+        )}
+      </div>
 
-            {Object.keys(feedbackStats.byStatus).length > 0 && (
-              <div className="flex items-center gap-3 flex-wrap text-xs">
-                <span className="text-muted-foreground font-medium">By status:</span>
-                {Object.entries(feedbackStats.byStatus).map(([status, count]) => (
-                  <span key={status} className="flex items-center gap-1.5 text-muted-foreground">
-                    <span className={`w-1.5 h-1.5 rounded-full ${statusDots[status] ?? "bg-gray-400"}`} />
-                    {statusLabels[status] ?? status} ({count})
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {feedbackStats.unreviewed > 0 && (
-              <Link href="/feedback">
-                <Button variant="outline" size="sm" className="w-full text-xs">
-                  <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
-                  Review {feedbackStats.unreviewed} pending submission{feedbackStats.unreviewed !== 1 ? "s" : ""}
-                </Button>
-              </Link>
-            )}
-          </CardContent>
-        </Card>
+      {/* Feedback status breakdown */}
+      {feedbackStats && Object.keys(feedbackStats.byStatus).length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+              <MessageSquarePlus className="w-4 h-4" />
+              Feedback
+            </h2>
+            <Link href="/feedback">
+              <Button variant="ghost" size="sm" className="text-xs h-7">
+                View Board <ChevronRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </Link>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap text-xs">
+            {Object.entries(feedbackStats.byStatus).map(([status, count]) => (
+              <span key={status} className="flex items-center gap-1.5 text-muted-foreground">
+                <span className={`w-1.5 h-1.5 rounded-full ${statusDots[status] ?? "bg-gray-400"}`} />
+                {statusLabels[status] ?? status} <span className="font-medium text-foreground">{count}</span>
+              </span>
+            ))}
+          </div>
+          {feedbackStats.unreviewed > 0 && (
+            <Link href="/feedback">
+              <Button variant="outline" size="sm" className="mt-3 text-xs h-7">
+                <AlertCircle className="w-3 h-3 mr-1.5" />
+                Review {feedbackStats.unreviewed} pending
+              </Button>
+            </Link>
+          )}
+        </section>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <Users className="w-8 h-8 text-muted-foreground" />
-            <div>
-              <p className="text-2xl font-bold">{totalCount}</p>
-              <p className="text-xs text-muted-foreground">Total Users</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <Shield className="w-8 h-8 text-primary" />
-            <div>
-              <p className="text-2xl font-bold">{adminCount}</p>
-              <p className="text-xs text-muted-foreground">Admins</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Users</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            users?.map(u => (
+      {/* User list */}
+      <section>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-foreground mb-3">
+          Users
+        </h2>
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {users?.map(u => (
               <UserRow key={u.id} adminUser={u} currentUserId={user?.id ?? ""} />
-            ))
-          )}
-        </CardContent>
-      </Card>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

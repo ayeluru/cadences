@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCreateTask, useTasks } from "@/hooks/use-tasks";
 import { useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { insertTaskSchema, InsertTask, TaskWithDetails } from "@shared/schema";
 import { z } from "zod";
 import { useCategories, useCreateCategory } from "@/hooks/use-categories";
@@ -126,6 +127,10 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       taskData.intervalValue = data.intervalValue;
       taskData.intervalUnit = data.intervalUnit;
     } else if (taskType === 'frequency') {
+      if (!data.targetCount || data.targetCount < 1) {
+        toast({ title: "Error", description: "Please specify how many times per period", variant: "destructive" });
+        return;
+      }
       taskData.targetCount = data.targetCount;
       taskData.targetPeriod = data.targetPeriod;
       // Convert refractory value to minutes
@@ -176,25 +181,14 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       onSuccess: async (newTask: any) => {
         if (metrics.length > 0 && newTask?.id) {
           for (const metric of metrics) {
-            await fetch(`/api/tasks/${newTask.id}/metrics`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(metric),
-              credentials: 'include'
-            });
+            await apiRequest('POST', `/api/tasks/${newTask.id}/metrics`, metric);
           }
         }
         if (variations.length > 0 && newTask?.id) {
           let variationErrors = 0;
           for (const variationName of variations) {
             try {
-              const res = await fetch(`/api/tasks/${newTask.id}/variations`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: variationName }),
-                credentials: 'include'
-              });
-              if (!res.ok) variationErrors++;
+              await apiRequest('POST', `/api/tasks/${newTask.id}/variations`, { name: variationName });
             } catch {
               variationErrors++;
             }
@@ -247,17 +241,19 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
     setVariations(prev => prev.filter(v => v !== name));
   };
 
-  const handleCreateNewCategory = () => {
+  const handleCreateNewCategory = async () => {
     if (!newCategoryName.trim()) return;
-    createCategoryMutation.mutate(
-      { name: newCategoryName },
-      {
-        onSuccess: () => {
-          setNewCategoryName("");
-          setShowNewCategoryInput(false);
-        }
+    try {
+      const newCategory = await createCategoryMutation.mutateAsync({ name: newCategoryName });
+      setNewCategoryName("");
+      await queryClient.refetchQueries({ queryKey: ['/api/categories'] });
+      setShowNewCategoryInput(false);
+      if (newCategory?.id) {
+        setValue("categoryId", newCategory.id);
       }
-    );
+    } catch {
+      // Error toast handled by mutation hook
+    }
   };
 
   const handleCreateNewTag = () => {
@@ -553,6 +549,112 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
           </Tabs>
 
 
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="category">Category</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() => setShowNewCategoryInput(!showNewCategoryInput)}
+              >
+                <Plus className="w-3 h-3 mr-1" /> New
+              </Button>
+            </div>
+            {showNewCategoryInput ? (
+              <div className="flex gap-2">
+                <Input
+                  data-testid="input-new-category"
+                  placeholder="Category name..."
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateNewCategory();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  data-testid="button-add-category"
+                  onClick={handleCreateNewCategory}
+                  disabled={createCategoryMutation.isPending || !newCategoryName.trim()}
+                >
+                  {createCategoryMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                </Button>
+              </div>
+            ) : (
+              <select 
+                id="category"
+                data-testid="select-category"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                {...register("categoryId")}
+              >
+                <option value="">Select a category...</option>
+                {categories?.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Tags</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() => setShowNewTagInput(!showNewTagInput)}
+              >
+                <Plus className="w-3 h-3 mr-1" /> New
+              </Button>
+            </div>
+            {showNewTagInput && (
+              <div className="flex gap-2">
+                <Input
+                  data-testid="input-new-tag"
+                  placeholder="Tag name..."
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateNewTag();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  data-testid="button-add-tag"
+                  onClick={handleCreateNewTag}
+                  disabled={createTagMutation.isPending || !newTagName.trim()}
+                >
+                  {createTagMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                </Button>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 pt-2">
+              {tags?.map(tag => (
+                <Badge
+                  key={tag.id}
+                  variant={selectedTagIds.includes(tag.id) ? "default" : "outline"}
+                  className="cursor-pointer select-none"
+                  data-testid={`tag-${tag.id}`}
+                  onClick={() => toggleTag(tag.id)}
+                >
+                  {tag.name}
+                </Badge>
+              ))}
+              {tags?.length === 0 && !showNewTagInput && <span className="text-sm text-muted-foreground">No tags yet. Click "New" to create one.</span>}
+            </div>
+          </div>
+
           {/* Advanced Configuration - Collapsed Section */}
           <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
             <CollapsibleTrigger asChild>
@@ -567,113 +669,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="category">Category</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto p-0 text-xs"
-                    onClick={() => setShowNewCategoryInput(!showNewCategoryInput)}
-                  >
-                    <Plus className="w-3 h-3 mr-1" /> New
-                  </Button>
-                </div>
-                {showNewCategoryInput ? (
-                  <div className="flex gap-2">
-                    <Input
-                      data-testid="input-new-category"
-                      placeholder="Category name..."
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleCreateNewCategory();
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      data-testid="button-add-category"
-                      onClick={handleCreateNewCategory}
-                      disabled={createCategoryMutation.isPending || !newCategoryName.trim()}
-                    >
-                      {createCategoryMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
-                    </Button>
-                  </div>
-                ) : (
-                  <select 
-                    id="category"
-                    data-testid="select-category"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    {...register("categoryId")}
-                  >
-                    <option value="">Select a category...</option>
-                    {categories?.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Tags</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto p-0 text-xs"
-                    onClick={() => setShowNewTagInput(!showNewTagInput)}
-                  >
-                    <Plus className="w-3 h-3 mr-1" /> New
-                  </Button>
-                </div>
-                {showNewTagInput && (
-                  <div className="flex gap-2">
-                    <Input
-                      data-testid="input-new-tag"
-                      placeholder="Tag name..."
-                      value={newTagName}
-                      onChange={(e) => setNewTagName(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleCreateNewTag();
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      data-testid="button-add-tag"
-                      onClick={handleCreateNewTag}
-                      disabled={createTagMutation.isPending || !newTagName.trim()}
-                    >
-                      {createTagMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
-                    </Button>
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {tags?.map(tag => (
-                    <Badge
-                      key={tag.id}
-                      variant={selectedTagIds.includes(tag.id) ? "default" : "outline"}
-                      className="cursor-pointer select-none"
-                      data-testid={`tag-${tag.id}`}
-                      onClick={() => toggleTag(tag.id)}
-                    >
-                      {tag.name}
-                    </Badge>
-                  ))}
-                  {tags?.length === 0 && !showNewTagInput && <span className="text-sm text-muted-foreground">No tags yet. Click "New" to create one.</span>}
-                </div>
-              </div>
-
-              <div className="space-y-3 border-t pt-4">
+              <div className="space-y-3">
                 <Label>Track Statistics (optional)</Label>
                 <p className="text-xs text-muted-foreground">
                   Add metrics to record when completing this task (e.g., weight, sets, reps, tire pressure).

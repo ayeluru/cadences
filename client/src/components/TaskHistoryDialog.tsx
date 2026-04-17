@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { History, Calendar, Trash2, TrendingUp, Loader2 } from "lucide-react";
+import { History, Calendar, Trash2, TrendingUp, Loader2, Circle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -48,11 +47,10 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
   const [selectedMetric, setSelectedMetric] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
 
-  const { data: historyData, isLoading } = useQuery<TaskHistoryData>({
+  const { data: historyData, isLoading, isError } = useQuery<TaskHistoryData>({
     queryKey: ["/api/tasks", taskId, "history"],
     queryFn: async () => {
-      const res = await fetch(`/api/tasks/${taskId}/history`);
-      if (!res.ok) throw new Error("Failed to fetch task history");
+      const res = await apiRequest("GET", `/api/tasks/${taskId}/history`);
       return res.json();
     },
     enabled: open,
@@ -148,6 +146,11 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
           <div className="flex items-center justify-center h-40">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
+        ) : isError ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p>Failed to load history. Please try again.</p>
+          </div>
         ) : !hasCompletions ? (
           <div className="text-center py-12 text-muted-foreground">
             <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -164,65 +167,69 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
 
             <TabsContent value="timeline" className="flex-1 min-h-0 mt-4">
               <ScrollArea className="h-[400px] pr-4">
-                <div className="space-y-3">
-                  {historyData?.completions.map((completion) => (
-                    <Card key={completion.id} className="relative" data-testid={`completion-card-${completion.id}`}>
-                      <CardContent className="pt-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
-                              <span className="font-medium">
-                                {format(new Date(completion.completedAt), "EEEE, MMMM d, yyyy")}
-                              </span>
-                              <span className="text-sm text-muted-foreground">
-                                {format(new Date(completion.completedAt), "h:mm a")}
-                              </span>
-                              {completion.variationId && historyData?.task?.variations && (
-                                <Badge variant="secondary" className="text-xs">
-                                  {historyData.task.variations.find(v => v.id === completion.variationId)?.name || "Unknown variation"}
-                                </Badge>
-                              )}
-                            </div>
-                            
-                            {completion.notes && (
-                              <p className="text-sm text-muted-foreground mt-1">
-                                {completion.notes}
-                              </p>
-                            )}
-                            
-                            {completion.metricValues.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {completion.metricValues.map(mv => {
-                                  const metric = historyData.metrics.find(m => m.id === mv.metricId);
-                                  const value = mv.numericValue !== null ? mv.numericValue : mv.textValue;
-                                  return (
-                                    <Badge key={mv.id} variant="outline" className="text-xs">
-                                      {metric?.name}: {value} {metric?.unit}
-                                    </Badge>
-                                  );
-                                })}
-                              </div>
+                <div className="relative ml-3">
+                  <div className="absolute left-0 top-2 bottom-2 w-px bg-border" />
+                  {historyData?.completions.map((completion, idx) => (
+                    <div 
+                      key={completion.id} 
+                      className="group relative pl-6 pb-6 last:pb-0"
+                      data-testid={`completion-card-${completion.id}`}
+                    >
+                      <Circle className="absolute left-0 top-1.5 w-[7px] h-[7px] -translate-x-[3px] fill-muted-foreground/40 text-muted-foreground/40" />
+                      
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-foreground">
+                              {format(new Date(completion.completedAt), "MMM d, yyyy")}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(completion.completedAt), "h:mm a")}
+                            </span>
+                            {completion.variationId && historyData?.task?.variations && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 h-5 font-normal">
+                                {historyData.task.variations.find(v => v.id === completion.variationId)?.name || "Unknown"}
+                              </Badge>
                             )}
                           </div>
                           
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-destructive shrink-0"
-                            onClick={() => {
-                              if (confirm("Delete this completion?")) {
-                                deleteCompletionMutation.mutate(completion.id);
-                              }
-                            }}
-                            disabled={deleteCompletionMutation.isPending}
-                            data-testid={`button-delete-completion-${completion.id}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {completion.notes && (
+                            <p className="text-sm text-muted-foreground mt-0.5 leading-relaxed">
+                              {completion.notes}
+                            </p>
+                          )}
+                          
+                          {completion.metricValues.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {completion.metricValues.map(mv => {
+                                const metric = historyData.metrics.find(m => m.id === mv.metricId);
+                                const value = mv.numericValue !== null ? mv.numericValue : mv.textValue;
+                                return (
+                                  <span key={mv.id} className="text-xs text-muted-foreground">
+                                    {metric?.name}: <span className="text-foreground font-medium">{value}</span>{metric?.unit ? ` ${metric.unit}` : ''}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </CardContent>
-                    </Card>
+                        
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-destructive shrink-0 transition-colors"
+                          onClick={() => {
+                            if (confirm("Delete this completion?")) {
+                              deleteCompletionMutation.mutate(completion.id);
+                            }
+                          }}
+                          disabled={deleteCompletionMutation.isPending}
+                          data-testid={`button-delete-completion-${completion.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </ScrollArea>
@@ -231,33 +238,39 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
             <TabsContent value="charts" className="flex-1 min-h-0 mt-4">
               {hasMetrics && (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Metric:</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground mr-1">Metric</span>
                     {historyData.metrics.map(metric => (
-                      <Button
+                      <button
                         key={metric.id}
-                        variant={selectedMetric === metric.id ? "default" : "outline"}
-                        size="sm"
                         onClick={() => setSelectedMetric(metric.id)}
                         data-testid={`button-metric-${metric.id}`}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                          selectedMetric === metric.id
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground hover:text-foreground"
+                        }`}
                       >
                         {metric.name}
-                      </Button>
+                      </button>
                     ))}
                   </div>
                   
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Time range:</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground mr-1">Range</span>
                     {(["all", "30d", "90d", "1y"] as const).map(range => (
-                      <Button
+                      <button
                         key={range}
-                        variant={timeRange === range ? "default" : "outline"}
-                        size="sm"
                         onClick={() => setTimeRange(range)}
                         data-testid={`button-range-${range}`}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                          timeRange === range
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground hover:text-foreground"
+                        }`}
                       >
-                        {range === "all" ? "All time" : range === "30d" ? "30 days" : range === "90d" ? "90 days" : "1 year"}
-                      </Button>
+                        {range === "all" ? "All" : range === "30d" ? "30d" : range === "90d" ? "90d" : "1y"}
+                      </button>
                     ))}
                   </div>
                   
@@ -276,61 +289,57 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                     const domain = getChartDomain(series);
                     
                     return (
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-base flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4" />
-                            {historyData.metrics.find(m => m.id === selectedMetric)?.name} Over Time
-                            {showLegend && <span className="text-xs text-muted-foreground ml-2">({series.length} variations)</span>}
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart>
-                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                                <XAxis 
-                                  dataKey="timestamp"
-                                  type="number"
-                                  domain={domain}
-                                  tickFormatter={(ts) => format(new Date(ts), "MMM d")}
-                                  tick={{ fontSize: 11 }}
-                                  className="text-muted-foreground"
-                                  allowDuplicatedCategory={false}
+                      <div>
+                        <p className="text-sm font-medium text-foreground flex items-center gap-1.5 mb-3">
+                          <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" />
+                          {historyData.metrics.find(m => m.id === selectedMetric)?.name} Over Time
+                          {showLegend && <span className="text-xs text-muted-foreground ml-1">({series.length} variations)</span>}
+                        </p>
+                        <div className="h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart>
+                              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                              <XAxis 
+                                dataKey="timestamp"
+                                type="number"
+                                domain={domain}
+                                tickFormatter={(ts) => format(new Date(ts), "MMM d")}
+                                tick={{ fontSize: 11 }}
+                                className="text-muted-foreground"
+                                allowDuplicatedCategory={false}
+                              />
+                              <YAxis 
+                                tick={{ fontSize: 11 }}
+                                className="text-muted-foreground"
+                                width={50}
+                              />
+                              <Tooltip 
+                                labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy h:mm a")}
+                                contentStyle={{
+                                  backgroundColor: 'hsl(var(--card))',
+                                  border: '1px solid hsl(var(--border))',
+                                  borderRadius: '8px',
+                                }}
+                              />
+                              {showLegend && <Legend />}
+                              {series.map((s) => (
+                                <Line 
+                                  key={s.key}
+                                  data={s.data}
+                                  type="monotone" 
+                                  dataKey="value"
+                                  name={s.name}
+                                  stroke={s.color}
+                                  strokeWidth={2}
+                                  dot={{ fill: s.color, strokeWidth: 0, r: 3 }}
+                                  activeDot={{ r: 5 }}
+                                  connectNulls
                                 />
-                                <YAxis 
-                                  tick={{ fontSize: 11 }}
-                                  className="text-muted-foreground"
-                                  width={50}
-                                />
-                                <Tooltip 
-                                  labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy h:mm a")}
-                                  contentStyle={{
-                                    backgroundColor: 'hsl(var(--card))',
-                                    border: '1px solid hsl(var(--border))',
-                                    borderRadius: '8px',
-                                  }}
-                                />
-                                {showLegend && <Legend />}
-                                {series.map((s) => (
-                                  <Line 
-                                    key={s.key}
-                                    data={s.data}
-                                    type="monotone" 
-                                    dataKey="value"
-                                    name={s.name}
-                                    stroke={s.color}
-                                    strokeWidth={2}
-                                    dot={{ fill: s.color, strokeWidth: 0, r: 3 }}
-                                    activeDot={{ r: 5 }}
-                                    connectNulls
-                                  />
-                                ))}
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </CardContent>
-                      </Card>
+                              ))}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
                     );
                   })() : (
                     <p className="text-center text-muted-foreground py-8">
