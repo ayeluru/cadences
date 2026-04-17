@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.4
+
+- Redesigned task history timeline: lightweight vertical timeline replaces heavy bordered cards
+- Lightened Statistics page: flat metric blocks, cleaner streaks list, borderless chart
+- Lightened Metrics page: flat summary stats, section dividers instead of card wrappers, pill-style toggles
+- Rewrote User Guide for clarity and concision; removed card-heavy layout
+- Lightened Admin page: flat stats, section-based layout, slimmer user rows
+
 ## 1.8.3
 
 - Fixed task history not loading (missing auth headers on API request)
