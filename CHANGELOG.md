@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.1
+
+- Fix feedback status dropdown on production: applied missing enum migration (needs_info, duplicate, backlog, released)
+- Add error toasts to all feedback mutation hooks so API failures are no longer silent
+
 ## 1.10.0
 
 - Edit Task dialog now matches the Create Task dialog layout: same section ordering, DialogDescription, collapsible Advanced Options, inline tag creation, and consistent icon usage
