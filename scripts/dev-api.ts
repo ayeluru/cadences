@@ -29,6 +29,18 @@ try {
 // Dynamic import of the handler (after env vars are loaded)
 const { default: handler } = await import('../api/[[...path]].ts');
 
+// Warm up the database connection on startup so the first real request isn't slow.
+// Supabase dev databases go to sleep when idle; this wakes them up eagerly.
+try {
+  const { db } = await import('../api/_lib/db.ts');
+  const { sql } = await import('drizzle-orm');
+  console.log('Warming up database connection...');
+  await db.execute(sql`SELECT 1`);
+  console.log('Database connection ready.');
+} catch (err) {
+  console.warn('Database warmup failed (will retry on first request):', (err as Error).message);
+}
+
 function collectBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];

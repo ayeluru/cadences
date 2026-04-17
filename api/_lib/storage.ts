@@ -57,6 +57,7 @@ export interface IStorage {
   getTaskMetrics(taskId: number): Promise<TaskMetric[]>;
   getTaskMetric(metricId: number): Promise<TaskMetric | undefined>;
   createTaskMetric(metric: InsertTaskMetric): Promise<TaskMetric>;
+  updateTaskMetric(metricId: number, updates: { name?: string; unit?: string }): Promise<TaskMetric>;
   deleteTaskMetric(metricId: number): Promise<void>;
   deleteTaskMetrics(taskId: number): Promise<void>;
   
@@ -68,6 +69,12 @@ export interface IStorage {
   getCompletionsInPeriod(taskId: number, startDate: Date, endDate: Date): Promise<Completion[]>;
   getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date, profileId?: number, excludeDemo?: boolean): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]>;
   deleteCompletion(completionId: number, userId: string): Promise<void>;
+  updateCompletion(completionId: number, userId: string, updates: {
+    completedAt?: Date;
+    notes?: string | null;
+    variationId?: number | null;
+    metrics?: { metricId: number; value: number | string }[];
+  }): Promise<Completion>;
   
   // Metric Values
   getMetricValues(completionId: number): Promise<MetricValue[]>;
@@ -1304,6 +1311,14 @@ export class DatabaseStorage implements IStorage {
     return newMetric;
   }
 
+  async updateTaskMetric(metricId: number, updates: { name?: string; unit?: string }): Promise<TaskMetric> {
+    const [updated] = await db.update(taskMetrics)
+      .set(updates)
+      .where(eq(taskMetrics.id, metricId))
+      .returning();
+    return updated;
+  }
+
   async deleteTaskMetric(metricId: number): Promise<void> {
     await db.delete(metricValues).where(eq(metricValues.metricId, metricId));
     await db.delete(taskMetrics).where(eq(taskMetrics.id, metricId));
@@ -1500,6 +1515,65 @@ export class DatabaseStorage implements IStorage {
 
     // Recalculate the streak from remaining completion history
     await this.recalculateStreak(completion.taskId, userId, task);
+  }
+
+  async updateCompletion(completionId: number, userId: string, updates: {
+    completedAt?: Date;
+    notes?: string | null;
+    variationId?: number | null;
+    metrics?: { metricId: number; value: number | string }[];
+  }): Promise<Completion> {
+    const [completion] = await db.select().from(completions).where(eq(completions.id, completionId));
+    if (!completion) throw new Error("Completion not found");
+
+    const task = await this.getTask(completion.taskId);
+    if (!task || task.userId !== userId) throw new Error("Access denied");
+
+    const setFields: any = {};
+    if (updates.completedAt !== undefined) setFields.completedAt = updates.completedAt;
+    if (updates.notes !== undefined) setFields.notes = updates.notes;
+    if (updates.variationId !== undefined) setFields.variationId = updates.variationId;
+
+    let updated = completion;
+    if (Object.keys(setFields).length > 0) {
+      const [row] = await db.update(completions)
+        .set(setFields)
+        .where(eq(completions.id, completionId))
+        .returning();
+      updated = row;
+    }
+
+    if (updates.metrics !== undefined) {
+      const metricIds = updates.metrics.map(m => m.metricId);
+      if (metricIds.length > 0) {
+        await db.delete(metricValues)
+          .where(and(eq(metricValues.completionId, completionId), inArray(metricValues.metricId, metricIds)));
+      }
+      if (updates.metrics.length > 0) {
+        await db.insert(metricValues).values(
+          updates.metrics.map(m => ({
+            completionId,
+            metricId: m.metricId,
+            numericValue: typeof m.value === 'number' ? m.value : null,
+            textValue: typeof m.value === 'string' ? m.value : null,
+          }))
+        );
+      }
+    }
+
+    if (updates.completedAt !== undefined) {
+      const [latestCompletion] = await db.select()
+        .from(completions)
+        .where(eq(completions.taskId, completion.taskId))
+        .orderBy(desc(completions.completedAt))
+        .limit(1);
+      await db.update(tasks)
+        .set({ lastCompletedAt: latestCompletion?.completedAt || null })
+        .where(eq(tasks.id, completion.taskId));
+      await this.recalculateStreak(completion.taskId, userId, task);
+    }
+
+    return updated;
   }
 
   private async recalculateStreak(taskId: number, userId: string, task: Task): Promise<void> {

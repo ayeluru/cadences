@@ -241,7 +241,7 @@ export async function clearData(req: VercelRequest, res: VercelResponse) {
 // ---------------------------------------------------------------------------
 
 export async function completionsId(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'DELETE') {
+  if (req.method !== 'DELETE' && req.method !== 'PATCH') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -255,10 +255,22 @@ export async function completionsId(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    await storage.deleteCompletion(completionId, user.id);
-    return res.status(200).json({ success: true });
+    if (req.method === 'DELETE') {
+      await storage.deleteCompletion(completionId, user.id);
+      return res.status(200).json({ success: true });
+    }
+
+    const body = req.body || {};
+    const updates: any = {};
+    if (body.completedAt !== undefined) updates.completedAt = new Date(body.completedAt);
+    if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.variationId !== undefined) updates.variationId = body.variationId;
+    if (body.metrics !== undefined) updates.metrics = body.metrics;
+
+    const updated = await storage.updateCompletion(completionId, user.id, updates);
+    return res.status(200).json(updated);
   } catch (error: any) {
-    console.error('Error deleting completion:', error);
+    console.error('Error handling completion:', error);
     if (error.message === 'Completion not found') {
       return res.status(404).json({ message: 'Completion not found' });
     }
@@ -304,7 +316,7 @@ export async function completionsCalendar(req: VercelRequest, res: VercelRespons
 // ---------------------------------------------------------------------------
 
 export async function metricsId(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'DELETE') {
+  if (req.method !== 'DELETE' && req.method !== 'PATCH') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -328,10 +340,24 @@ export async function metricsId(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    await storage.deleteTaskMetric(metricId);
-    return res.status(200).json({ success: true });
+    if (req.method === 'DELETE') {
+      await storage.deleteTaskMetric(metricId);
+      return res.status(200).json({ success: true });
+    }
+
+    const body = req.body || {};
+    const updates: { name?: string; unit?: string } = {};
+    if (typeof body.name === 'string' && body.name.trim()) updates.name = body.name.trim();
+    if (typeof body.unit === 'string') updates.unit = body.unit.trim();
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const updated = await storage.updateTaskMetric(metricId, updates);
+    return res.status(200).json(updated);
   } catch (error) {
-    console.error('Error deleting metric:', error);
+    console.error('Error handling metric:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
