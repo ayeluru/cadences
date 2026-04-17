@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.2
+
+- Account deletion now fully cleans up feedback submissions, votes, comments, and role records (previously only cascade-deleted profile data)
+
 ## 1.9.1
 
 - Expanded feedback statuses from 6 to 10: added Needs Info, Duplicate, Backlog, and Released
