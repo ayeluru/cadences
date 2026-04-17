@@ -1821,3 +1821,58 @@ export async function feedbackCommentDelete(req: VercelRequest, res: VercelRespo
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
+
+// ---------------------------------------------------------------------------
+// assignments (weekly planner)
+// ---------------------------------------------------------------------------
+
+export async function assignmentsList(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  if (req.method === 'GET') {
+    const { start, end } = req.query;
+    if (!start || !end) {
+      return res.status(400).json({ error: 'start and end query params required' });
+    }
+    const assignments = await storage.getAssignments(user.id, start as string, end as string);
+    return res.status(200).json(assignments);
+  }
+
+  if (req.method === 'POST') {
+    const { taskId, plannedDate, originalDate } = req.body;
+    if (!taskId || !plannedDate) {
+      return res.status(400).json({ error: 'taskId and plannedDate are required' });
+    }
+    const assignment = await storage.createAssignment(user.id, taskId, plannedDate, originalDate || undefined);
+    return res.status(201).json(assignment);
+  }
+
+  if (req.method === 'DELETE') {
+    const { start, end } = req.query;
+    if (!start || !end) {
+      return res.status(400).json({ error: 'start and end query params required' });
+    }
+    await storage.deleteAssignmentsByDateRange(user.id, start as string, end as string);
+    return res.status(200).json({ success: true });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+export async function assignmentsId(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  const assignmentId = parseInt(req.query.id as string, 10);
+  if (isNaN(assignmentId)) {
+    return res.status(400).json({ error: 'Invalid assignment ID' });
+  }
+
+  if (req.method === 'DELETE') {
+    await storage.deleteAssignment(assignmentId, user.id);
+    return res.status(200).json({ success: true });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}

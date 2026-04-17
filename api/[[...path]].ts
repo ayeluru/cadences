@@ -44,6 +44,8 @@ import {
   feedbackVote,
   feedbackCommentsHandler,
   feedbackCommentDelete,
+  assignmentsList,
+  assignmentsId,
 } from './_lib/all-handlers.js';
 
 type Handler = (req: VercelRequest, res: VercelResponse) => any;
@@ -99,6 +101,8 @@ const routes: Route[] = [
   { pattern: /^tasks\/(\d+)$/, handler: tasksId, params: ['id'] },
   { pattern: /^tasks$/, handler: tasksIndex, params: [] },
   { pattern: /^variations\/(\d+)$/, handler: variationsId, params: ['id'] },
+  { pattern: /^assignments\/(\d+)$/, handler: assignmentsId, params: ['id'] },
+  { pattern: /^assignments$/, handler: assignmentsList, params: [] },
 ];
 
 export const config = { maxDuration: 60 };
