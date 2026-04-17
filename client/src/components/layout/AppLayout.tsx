@@ -4,11 +4,12 @@ import { useFeedbackStats } from "@/hooks/use-feedback";
 import { WhatsNewDialog, useHasUnseenNotes } from "@/components/WhatsNewDialog";
 import { LayoutDashboard, PieChart, Settings, LogOut, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal, MessageSquarePlus, Shield, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
+import { SubmitFeedbackDialog } from "@/components/SubmitFeedbackDialog";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -19,7 +20,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [cadencesOpen, setCadencesOpen] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
   const unreviewedCount = feedbackStats?.unreviewed ?? 0;
+  const isFeedbackRoute = location === '/feedback';
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+    setMobileMenuOpen(false);
+  }, [location]);
 
   const cadenceItems = [
     { href: "/tasks/daily", label: "Daily", icon: Clock },
@@ -254,7 +263,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto bg-muted/20">
+      <main ref={mainRef} className="flex-1 overflow-y-auto bg-muted/20">
         <div className="container mx-auto max-w-5xl p-4 md:p-8 lg:p-12 pb-24 md:pb-12">
           {children}
         </div>
@@ -272,10 +281,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="text-[10px] font-medium">Calendar</span>
           </Link>
           <button
-            onClick={() => setCreateDialogOpen(true)}
+            onClick={() => isFeedbackRoute ? setFeedbackDialogOpen(true) : setCreateDialogOpen(true)}
             className="flex items-center justify-center w-12 h-12 -mt-4 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 active:scale-95 transition-transform"
           >
-            <Plus className="w-6 h-6" />
+            {isFeedbackRoute ? <MessageSquarePlus className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
           </button>
           <Link href="/stats" className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${location === '/stats' ? 'text-primary' : 'text-muted-foreground'}`}>
             <PieChart className="w-5 h-5" />
@@ -292,6 +301,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </nav>
 
       {createDialogOpen && <CreateTaskDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />}
+      <SubmitFeedbackDialog open={feedbackDialogOpen} onOpenChange={setFeedbackDialogOpen} />
     </div>
   );
 }

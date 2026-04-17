@@ -3,7 +3,6 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Loader2, TrendingUp, TrendingDown, Minus, Activity, Eye, EyeOff, ArrowRight } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -177,15 +176,18 @@ export default function MetricsPage() {
         </div>
         <div className="flex gap-1" data-testid="time-range-filter">
           {(["30d", "90d", "1y", "all"] as const).map((range) => (
-            <Button
+            <button
               key={range}
-              variant={timeRange === range ? "default" : "outline"}
-              size="sm"
               onClick={() => setTimeRange(range)}
               data-testid={`time-range-${range}`}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                timeRange === range
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
             >
               {range === "all" ? "All" : range}
-            </Button>
+            </button>
           ))}
         </div>
       </div>
@@ -195,72 +197,46 @@ export default function MetricsPage() {
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
       ) : !metricsHistory || metricsHistory.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Activity className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-            <h3 className="text-lg font-medium mb-2">No metrics tracked yet</h3>
-            <p className="text-muted-foreground text-sm max-w-md mx-auto mb-4">
-              Add custom metrics to your tasks to track things like weight, reps, duration, or any other measurement you want to monitor over time.
-              Edit any task and look for "Track Statistics" in the Advanced Options section.
-            </p>
-            <Link href="/">
-              <Button variant="outline">
-                Go to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+        <div className="py-16 text-center">
+          <Activity className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+          <h3 className="text-lg font-medium mb-2">No metrics tracked yet</h3>
+          <p className="text-muted-foreground text-sm max-w-md mx-auto mb-4">
+            Add custom metrics to your tasks to track things like weight, reps, duration, or any other measurement you want to monitor over time.
+            Edit any task and look for "Track Statistics" in the Advanced Options section.
+          </p>
+          <Link href="/">
+            <Button variant="outline">
+              Go to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Link>
+        </div>
       ) : (
-        <div className="grid gap-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Metrics
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{metricsHistory.length}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Across {taskIds.length} tasks
-                </p>
-              </CardContent>
-            </Card>
+        <div className="grid gap-8">
+          <div className="grid grid-cols-3 gap-4 md:gap-6">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Total Metrics</p>
+              <div className="text-2xl md:text-3xl font-bold tracking-tight">{metricsHistory.length}</div>
+              <p className="text-[11px] text-muted-foreground">across {taskIds.length} tasks</p>
+            </div>
             
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Data Points
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">
-                  {metricsHistory.reduce((sum, m) => sum + m.values.length, 0)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Recorded measurements
-                </p>
-              </CardContent>
-            </Card>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Data Points</p>
+              <div className="text-2xl md:text-3xl font-bold tracking-tight">
+                {metricsHistory.reduce((sum, m) => sum + m.values.length, 0)}
+              </div>
+              <p className="text-[11px] text-muted-foreground">recorded</p>
+            </div>
             
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Trending Up
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-green-500">
-                  {metricsHistory.filter(m => {
-                    const trend = calculateTrend(m.values);
-                    return trend?.direction === "up";
-                  }).length}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Metrics improving
-                </p>
-              </CardContent>
-            </Card>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Trending Up</p>
+              <div className="text-2xl md:text-3xl font-bold tracking-tight text-green-600 dark:text-green-400">
+                {metricsHistory.filter(m => {
+                  const trend = calculateTrend(m.values);
+                  return trend?.direction === "up";
+                }).length}
+              </div>
+              <p className="text-[11px] text-muted-foreground">improving</p>
+            </div>
           </div>
 
           {taskIds.map((taskId) => {
@@ -274,110 +250,109 @@ export default function MetricsPage() {
             const domain = getChartDomain(chartSeries);
             
             return (
-              <Card key={taskId} data-testid={`task-metrics-${taskId}`}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <div>
-                      <CardTitle className="text-lg">{taskTitle}</CardTitle>
-                      <CardDescription className="mt-1">
-                        {taskMetrics.length} metric{taskMetrics.length !== 1 ? "s" : ""} tracked
-                      </CardDescription>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {taskMetrics.map((metric, idx) => {
-                        const isVisible = isMetricVisible(taskId, metric.metricId);
-                        const trend = calculateTrend(metric.values);
-                        const latestValue = metric.values[0]?.value;
-                        
-                        return (
-                          <Button
-                            key={metric.metricId}
-                            variant={isVisible ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => toggleMetricVisibility(taskId, metric.metricId)}
-                            className="gap-2"
-                            data-testid={`toggle-metric-${metric.metricId}`}
-                          >
-                            {isVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                            <span>{metric.metricName}</span>
-                            {latestValue && (
-                              <Badge 
-                                variant="secondary" 
-                                className="ml-1 text-[10px]"
-                                style={{ 
-                                  borderLeft: `3px solid ${CHART_COLORS[idx % CHART_COLORS.length]}` 
-                                }}
-                              >
-                                {latestValue}{metric.unit ? ` ${metric.unit}` : ""}
-                              </Badge>
-                            )}
-                            {trend && <TrendIcon direction={trend.direction} />}
-                          </Button>
-                        );
-                      })}
-                    </div>
+              <section key={taskId} className="border-t border-border pt-6" data-testid={`task-metrics-${taskId}`}>
+                <div className="flex items-start justify-between gap-2 flex-wrap mb-4">
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground">{taskTitle}</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {taskMetrics.length} metric{taskMetrics.length !== 1 ? "s" : ""} tracked
+                    </p>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  {visibleTaskMetrics.length === 0 ? (
-                    <div className="h-48 flex items-center justify-center text-muted-foreground">
-                      <p>Select at least one metric to display the chart</p>
-                    </div>
-                  ) : !hasData ? (
-                    <div className="h-48 flex items-center justify-center text-muted-foreground">
-                      <p>No data points in selected time range</p>
-                    </div>
-                  ) : (
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart>
-                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                          <XAxis 
-                            dataKey="timestamp"
-                            type="number"
-                            domain={domain}
-                            tickFormatter={(ts) => format(new Date(ts), "MMM d")}
-                            tick={{ fontSize: 11 }} 
-                            className="text-muted-foreground"
-                            allowDuplicatedCategory={false}
+                  <div className="flex flex-wrap gap-1.5">
+                    {taskMetrics.map((metric, idx) => {
+                      const isVisible = isMetricVisible(taskId, metric.metricId);
+                      const trend = calculateTrend(metric.values);
+                      const latestValue = metric.values[0]?.value;
+                      
+                      return (
+                        <button
+                          key={metric.metricId}
+                          onClick={() => toggleMetricVisibility(taskId, metric.metricId)}
+                          data-testid={`toggle-metric-${metric.metricId}`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                            isVisible
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                          {metric.metricName}
+                          {latestValue && (
+                            <span 
+                              className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                                isVisible ? "bg-primary-foreground/20" : "bg-foreground/10"
+                              }`}
+                              style={{ borderLeft: `2px solid ${CHART_COLORS[idx % CHART_COLORS.length]}` }}
+                            >
+                              {latestValue}{metric.unit ? ` ${metric.unit}` : ""}
+                            </span>
+                          )}
+                          {trend && <TrendIcon direction={trend.direction} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                
+                {visibleTaskMetrics.length === 0 ? (
+                  <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+                    Select at least one metric to display the chart
+                  </div>
+                ) : !hasData ? (
+                  <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+                    No data points in selected time range
+                  </div>
+                ) : (
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis 
+                          dataKey="timestamp"
+                          type="number"
+                          domain={domain}
+                          tickFormatter={(ts) => format(new Date(ts), "MMM d")}
+                          tick={{ fontSize: 11 }} 
+                          className="text-muted-foreground"
+                          allowDuplicatedCategory={false}
+                        />
+                        <YAxis 
+                          tick={{ fontSize: 11 }} 
+                          className="text-muted-foreground"
+                          width={50}
+                        />
+                        <Tooltip 
+                          labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy")}
+                          contentStyle={{ 
+                            backgroundColor: "hsl(var(--card))", 
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                            fontSize: "12px",
+                          }}
+                        />
+                        <Legend />
+                        {chartSeries.map((series) => (
+                          <Line 
+                            key={series.key}
+                            data={series.data}
+                            type="monotone" 
+                            dataKey="value"
+                            name={series.name}
+                            stroke={series.color}
+                            strokeWidth={2}
+                            dot={{ fill: series.color, strokeWidth: 0, r: 3 }}
+                            activeDot={{ r: 5 }}
+                            connectNulls
                           />
-                          <YAxis 
-                            tick={{ fontSize: 11 }} 
-                            className="text-muted-foreground"
-                            width={50}
-                          />
-                          <Tooltip 
-                            labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy")}
-                            contentStyle={{ 
-                              backgroundColor: "hsl(var(--card))", 
-                              border: "1px solid hsl(var(--border))",
-                              borderRadius: "8px",
-                            }}
-                          />
-                          <Legend />
-                          {chartSeries.map((series) => (
-                            <Line 
-                              key={series.key}
-                              data={series.data}
-                              type="monotone" 
-                              dataKey="value"
-                              name={series.name}
-                              stroke={series.color}
-                              strokeWidth={2}
-                              dot={{ fill: series.color, strokeWidth: 0, r: 3 }}
-                              activeDot={{ r: 5 }}
-                              connectNulls
-                            />
-                          ))}
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-2 text-center">
-                    {chartSeries.reduce((sum, s) => sum + s.data.length, 0)} data points in selected range
-                  </p>
-                </CardContent>
-              </Card>
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground mt-2 text-center">
+                  {chartSeries.reduce((sum, s) => sum + s.data.length, 0)} data points
+                </p>
+              </section>
             );
           })}
         </div>

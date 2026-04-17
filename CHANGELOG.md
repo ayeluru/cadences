@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.3
+
+- Fixed task history not loading (missing auth headers on API request)
+- Fixed metrics not saving on task creation or edit (same auth issue)
+- Fixed variations not loading or saving in edit dialog (same auth issue)
+- Fixed error state for history dialog (no longer shows "no completions" on failure)
+- Sped up history loading by batching metric value queries (was N+1, now single query)
+- Prevented creating frequency tasks without specifying a count
+- Category and tags are now top-level fields in create task dialog (not hidden in Advanced)
+- New categories created during task creation/edit now auto-assign to the task
+- Added inline "New" category creation to the edit task dialog
+- Mobile: scroll resets to top on page navigation (no more landing mid-page)
+- Mobile: FAB on feedback page now opens the feedback form instead of task creation
+- Extracted SubmitFeedbackDialog to shared component
+
 ## 1.8.2
 
 - Redesigned app icon: bold white wave motif on teal-green background

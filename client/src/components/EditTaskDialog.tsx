@@ -5,9 +5,10 @@ import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateTask, useTasks, useReassignTask } from "@/hooks/use-tasks";
+import { apiRequest } from "@/lib/queryClient";
 import { insertTaskSchema, TaskWithDetails, TaskMetric, TaskVariation } from "@shared/schema";
 import { z } from "zod";
-import { useCategories } from "@/hooks/use-categories";
+import { useCategories, useCreateCategory } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useState, useEffect } from "react";
@@ -72,12 +73,15 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const updateMutation = useUpdateTask();
   const reassignMutation = useReassignTask();
   const { data: categories } = useCategories();
+  const createCategoryMutation = useCreateCategory();
   const { data: tags } = useTags();
   const { data: profiles } = useProfiles();
   const { data: allTasks } = useTasks();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [newMetrics, setNewMetrics] = useState<MetricDef[]>([]);
   const [newMetricName, setNewMetricName] = useState("");
   const [newMetricUnit, setNewMetricUnit] = useState("");
@@ -94,7 +98,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const [newVariationName, setNewVariationName] = useState("");
   const [isLoadingVariations, setIsLoadingVariations] = useState(false);
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormValues>({
+  const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: task.title,
@@ -143,11 +147,9 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
     if (!task.id) return;
     setIsLoadingVariations(true);
     try {
-      const res = await fetch(`/api/tasks/${task.id}/variations`, { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setVariations(data || []);
-      }
+      const res = await apiRequest('GET', `/api/tasks/${task.id}/variations`);
+      const data = await res.json();
+      setVariations(data || []);
     } catch (error) {
       console.error('Failed to load variations:', error);
     } finally {
@@ -158,18 +160,11 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const addVariation = async () => {
     if (!newVariationName.trim()) return;
     try {
-      const res = await fetch(`/api/tasks/${task.id}/variations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newVariationName.trim() }),
-        credentials: 'include',
-      });
-      if (res.ok) {
-        const newVar = await res.json();
-        setVariations(prev => [...prev, newVar]);
-        setNewVariationName("");
-        toast({ title: "Variation added", description: `"${newVar.name}" added to this task.` });
-      }
+      const res = await apiRequest('POST', `/api/tasks/${task.id}/variations`, { name: newVariationName.trim() });
+      const newVar = await res.json();
+      setVariations(prev => [...prev, newVar]);
+      setNewVariationName("");
+      toast({ title: "Variation added", description: `"${newVar.name}" added to this task.` });
     } catch (error) {
       toast({ title: "Error", description: "Failed to add variation", variant: "destructive" });
     }
@@ -177,14 +172,9 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
 
   const deleteVariation = async (variationId: number) => {
     try {
-      const res = await fetch(`/api/variations/${variationId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        setVariations(prev => prev.filter(v => v.id !== variationId));
-        toast({ title: "Variation removed", description: "Variation deleted from this task." });
-      }
+      await apiRequest('DELETE', `/api/variations/${variationId}`);
+      setVariations(prev => prev.filter(v => v.id !== variationId));
+      toast({ title: "Variation removed", description: "Variation deleted from this task." });
     } catch (error) {
       toast({ title: "Error", description: "Failed to delete variation", variant: "destructive" });
     }
@@ -200,12 +190,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       
       if (newMetrics.length > 0) {
         for (const metric of newMetrics) {
-          await fetch(`/api/tasks/${task.id}/metrics`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(metric),
-            credentials: 'include',
-          });
+          await apiRequest('POST', `/api/tasks/${task.id}/metrics`, metric);
         }
       }
 
@@ -217,6 +202,11 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
         tagIds: selectedTagIds,
         taskType,
       };
+
+      if (taskType === 'frequency' && (!data.targetCount || data.targetCount < 1)) {
+        toast({ title: "Error", description: "Please specify how many times per period", variant: "destructive" });
+        return;
+      }
 
       if (taskType === 'interval') {
         updateData.intervalValue = data.intervalValue;
@@ -284,6 +274,21 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
     );
   };
 
+  const handleCreateNewCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      const newCategory = await createCategoryMutation.mutateAsync({ name: newCategoryName });
+      setNewCategoryName("");
+      await queryClient.refetchQueries({ queryKey: ['/api/categories'] });
+      setShowNewCategoryInput(false);
+      if (newCategory?.id) {
+        setValue("categoryId", newCategory.id);
+      }
+    } catch {
+      // Error toast handled by mutation hook
+    }
+  };
+
   const addMetric = () => {
     if (!newMetricName.trim()) return;
     setNewMetrics(prev => [...prev, { 
@@ -301,14 +306,9 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
 
   const deleteExistingMetric = async (metricId: number) => {
     try {
-      const res = await fetch(`/api/metrics/${metricId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
-        toast({ title: "Metric deleted", description: "Statistic removed from task." });
-      }
+      await apiRequest('DELETE', `/api/metrics/${metricId}`);
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      toast({ title: "Metric deleted", description: "Statistic removed from task." });
     } catch (error) {
       toast({ title: "Error", description: "Failed to delete metric", variant: "destructive" });
     }
@@ -501,18 +501,55 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
 
 
             <div className="space-y-2">
-              <Label htmlFor="edit-category">Category</Label>
-              <select 
-                id="edit-category"
-                data-testid="select-edit-category"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                {...register("categoryId")}
-              >
-                <option value="">No category</option>
-                {categories?.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="edit-category">Category</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => setShowNewCategoryInput(!showNewCategoryInput)}
+                >
+                  <Plus className="w-3 h-3 mr-1" /> New
+                </Button>
+              </div>
+              {showNewCategoryInput ? (
+                <div className="flex gap-2">
+                  <Input
+                    data-testid="input-edit-new-category"
+                    placeholder="Category name..."
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleCreateNewCategory();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    data-testid="button-edit-add-category"
+                    onClick={handleCreateNewCategory}
+                    disabled={createCategoryMutation.isPending || !newCategoryName.trim()}
+                  >
+                    {createCategoryMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                  </Button>
+                </div>
+              ) : (
+                <select 
+                  id="edit-category"
+                  data-testid="select-edit-category"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  {...register("categoryId")}
+                >
+                  <option value="">No category</option>
+                  {categories?.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {profiles && profiles.length > 1 && (

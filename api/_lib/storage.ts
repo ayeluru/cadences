@@ -71,6 +71,7 @@ export interface IStorage {
   
   // Metric Values
   getMetricValues(completionId: number): Promise<MetricValue[]>;
+  getMetricValuesBatch(completionIds: number[]): Promise<Map<number, MetricValue[]>>;
   getMetricHistory(metricId: number, limit?: number): Promise<{id: number, value: number | string, completedAt: Date, variationId: number | null, variationName: string | null}[]>;
 
   // Task Tags helpers
@@ -1570,6 +1571,17 @@ export class DatabaseStorage implements IStorage {
   // Metric Values
   async getMetricValues(completionId: number): Promise<MetricValue[]> {
     return await db.select().from(metricValues).where(eq(metricValues.completionId, completionId));
+  }
+
+  async getMetricValuesBatch(completionIds: number[]): Promise<Map<number, MetricValue[]>> {
+    if (completionIds.length === 0) return new Map();
+    const rows = await db.select().from(metricValues).where(inArray(metricValues.completionId, completionIds));
+    const map = new Map<number, MetricValue[]>();
+    for (const id of completionIds) map.set(id, []);
+    for (const row of rows) {
+      map.get(row.completionId)!.push(row);
+    }
+    return map;
   }
 
   async getMetricHistory(metricId: number, limit: number = 50): Promise<{id: number, value: number | string, completedAt: Date, variationId: number | null, variationName: string | null}[]> {
