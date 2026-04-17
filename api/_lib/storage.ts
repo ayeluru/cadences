@@ -2034,8 +2034,12 @@ export class DatabaseStorage implements IStorage {
   }
   
   async deleteAllUserData(userId: string): Promise<void> {
-    // Deleting profiles CASCADE-deletes tasks, categories, and tags.
-    // Deleting tasks CASCADE-deletes completions, metrics, streaks, variations, and tag associations.
+    await db.delete(feedbackComments).where(eq(feedbackComments.userId, userId));
+    await db.delete(feedbackVotes).where(eq(feedbackVotes.userId, userId));
+    await db.delete(feedbackSubmissions).where(eq(feedbackSubmissions.userId, userId));
+    await db.delete(userRoles).where(eq(userRoles.userId, userId));
+    // Deleting profiles CASCADE-deletes tasks, categories, tags,
+    // completions, metrics, streaks, variations, and tag associations.
     await db.delete(profiles).where(eq(profiles.userId, userId));
   }
 
