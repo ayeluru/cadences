@@ -28,3 +28,25 @@ export function useSetUserRole() {
     },
   });
 }
+
+export function useAdminResetPassword() {
+  return useMutation({
+    mutationFn: async ({ userId, password }: { userId: string; password: string }) => {
+      const res = await apiRequest("POST", `/api/admin/users/${userId}/reset-password`, { password });
+      return res.json();
+    },
+  });
+}
+
+export function useAdminDeleteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("DELETE", `/api/admin/users/${userId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    },
+  });
+}

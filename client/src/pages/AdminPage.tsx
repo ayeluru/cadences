@@ -1,11 +1,185 @@
+import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useAdminUsers, useSetUserRole, type AdminUser } from "@/hooks/use-admin";
+import { useAdminUsers, useSetUserRole, useAdminResetPassword, useAdminDeleteUser, type AdminUser } from "@/hooks/use-admin";
 import { useFeedbackStats } from "@/hooks/use-feedback";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { Loader2, Shield, ShieldOff, Users, MessageSquarePlus, AlertCircle, Eye, ChevronRight } from "lucide-react";
+import {
+  Loader2, Shield, ShieldOff, Users, MessageSquarePlus, AlertCircle,
+  Eye, ChevronRight, KeyRound, Trash2, AlertTriangle, MoreVertical,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+function ResetPasswordDialog({
+  adminUser,
+  open,
+  onOpenChange,
+}: {
+  adminUser: AdminUser;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const resetPassword = useAdminResetPassword();
+  const [password, setPassword] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+
+  const displayName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") || adminUser.email;
+  const canSubmit = password.length >= 6 && confirmText === "RESET";
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    try {
+      await resetPassword.mutateAsync({ userId: adminUser.id, password });
+      toast({ title: "Password reset", description: `Password for ${displayName} has been reset.` });
+      onOpenChange(false);
+      setPassword("");
+      setConfirmText("");
+    } catch {
+      toast({ title: "Error", description: "Failed to reset password", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setPassword(""); setConfirmText(""); } }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="w-5 h-5" />
+            Reset Password
+          </DialogTitle>
+          <DialogDescription>
+            Set a new password for <strong>{displayName}</strong> ({adminUser.email}).
+            They will need to use this new password to log in.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <Label className="text-xs">New password</Label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 6 characters"
+              autoFocus
+            />
+          </div>
+          <div>
+            <Label className="text-xs">
+              Type <span className="font-mono font-bold">RESET</span> to confirm
+            </Label>
+            <Input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="RESET"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            size="sm"
+            onClick={handleSubmit}
+            disabled={!canSubmit || resetPassword.isPending}
+          >
+            {resetPassword.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+            Reset Password
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteUserDialog({
+  adminUser,
+  open,
+  onOpenChange,
+}: {
+  adminUser: AdminUser;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const deleteUser = useAdminDeleteUser();
+  const [confirmText, setConfirmText] = useState("");
+
+  const displayName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") || adminUser.email;
+  const canSubmit = confirmText === "DELETE";
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    try {
+      await deleteUser.mutateAsync(adminUser.id);
+      toast({ title: "Account deleted", description: `${displayName}'s account has been permanently deleted.` });
+      onOpenChange(false);
+      setConfirmText("");
+    } catch {
+      toast({ title: "Error", description: "Failed to delete account", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setConfirmText(""); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="w-5 h-5" />
+            Delete Account
+          </DialogTitle>
+          <DialogDescription>
+            Permanently delete <strong>{displayName}</strong>'s account ({adminUser.email}).
+            This will remove all their data — profiles, tasks, completions, categories, and tags.
+            This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <Label className="text-xs">
+              Type <span className="font-mono font-bold">DELETE</span> to confirm
+            </Label>
+            <Input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE"
+              autoFocus
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={!canSubmit || deleteUser.isPending}
+          >
+            {deleteUser.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+            Delete Account
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function UserRow({ adminUser, currentUserId }: { adminUser: AdminUser; currentUserId: string }) {
   const setRole = useSetUserRole();
@@ -13,9 +187,12 @@ function UserRow({ adminUser, currentUserId }: { adminUser: AdminUser; currentUs
   const isSelf = adminUser.id === currentUserId;
   const isAdminRole = adminUser.role === "admin";
 
+  const [resetPwOpen, setResetPwOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
   const displayName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") || adminUser.email;
 
-  const handleToggle = async () => {
+  const handleToggleRole = async () => {
     if (isSelf) {
       toast({ title: "Cannot change your own role", variant: "destructive" });
       return;
@@ -30,44 +207,61 @@ function UserRow({ adminUser, currentUserId }: { adminUser: AdminUser; currentUs
   };
 
   return (
-    <div className="flex items-center justify-between py-3 group">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
-          {(adminUser.firstName?.[0] ?? adminUser.email[0]).toUpperCase()}
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-medium truncate">{displayName}</p>
-            {isSelf && <Badge variant="outline" className="text-[10px] py-0 h-4">You</Badge>}
-            <Badge variant={isAdminRole ? "default" : "secondary"} className="text-[10px] h-4 px-1.5">
-              {isAdminRole ? "Admin" : "User"}
-            </Badge>
+    <>
+      <div className="flex items-center justify-between py-3 group">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground shrink-0">
+            {(adminUser.firstName?.[0] ?? adminUser.email[0]).toUpperCase()}
           </div>
-          <p className="text-xs text-muted-foreground truncate">{adminUser.email}</p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium truncate">{displayName}</p>
+              {isSelf && <Badge variant="outline" className="text-[10px] py-0 h-4">You</Badge>}
+              <Badge variant={isAdminRole ? "default" : "secondary"} className="text-[10px] h-4 px-1.5">
+                {isAdminRole ? "Admin" : "User"}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground truncate">{adminUser.email}</p>
+          </div>
         </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0">
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem
+              onClick={handleToggleRole}
+              disabled={isSelf || setRole.isPending}
+            >
+              {isAdminRole ? (
+                <><ShieldOff className="w-3.5 h-3.5 mr-2" /> Revoke Admin</>
+              ) : (
+                <><Shield className="w-3.5 h-3.5 mr-2" /> Grant Admin</>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setResetPwOpen(true)}
+              disabled={isSelf}
+            >
+              <KeyRound className="w-3.5 h-3.5 mr-2" /> Reset Password
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => setDeleteOpen(true)}
+              disabled={isSelf}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Account
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      <Button
-        variant={isAdminRole ? "destructive" : "outline"}
-        size="sm"
-        onClick={handleToggle}
-        disabled={isSelf || setRole.isPending}
-        className="shrink-0 text-xs h-7"
-      >
-        {setRole.isPending ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        ) : isAdminRole ? (
-          <>
-            <ShieldOff className="w-3 h-3 mr-1" />
-            Revoke
-          </>
-        ) : (
-          <>
-            <Shield className="w-3 h-3 mr-1" />
-            Grant Admin
-          </>
-        )}
-      </Button>
-    </div>
+
+      <ResetPasswordDialog adminUser={adminUser} open={resetPwOpen} onOpenChange={setResetPwOpen} />
+      <DeleteUserDialog adminUser={adminUser} open={deleteOpen} onOpenChange={setDeleteOpen} />
+    </>
   );
 }
 
