@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useParams, useLocation } from "wouter";
-import { ThumbsUp, ArrowLeft, Bug, Lightbulb, MessageCircle, Loader2, Trash2, Send, EyeOff, Ghost, User, Shield, Pin, PinOff } from "lucide-react";
+import { ThumbsUp, ArrowLeft, Bug, Lightbulb, MessageCircle, Loader2, Trash2, Send, EyeOff, Ghost, User, Shield, Pin, PinOff, CheckCircle2, XCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 const typeConfig: Record<string, { label: string; icon: any; color: string }> = {
@@ -21,10 +21,14 @@ const typeConfig: Record<string, { label: string; icon: any; color: string }> = 
 
 const statusConfig: Record<string, { label: string; dotColor: string }> = {
   new: { label: "New", dotColor: "bg-gray-400" },
+  needs_info: { label: "Needs Info", dotColor: "bg-orange-400" },
   under_review: { label: "Under Review", dotColor: "bg-yellow-500" },
+  duplicate: { label: "Duplicate", dotColor: "bg-gray-500" },
+  backlog: { label: "Backlog", dotColor: "bg-slate-400" },
   planned: { label: "Planned", dotColor: "bg-blue-500" },
   in_progress: { label: "In Progress", dotColor: "bg-purple-500" },
   done: { label: "Done", dotColor: "bg-green-500" },
+  released: { label: "Released", dotColor: "bg-emerald-500" },
   declined: { label: "Declined", dotColor: "bg-red-500" },
 };
 
@@ -131,6 +135,22 @@ export default function FeedbackDetailPage() {
           <span className="text-xs font-bold tabular-nums">{feedback.voteCount}</span>
         </button>
       </div>
+
+      {/* Terminal status banner */}
+      {(feedback.status === "done" || feedback.status === "released") && (
+        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-400">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span className="text-sm font-medium">
+            {feedback.status === "released" ? "This has been shipped." : "This item has been completed."}
+          </span>
+        </div>
+      )}
+      {feedback.status === "declined" && (
+        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 dark:text-red-400">
+          <XCircle className="w-4 h-4 shrink-0" />
+          <span className="text-sm font-medium">This was declined.</span>
+        </div>
+      )}
 
       {/* Description */}
       <Card>

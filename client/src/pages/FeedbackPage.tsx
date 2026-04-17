@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
-import { Plus, ThumbsUp, MessageSquare, Bug, Lightbulb, MessageCircle, Loader2, Eye, EyeOff, Filter, X } from "lucide-react";
+import { Plus, ThumbsUp, MessageSquare, Bug, Lightbulb, MessageCircle, Loader2, Eye, EyeOff, Filter, X, Check, ChevronDown, ChevronRight } from "lucide-react";
 import { SubmitFeedbackDialog } from "@/components/SubmitFeedbackDialog";
 
 const typeConfig = {
@@ -17,12 +17,18 @@ const typeConfig = {
 
 const statusConfig: Record<string, { label: string; dotColor: string }> = {
   new: { label: "New", dotColor: "bg-gray-400" },
+  needs_info: { label: "Needs Info", dotColor: "bg-orange-400" },
   under_review: { label: "Under Review", dotColor: "bg-yellow-500" },
+  duplicate: { label: "Duplicate", dotColor: "bg-gray-500" },
+  backlog: { label: "Backlog", dotColor: "bg-slate-400" },
   planned: { label: "Planned", dotColor: "bg-blue-500" },
   in_progress: { label: "In Progress", dotColor: "bg-purple-500" },
   done: { label: "Done", dotColor: "bg-green-500" },
+  released: { label: "Released", dotColor: "bg-emerald-500" },
   declined: { label: "Declined", dotColor: "bg-red-500" },
 };
+
+const TERMINAL_STATUSES = new Set(["done", "released", "declined"]);
 
 function FeedbackCard({ item, isAdmin, currentUserId }: { item: FeedbackWithCounts; isAdmin: boolean; currentUserId: string }) {
   const toggleVote = useToggleVote();
@@ -31,10 +37,11 @@ function FeedbackCard({ item, isAdmin, currentUserId }: { item: FeedbackWithCoun
   const type = typeConfig[item.type as keyof typeof typeConfig];
   const status = statusConfig[item.status];
   const TypeIcon = type?.icon ?? MessageCircle;
+  const isTerminal = TERMINAL_STATUSES.has(item.status);
 
   return (
-    <Link href={`/feedback/${item.id}`} className="block group">
-      <div className="flex items-stretch gap-0 rounded-xl border bg-card hover:border-primary/40 hover:shadow-sm transition-all">
+    <Link href={`/feedback/${item.id}`} className={`block group ${isTerminal ? "opacity-55" : ""}`}>
+      <div className={`flex items-stretch gap-0 rounded-xl border bg-card hover:border-primary/40 hover:shadow-sm transition-all ${isTerminal ? "border-border/50" : ""}`}>
         {/* Vote column */}
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleVote.mutate(item.id); }}
@@ -51,11 +58,14 @@ function FeedbackCard({ item, isAdmin, currentUserId }: { item: FeedbackWithCoun
         {/* Content */}
         <div className="flex-1 min-w-0 p-3.5 pr-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="font-semibold text-sm text-foreground leading-snug group-hover:text-primary transition-colors truncate">
-                {item.title}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
+            <div className="min-w-0 flex items-center gap-1.5">
+              {isTerminal && <Check className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />}
+              <div className="min-w-0">
+                <h3 className={`font-semibold text-sm leading-snug group-hover:text-primary transition-colors truncate ${isTerminal ? "line-through decoration-muted-foreground/40 text-muted-foreground" : "text-foreground"}`}>
+                  {item.title}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
+              </div>
             </div>
             {isAdmin && (
               <button
@@ -159,6 +169,46 @@ function FilterBar({ statusFilter, setStatusFilter, visibilityFilter, setVisibil
   );
 }
 
+function FeedbackList({ items, isAdmin, currentUserId, emptyMessage, showCompleted, setShowCompleted }: {
+  items: FeedbackWithCounts[];
+  isAdmin: boolean;
+  currentUserId: string;
+  emptyMessage: string;
+  showCompleted: boolean;
+  setShowCompleted: (v: boolean) => void;
+}) {
+  const active = items.filter(i => !TERMINAL_STATUSES.has(i.status));
+  const terminal = items.filter(i => TERMINAL_STATUSES.has(i.status));
+
+  if (items.length === 0) return <EmptyState message={emptyMessage} />;
+
+  return (
+    <div className="space-y-2">
+      {active.map(item => (
+        <FeedbackCard key={item.id} item={item} isAdmin={isAdmin} currentUserId={currentUserId} />
+      ))}
+
+      {terminal.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowCompleted(!showCompleted)}
+            className="flex items-center gap-1.5 w-full py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showCompleted
+              ? <ChevronDown className="w-3.5 h-3.5" />
+              : <ChevronRight className="w-3.5 h-3.5" />
+            }
+            <span>{terminal.length} completed / closed</span>
+          </button>
+          {showCompleted && terminal.map(item => (
+            <FeedbackCard key={item.id} item={item} isAdmin={isAdmin} currentUserId={currentUserId} />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function FeedbackPage() {
   const { user, isAdmin } = useAuth();
   const { data: items, isLoading } = useFeedbackList();
@@ -166,6 +216,7 @@ export default function FeedbackPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [visibilityFilter, setVisibilityFilter] = useState("all");
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const applyFilters = (list: FeedbackWithCounts[]) => {
     let filtered = list;
@@ -183,7 +234,7 @@ export default function FeedbackPage() {
   const allItems = items ?? [];
   const publicItems = allItems.filter(i => i.isPublic);
   const myItems = allItems.filter(i => i.userId === userId);
-  const unreviewedItems = allItems.filter(i => i.status === "new" && !i.isPublic);
+  const unreviewedItems = allItems.filter(i => (i.status === "new" || i.status === "needs_info") && !i.isPublic);
 
   return (
     <div>
@@ -230,22 +281,26 @@ export default function FeedbackPage() {
             />
           </div>
 
-          <TabsContent value="public" className="space-y-2">
-            {(() => {
-              const filtered = applyFilters(publicItems);
-              return filtered.length === 0
-                ? <EmptyState message="No public submissions match your filters" />
-                : filtered.map(item => <FeedbackCard key={item.id} item={item} isAdmin={isAdmin} currentUserId={userId} />);
-            })()}
+          <TabsContent value="public">
+            <FeedbackList
+              items={applyFilters(publicItems)}
+              isAdmin={isAdmin}
+              currentUserId={userId}
+              emptyMessage="No public submissions match your filters"
+              showCompleted={showCompleted}
+              setShowCompleted={setShowCompleted}
+            />
           </TabsContent>
 
-          <TabsContent value="mine" className="space-y-2">
-            {(() => {
-              const filtered = applyFilters(myItems);
-              return filtered.length === 0
-                ? <EmptyState message="No submissions match your filters" />
-                : filtered.map(item => <FeedbackCard key={item.id} item={item} isAdmin={isAdmin} currentUserId={userId} />);
-            })()}
+          <TabsContent value="mine">
+            <FeedbackList
+              items={applyFilters(myItems)}
+              isAdmin={isAdmin}
+              currentUserId={userId}
+              emptyMessage="No submissions match your filters"
+              showCompleted={showCompleted}
+              setShowCompleted={setShowCompleted}
+            />
           </TabsContent>
 
           {isAdmin && (
@@ -258,13 +313,15 @@ export default function FeedbackPage() {
           )}
 
           {isAdmin && (
-            <TabsContent value="all" className="space-y-2">
-              {(() => {
-                const filtered = applyFilters(allItems);
-                return filtered.length === 0
-                  ? <EmptyState message="No submissions match your filters" />
-                  : filtered.map(item => <FeedbackCard key={item.id} item={item} isAdmin={isAdmin} currentUserId={userId} />);
-              })()}
+            <TabsContent value="all">
+              <FeedbackList
+                items={applyFilters(allItems)}
+                isAdmin={isAdmin}
+                currentUserId={userId}
+                emptyMessage="No submissions match your filters"
+                showCompleted={showCompleted}
+                setShowCompleted={setShowCompleted}
+              />
             </TabsContent>
           )}
         </Tabs>
