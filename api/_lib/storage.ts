@@ -2174,7 +2174,7 @@ export class DatabaseStorage implements IStorage {
     let publicCount = 0;
     for (const row of all) {
       byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
-      if (row.status === 'new' && !row.isPublic) unreviewed++;
+      if ((row.status === 'new' || row.status === 'needs_info') && !row.isPublic) unreviewed++;
       if (row.isPublic) publicCount++;
     }
     return { total: all.length, unreviewed, public: publicCount, byStatus };
@@ -2196,19 +2196,34 @@ export class DatabaseStorage implements IStorage {
       ? await db.select().from(feedbackSubmissions).where(and(...conditions)).orderBy(desc(feedbackSubmissions.createdAt))
       : await db.select().from(feedbackSubmissions).orderBy(desc(feedbackSubmissions.createdAt));
 
-    const result = await Promise.all(submissions.map(async (sub) => {
-      const [voteResult] = await db.select({ count: drizzleCount() }).from(feedbackVotes).where(eq(feedbackVotes.feedbackId, sub.id));
-      const [commentResult] = await db.select({ count: drizzleCount() }).from(feedbackComments).where(eq(feedbackComments.feedbackId, sub.id));
-      const [userVote] = await db.select().from(feedbackVotes).where(and(eq(feedbackVotes.feedbackId, sub.id), eq(feedbackVotes.userId, userId)));
-      return {
-        ...sub,
-        voteCount: Number(voteResult?.count ?? 0),
-        commentCount: Number(commentResult?.count ?? 0),
-        hasVoted: !!userVote,
-      };
-    }));
+    if (submissions.length === 0) return [];
 
-    return result;
+    const ids = submissions.map(s => s.id);
+
+    const [voteCounts, commentCounts, userVotes] = await Promise.all([
+      db.select({ feedbackId: feedbackVotes.feedbackId, count: drizzleCount() })
+        .from(feedbackVotes)
+        .where(inArray(feedbackVotes.feedbackId, ids))
+        .groupBy(feedbackVotes.feedbackId),
+      db.select({ feedbackId: feedbackComments.feedbackId, count: drizzleCount() })
+        .from(feedbackComments)
+        .where(inArray(feedbackComments.feedbackId, ids))
+        .groupBy(feedbackComments.feedbackId),
+      db.select({ feedbackId: feedbackVotes.feedbackId })
+        .from(feedbackVotes)
+        .where(and(inArray(feedbackVotes.feedbackId, ids), eq(feedbackVotes.userId, userId))),
+    ]);
+
+    const voteMap = new Map(voteCounts.map(r => [r.feedbackId, Number(r.count)]));
+    const commentMap = new Map(commentCounts.map(r => [r.feedbackId, Number(r.count)]));
+    const votedSet = new Set(userVotes.map(r => r.feedbackId));
+
+    return submissions.map(sub => ({
+      ...sub,
+      voteCount: voteMap.get(sub.id) ?? 0,
+      commentCount: commentMap.get(sub.id) ?? 0,
+      hasVoted: votedSet.has(sub.id),
+    }));
   }
 
   async updateFeedback(id: number, updates: Partial<Pick<FeedbackSubmission, 'title' | 'description' | 'status' | 'isPublic' | 'adminResponse'>>): Promise<FeedbackSubmission> {

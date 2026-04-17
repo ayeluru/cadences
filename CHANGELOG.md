@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.1
+
+- Expanded feedback statuses from 6 to 10: added Needs Info, Duplicate, Backlog, and Released
+- Feedback list performance: replaced 3N+1 individual queries with 4 batched queries
+- Completed/closed feedback items (Done, Released, Declined) are now collapsed by default with a toggle to reveal them
+- Terminal feedback items appear with reduced opacity, strikethrough title, and a checkmark icon
+- Feedback detail page shows a contextual banner for completed, shipped, or declined items
+- "Needs Info" items now count as unreviewed alongside "New" items in admin stats
+
 ## 1.9.0
 
 - Users can now change their own password from the Account page (verifies current password first)

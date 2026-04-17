@@ -10,7 +10,11 @@ import { z } from "zod";
 
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const feedbackTypeEnum = pgEnum("feedback_type", ["bug", "feature_request", "feedback"]);
-export const feedbackStatusEnum = pgEnum("feedback_status", ["new", "under_review", "planned", "in_progress", "done", "declined"]);
+export const feedbackStatusEnum = pgEnum("feedback_status", [
+  "new", "needs_info", "under_review", "duplicate",
+  "backlog", "planned", "in_progress",
+  "done", "released", "declined"
+]);
 
 // Profiles - allow users to organize tasks into different contexts (Work, Personal, Exercise, Demo)
 export const profiles = pgTable("profiles", {

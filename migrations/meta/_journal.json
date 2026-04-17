@@ -43,6 +43,13 @@
       "when": 1776209253163,
       "tag": "0005_regular_nightmare",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776386508200,
+      "tag": "0006_eminent_magneto",
+      "breakpoints": true
     }
   ]
 }

@@ -285,19 +285,27 @@ export default function AdminPage() {
 
   const statusLabels: Record<string, string> = {
     new: "New",
+    needs_info: "Needs Info",
     under_review: "Under Review",
+    duplicate: "Duplicate",
+    backlog: "Backlog",
     planned: "Planned",
     in_progress: "In Progress",
     done: "Done",
+    released: "Released",
     declined: "Declined",
   };
 
   const statusDots: Record<string, string> = {
     new: "bg-gray-400",
+    needs_info: "bg-orange-400",
     under_review: "bg-yellow-500",
+    duplicate: "bg-gray-500",
+    backlog: "bg-slate-400",
     planned: "bg-blue-500",
     in_progress: "bg-purple-500",
     done: "bg-green-500",
+    released: "bg-emerald-500",
     declined: "bg-red-500",
   };
 
