@@ -1,9 +1,10 @@
 import {
   categories, tags, tasks, taskTags, completions, taskMetrics, metricValues, taskStreaks, profiles, taskVariations,
-  userRoles, feedbackSubmissions, feedbackVotes, feedbackComments,
+  userRoles, feedbackSubmissions, feedbackVotes, feedbackComments, taskAssignments,
   type Category, type Tag, type Task, type TaskTag, type Completion,
   type TaskMetric, type MetricValue, type TaskStreak, type Profile, type TaskVariation,
   type UserRole, type FeedbackSubmission, type FeedbackVote, type FeedbackComment,
+  type TaskAssignment,
   type InsertCategory, type InsertTag, type InsertTask,
   type InsertTaskMetric, type InsertMetricValue, type InsertProfile,
   type InsertFeedback, type InsertFeedbackComment
@@ -12,7 +13,7 @@ import {
 // User type from Supabase auth (no longer using custom users table)
 export type User = { id: string; email?: string };
 import { db } from "./db.js";
-import { eq, desc, asc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount } from "drizzle-orm";
+import { eq, desc, asc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount, isNotNull } from "drizzle-orm";
 import { startOfDay, differenceInDays } from "date-fns";
 
 export interface IStorage {
@@ -96,6 +97,13 @@ export interface IStorage {
   // Profile Import
   importTasksFromProfile(sourceProfileId: number, targetProfileId: number, userId: string): Promise<{ tasksCreated: number, categoriesCreated: number, tagsCreated: number }>;
   
+  // Task Assignments (weekly planner)
+  getAssignments(userId: string, startDate: string, endDate: string): Promise<TaskAssignment[]>;
+  getOverrideAssignments(userId: string): Promise<TaskAssignment[]>;
+  createAssignment(userId: string, taskId: number, plannedDate: string, originalDate?: string): Promise<TaskAssignment>;
+  deleteAssignment(assignmentId: number, userId: string): Promise<void>;
+  deleteAssignmentsByDateRange(userId: string, startDate: string, endDate: string): Promise<void>;
+
   // Account Management
   deleteAllUserData(userId: string): Promise<void>;
 }
@@ -2107,7 +2115,56 @@ export class DatabaseStorage implements IStorage {
     };
   }
   
+  async getAssignments(userId: string, startDate: string, endDate: string): Promise<TaskAssignment[]> {
+    return db.select().from(taskAssignments)
+      .where(and(
+        eq(taskAssignments.userId, userId),
+        gte(taskAssignments.plannedDate, startDate),
+        lte(taskAssignments.plannedDate, endDate),
+      ))
+      .orderBy(asc(taskAssignments.plannedDate));
+  }
+
+  async getOverrideAssignments(userId: string): Promise<TaskAssignment[]> {
+    return db.select().from(taskAssignments)
+      .where(and(
+        eq(taskAssignments.userId, userId),
+        isNotNull(taskAssignments.originalDate),
+      ));
+  }
+
+  async createAssignment(userId: string, taskId: number, plannedDate: string, originalDate?: string): Promise<TaskAssignment> {
+    const [assignment] = await db.insert(taskAssignments)
+      .values({ userId, taskId, plannedDate, originalDate: originalDate ?? null })
+      .returning();
+    return assignment;
+  }
+
+  async deleteAssignment(assignmentId: number, userId: string): Promise<void> {
+    await db.delete(taskAssignments)
+      .where(and(
+        eq(taskAssignments.id, assignmentId),
+        eq(taskAssignments.userId, userId),
+      ));
+  }
+
+  async deleteAssignmentsByDateRange(userId: string, startDate: string, endDate: string): Promise<void> {
+    await db.delete(taskAssignments)
+      .where(and(
+        eq(taskAssignments.userId, userId),
+        or(
+          and(gte(taskAssignments.plannedDate, startDate), lte(taskAssignments.plannedDate, endDate)),
+          and(
+            isNotNull(taskAssignments.originalDate),
+            gte(taskAssignments.originalDate, startDate),
+            lte(taskAssignments.originalDate, endDate),
+          ),
+        ),
+      ));
+  }
+
   async deleteAllUserData(userId: string): Promise<void> {
+    await db.delete(taskAssignments).where(eq(taskAssignments.userId, userId));
     await db.delete(feedbackComments).where(eq(feedbackComments.userId, userId));
     await db.delete(feedbackVotes).where(eq(feedbackVotes.userId, userId));
     await db.delete(feedbackSubmissions).where(eq(feedbackSubmissions.userId, userId));
