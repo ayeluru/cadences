@@ -97,9 +97,10 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
       : await storage.getCompletionsInPeriod(task.id, start, end);
 
     completionsThisPeriod = allCompletions.length;
-    recentCompletionDates = allCompletions.map(c =>
-      c.completedAt.toISOString().split('T')[0]
-    );
+    recentCompletionDates = allCompletions.map(c => {
+      const d = c.completedAt;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
     targetProgress = Math.min(100, (completionsThisPeriod / task.targetCount) * 100);
 
     const periodDays = task.targetPeriod === 'day' ? 1 : task.targetPeriod === 'week' ? 7 : 30;
