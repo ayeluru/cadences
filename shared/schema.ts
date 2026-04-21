@@ -357,4 +357,6 @@ export type TaskWithDetails = Task & {
   streak?: TaskStreak | null;
   variationStats?: { variationId: number; name: string; count: number; percentage: number }[];
   completedToday?: boolean;
+  effectiveDueToday?: boolean;
+  recentCompletionDates?: string[];
 };

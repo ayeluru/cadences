@@ -208,9 +208,11 @@ export function useCompleteTask() {
           const isFrequency = t.taskType === 'frequency';
           const newCompletionsThisPeriod = (t.completionsThisPeriod || 0) + 1;
           const targetMet = isFrequency && newCompletionsThisPeriod >= (t.targetCount || 0);
+          const isCompletedToday = nowDate.toDateString() === new Date().toDateString();
           return {
             ...t,
             lastCompletedAt: nowDate,
+            completedToday: isCompletedToday || t.completedToday,
             status: targetMet || !isFrequency ? 'later' : t.status,
             completionsThisPeriod: isFrequency ? newCompletionsThisPeriod : t.completionsThisPeriod,
             targetProgress: isFrequency && t.targetCount

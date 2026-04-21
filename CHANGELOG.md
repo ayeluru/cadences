@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.1.0
+
+- **Unified scheduling engine**: `enrichTask` is the single source of truth for `nextDue`, respecting all manual assignments across TodayView, WeekView, and Cadences
+- **Server-computed `effectiveDueToday`**: eliminates client-side assignment logic in Dashboard for cleaner, consistent "Due Today" determination
+- **Frequency task auto-scheduling**: pseudo-dated instances appear on WeekView calendar columns with dashed-border styling
+- **Completion calendar**: all frequency task completions shown on their respective days via `recentCompletionDates`
+- **Missed task handling**: past incomplete tasks show a red X icon; clicking offers backdate completion (immovable) or move/backdate choice (movable)
+- **Hover tooltips with delay**: hovering over WeekView cards shows bold text + darker border immediately; detail tooltip appears after 800ms with task info and action hints
+- **View filters**: segmented controls for Done (show/hide), Immovable (show/highlight/hide), and Movable (show/highlight/hide) with distinct highlight colors
+- **Day columns fill viewport**: weekly grid fills available height without page scrollbar; individual days scroll when overflowing
+- **Refractory period enforcement**: API rejects completions within the refractory window (429 error) instead of silently ignoring them
+- **Refractory period UI**: checkbox-based control in Create/Edit dialogs; editing does not retroactively invalidate past completions
+- **"Day" frequency period**: added Day option for frequency tasks (e.g. 8x/day)
+- **Undo/Reset clarity**: labeled buttons replace ambiguous icons; Reset requires two-click confirmation
+- Backdate completion flow uses AlertDialog confirmation before opening CompleteTaskDialog
+- Improved API error messages with parsed JSON error responses
+- Fixed frequency pseudo-date distribution formula (centered within slots)
+- Fixed timezone mismatch for completion date keys (server now uses local time)
+- Fixed daily frequency tasks staying in "Completed Today" after one completion
+
 ## 2.0.0
 
 - **Weekly planner**: 7-day calendar grid with auto-populated tasks from schedules/intervals; completed unscheduled tasks appear on the calendar at their completion date

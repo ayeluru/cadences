@@ -98,6 +98,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
   const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
   const [scheduledTime, setScheduledTime] = useState("");
   const [scheduledDaysOfMonth, setScheduledDaysOfMonth] = useState("");
+  const [refractoryEnabled, setRefractoryEnabled] = useState(false);
   const [refractoryValue, setRefractoryValue] = useState("");
   const [refractoryUnit, setRefractoryUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
   const [variations, setVariations] = useState<TaskVariation[]>([]);
@@ -143,9 +144,16 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       setScheduledTime(task.scheduledTime || '');
       setScheduledDaysOfMonth(task.scheduledDaysOfMonth || '');
       
-      const refractoryDisplay = convertMinutesToDisplay(task.refractoryMinutes);
-      setRefractoryValue(refractoryDisplay.value);
-      setRefractoryUnit(refractoryDisplay.unit);
+      const hasRefractory = task.refractoryMinutes != null && task.refractoryMinutes > 0;
+      setRefractoryEnabled(hasRefractory);
+      if (hasRefractory) {
+        const refractoryDisplay = convertMinutesToDisplay(task.refractoryMinutes);
+        setRefractoryValue(refractoryDisplay.value);
+        setRefractoryUnit(refractoryDisplay.unit);
+      } else {
+        setRefractoryValue('1');
+        setRefractoryUnit('hours');
+      }
       
       // Auto-open advanced if task already has metrics or variations
       const hasExisting = (task.metrics && task.metrics.length > 0) || false;
@@ -234,7 +242,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
       } else if (taskType === 'frequency') {
         updateData.targetCount = data.targetCount;
         updateData.targetPeriod = data.targetPeriod;
-        updateData.refractoryMinutes = convertToMinutes(refractoryValue, refractoryUnit);
+        updateData.refractoryMinutes = refractoryEnabled ? convertToMinutes(refractoryValue, refractoryUnit) : null;
         updateData.intervalValue = null;
         updateData.intervalUnit = null;
         updateData.scheduledDaysOfWeek = null;
@@ -477,6 +485,7 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     {...register("targetPeriod")}
                   >
+                    <option value="day">Day</option>
                     <option value="week">Week</option>
                     <option value="month">Month</option>
                   </select>
@@ -484,31 +493,48 @@ export function EditTaskDialog({ open, onOpenChange, task }: EditTaskDialogProps
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="edit-refractoryValue">Minimum time between completions (optional)</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input 
-                    type="number" 
-                    id="edit-refractoryValue" 
-                    data-testid="input-edit-refractory-value"
-                    min="0" 
-                    placeholder="1"
-                    value={refractoryValue}
-                    onChange={(e) => setRefractoryValue(e.target.value)}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={refractoryEnabled}
+                    onChange={(e) => {
+                      setRefractoryEnabled(e.target.checked);
+                      if (e.target.checked && !refractoryValue) {
+                        setRefractoryValue('1');
+                        setRefractoryUnit('hours');
+                      }
+                    }}
+                    className="rounded border-input"
+                    data-testid="checkbox-edit-refractory"
                   />
-                  <select 
-                    id="edit-refractoryUnit"
-                    data-testid="select-edit-refractory-unit"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={refractoryUnit}
-                    onChange={(e) => setRefractoryUnit(e.target.value as any)}
-                  >
-                    <option value="minutes">Minutes</option>
-                    <option value="hours">Hours</option>
-                    <option value="days">Days</option>
-                  </select>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Prevents gaming by requiring time between completions. E.g., 1 hour means doing 3 exercises in 3 minutes only counts as 1.
+                  <span className="text-sm font-medium">Minimum time between completions</span>
+                </label>
+                {refractoryEnabled && (
+                  <div className="grid grid-cols-2 gap-2 pl-6">
+                    <Input 
+                      type="number" 
+                      id="edit-refractoryValue" 
+                      data-testid="input-edit-refractory-value"
+                      min="1" 
+                      placeholder="1"
+                      value={refractoryValue}
+                      onChange={(e) => setRefractoryValue(e.target.value)}
+                    />
+                    <select 
+                      id="edit-refractoryUnit"
+                      data-testid="select-edit-refractory-unit"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={refractoryUnit}
+                      onChange={(e) => setRefractoryUnit(e.target.value as any)}
+                    >
+                      <option value="minutes">Minutes</option>
+                      <option value="hours">Hours</option>
+                      <option value="days">Days</option>
+                    </select>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground pl-6">
+                  Requires time between completions to prevent logging multiple at once.
                 </p>
               </div>
             </TabsContent>

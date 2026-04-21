@@ -100,6 +100,7 @@ export interface IStorage {
   // Task Assignments (weekly planner)
   getAssignments(userId: string, startDate: string, endDate: string): Promise<TaskAssignment[]>;
   getOverrideAssignments(userId: string): Promise<TaskAssignment[]>;
+  getActiveAssignments(userId: string): Promise<TaskAssignment[]>;
   createAssignment(userId: string, taskId: number, plannedDate: string, originalDate?: string): Promise<TaskAssignment>;
   deleteAssignment(assignmentId: number, userId: string): Promise<void>;
   deleteAssignmentsByDateRange(userId: string, startDate: string, endDate: string): Promise<void>;
@@ -2131,6 +2132,16 @@ export class DatabaseStorage implements IStorage {
         eq(taskAssignments.userId, userId),
         isNotNull(taskAssignments.originalDate),
       ));
+  }
+
+  async getActiveAssignments(userId: string): Promise<TaskAssignment[]> {
+    const today = new Date().toISOString().split('T')[0];
+    return db.select().from(taskAssignments)
+      .where(and(
+        eq(taskAssignments.userId, userId),
+        gte(taskAssignments.plannedDate, today),
+      ))
+      .orderBy(asc(taskAssignments.plannedDate));
   }
 
   async createAssignment(userId: string, taskId: number, plannedDate: string, originalDate?: string): Promise<TaskAssignment> {

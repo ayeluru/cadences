@@ -8,8 +8,6 @@ import { TaskWithDetails } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
-import { useAssignments } from "@/hooks/use-assignments";
-import { format, startOfWeek, endOfWeek } from "date-fns";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -41,26 +39,6 @@ export default function Dashboard() {
   const { data: tasks, isLoading: tasksLoading } = useTasks();
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
-  const todayDate = useMemo(() => new Date(), []);
-  const todayStr = useMemo(() => format(todayDate, "yyyy-MM-dd"), [todayDate]);
-  const weekStartStr = useMemo(() => format(startOfWeek(todayDate, { weekStartsOn: 0 }), "yyyy-MM-dd"), [todayDate]);
-  const weekEndStr = useMemo(() => format(endOfWeek(todayDate, { weekStartsOn: 0 }), "yyyy-MM-dd"), [todayDate]);
-  const { data: weekAssignments = [] } = useAssignments(weekStartStr, weekEndStr);
-
-  const { assignedToTodayIds, movedFromTodayIds } = useMemo(() => {
-    const assigned = new Set<number>();
-    const moved = new Set<number>();
-    for (const a of weekAssignments) {
-      if (a.plannedDate === todayStr) {
-        assigned.add(a.taskId);
-      }
-      if (a.originalDate === todayStr && a.plannedDate !== todayStr) {
-        moved.add(a.taskId);
-      }
-    }
-    return { assignedToTodayIds: assigned, movedFromTodayIds: moved };
-  }, [weekAssignments, todayStr]);
-
   const [createOpen, setCreateOpen] = useState(false);
   const [condensedView, setCondensedView] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
@@ -118,7 +96,7 @@ export default function Dashboard() {
     setFilterTagIds([]);
   };
 
-  // Today view: 5 sections
+  // Today view: 5 sections — uses server-computed effectiveDueToday
   const todayTasks = useMemo(() => {
     const dueToday: TaskWithDetails[] = [];
     const couldDo: TaskWithDetails[] = [];
@@ -126,56 +104,44 @@ export default function Dashboard() {
     const neverDone: TaskWithDetails[] = [];
     const completedToday: TaskWithDetails[] = [];
 
-    const nowDay = new Date().getDay();
-
     filteredTasks.forEach(task => {
       if (task.status === 'never_done') {
         neverDone.push(task);
         return;
       }
 
-      if (task.completedToday && task.taskType === 'frequency') {
+      // Daily frequency tasks (e.g. 8x/day) stay actionable until the daily goal is fully met
+      const isDailyFreqUnmet = task.taskType === 'frequency' && task.targetPeriod === 'day'
+        && task.targetCount && (task.completionsThisPeriod ?? 0) < task.targetCount;
+
+      if (task.completedToday && task.taskType === 'frequency' && !isDailyFreqUnmet) {
         completedToday.push(task);
         return;
       }
 
-      // Tasks explicitly assigned to today via the week planner are "due today"
-      const isAssignedToToday = assignedToTodayIds.has(task.id);
-      // Tasks moved away from today via the week planner are NOT "due today"
-      const isMovedFromToday = movedFromTodayIds.has(task.id);
-
-      const wouldBeDueToday =
-        isAssignedToToday ||
-        (
-          !isMovedFromToday && (
-            task.status === 'overdue' ||
-            (task.daysUntilDue !== undefined && task.daysUntilDue <= 0) ||
-            (task.taskType === 'scheduled' && task.scheduledDaysOfWeek?.split(',').map(Number).includes(nowDay)) ||
-            (task.taskType === 'interval' && task.intervalUnit === 'days' && task.intervalValue === 1)
-          )
-        );
+      const wouldBeDueToday = isDailyFreqUnmet || (task.effectiveDueToday ?? false);
 
       const frequencyGoalMet = task.taskType === 'frequency' && (task.targetProgress ?? 0) >= 100;
 
       const wouldBeCouldDo =
-        !isAssignedToToday && !isMovedFromToday && (
+        !wouldBeDueToday && (
           (task.taskType === 'frequency' && (task.targetProgress ?? 0) < 100 && task.status === 'later') ||
           (!frequencyGoalMet && task.status === 'later' && task.daysUntilDue !== undefined && task.daysUntilDue <= 7 && task.daysUntilDue > 0)
         );
 
       const wouldBeDueSoon =
-        !isAssignedToToday && (
+        !wouldBeDueToday && (
           task.status === 'due_soon' && task.daysUntilDue !== undefined && task.daysUntilDue > 0
         );
 
       const isRelevantToToday = wouldBeDueToday || wouldBeCouldDo || wouldBeDueSoon;
 
-      if (task.completedToday && isRelevantToToday) {
+      if (task.completedToday && isRelevantToToday && !isDailyFreqUnmet) {
         completedToday.push(task);
         return;
       }
 
-      if (task.completedToday) return;
+      if (task.completedToday && !isDailyFreqUnmet) return;
 
       if (wouldBeDueToday) {
         dueToday.push(task);
@@ -194,7 +160,7 @@ export default function Dashboard() {
     completedToday.sort(byUrgency);
 
     return { dueToday, couldDo, dueSoon, neverDone, completedToday };
-  }, [filteredTasks, assignedToTodayIds, movedFromTodayIds]);
+  }, [filteredTasks]);
 
   const todayTotal = todayTasks.dueToday.length + todayTasks.completedToday.length;
   const todayProgress = todayTotal > 0 ? Math.round((todayTasks.completedToday.length / todayTotal) * 100) : 0;
