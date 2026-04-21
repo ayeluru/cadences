@@ -271,32 +271,49 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-        <div className="flex items-center justify-around h-14">
-          <Link href="/" className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${location === '/' ? 'text-primary' : 'text-muted-foreground'}`}>
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="text-[10px] font-medium">Home</span>
-          </Link>
-          <Link href="/calendar" className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${location === '/calendar' ? 'text-primary' : 'text-muted-foreground'}`}>
-            <CalendarDays className="w-5 h-5" />
-            <span className="text-[10px] font-medium">Calendar</span>
-          </Link>
-          <button
-            onClick={() => isFeedbackRoute ? setFeedbackDialogOpen(true) : setCreateDialogOpen(true)}
-            className="flex items-center justify-center w-12 h-12 -mt-4 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 active:scale-95 transition-transform"
-          >
-            {isFeedbackRoute ? <MessageSquarePlus className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
-          </button>
-          <Link href="/stats" className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${location === '/stats' ? 'text-primary' : 'text-muted-foreground'}`}>
-            <PieChart className="w-5 h-5" />
-            <span className="text-[10px] font-medium">Stats</span>
-          </Link>
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${mobileMenuOpen ? 'text-primary' : 'text-muted-foreground'}`}
-          >
-            <MoreHorizontal className="w-5 h-5" />
-            <span className="text-[10px] font-medium">More</span>
-          </button>
+        <div className="flex items-center justify-around h-14 px-1">
+          {[
+            { href: "/", label: "Dashboard", icon: LayoutDashboard, isActive: location === "/" },
+            { href: "/calendar", label: "Calendar", icon: CalendarDays, isActive: location === "/calendar" },
+            null,
+            { href: "/stats", label: "Stats", icon: PieChart, isActive: location === "/stats" },
+          ].map((item, i) => {
+            if (!item) return (
+              <button
+                key="fab"
+                onClick={() => isFeedbackRoute ? setFeedbackDialogOpen(true) : setCreateDialogOpen(true)}
+                className="flex items-center justify-center w-12 h-12 -mt-4 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 active:scale-95 transition-transform"
+              >
+                {isFeedbackRoute ? <MessageSquarePlus className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+              </button>
+            );
+            const Icon = item.icon;
+            const active = item.isActive && !mobileMenuOpen;
+            return (
+              <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)} className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
+                active ? "text-primary" : "text-muted-foreground"
+              }`}>
+                {active && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] rounded-b-full bg-primary" />}
+                <Icon className="w-5 h-5" />
+                <span className="text-[10px] font-medium">{item.label}</span>
+              </Link>
+            );
+          })}
+          {(() => {
+            const isMoreActive = mobileMenuOpen || (location !== "/" && location !== "/calendar" && location !== "/stats");
+            return (
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
+                  isMoreActive ? "text-primary" : "text-muted-foreground"
+                }`}
+              >
+                {isMoreActive && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] rounded-b-full bg-primary" />}
+                <MoreHorizontal className="w-5 h-5" />
+                <span className="text-[10px] font-medium">More</span>
+              </button>
+            );
+          })()}
         </div>
       </nav>
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.1
+
+- **Mobile bottom bar active indicator**: top-edge colored bar with primary-colored icon/text replaces subtle color-only highlight
+- **Mobile nav: "Home" renamed to "Dashboard"** to match desktop sidebar
+- **Mobile More menu**: opening More deactivates the current page highlight; tapping the current page closes the menu and re-highlights it
+- Bottom bar items now explicitly close the More menu on tap (fixes menu staying open when tapping current route)
+
 ## 2.1.0
 
 - **Unified scheduling engine**: `enrichTask` is the single source of truth for `nextDue`, respecting all manual assignments across TodayView, WeekView, and Cadences
