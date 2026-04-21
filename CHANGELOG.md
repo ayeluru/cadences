@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.2
+
+- **Calendar page aesthetic refresh**: updated to match the site-wide design language — lighter open layout (`bg-card border rounded-xl`) instead of heavy Card blocks, `max-w-4xl` width constraint, `tracking-tight` header, theme CSS variable colors (`--urgency-*`) for accent stripes, softer heatmap opacity values, and fixed non-standard Tailwind classes (`bg-green-150`, etc.)
+- **Heatmap filter buttons**: moved to a dedicated full-width row below the page title; evenly distributed via `grid-cols-4`
+- **Day detail sections**: collapsible triggers use subtle bordered style with left-border urgency stripes instead of solid colored backgrounds
+
 ## 2.1.1
 
 - **Mobile bottom bar active indicator**: top-edge colored bar with primary-colored icon/text replaces subtle color-only highlight
