@@ -1085,6 +1085,18 @@ export async function tasksIdComplete(req: VercelRequest, res: VercelResponse) {
 
     const { completedAt, notes, metrics, variationId } = req.body;
 
+    if (existing.refractoryMinutes && existing.refractoryMinutes > 0 && existing.lastCompletedAt) {
+      const attemptTime = completedAt ? new Date(completedAt) : new Date();
+      const lastTime = new Date(existing.lastCompletedAt);
+      const minutesSinceLast = (attemptTime.getTime() - lastTime.getTime()) / (1000 * 60);
+      if (minutesSinceLast < existing.refractoryMinutes) {
+        const waitMinutes = Math.ceil(existing.refractoryMinutes - minutesSinceLast);
+        return res.status(429).json({
+          error: `Minimum time between completions is ${existing.refractoryMinutes} minutes. Please wait ${waitMinutes} more minute${waitMinutes === 1 ? '' : 's'}.`
+        });
+      }
+    }
+
     const result = await storage.completeTask(
       taskId,
       completedAt ? new Date(completedAt) : undefined,

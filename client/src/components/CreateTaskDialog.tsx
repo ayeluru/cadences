@@ -77,7 +77,8 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
   const [scheduledTime, setScheduledTime] = useState("");
   const [scheduledDaysOfMonth, setScheduledDaysOfMonth] = useState("");
   // Refractory period with unit
-  const [refractoryValue, setRefractoryValue] = useState<string>("");
+  const [refractoryEnabled, setRefractoryEnabled] = useState(true);
+  const [refractoryValue, setRefractoryValue] = useState<string>("1");
   const [refractoryUnit, setRefractoryUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
   // Advanced section collapsed state
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -133,8 +134,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
       }
       taskData.targetCount = data.targetCount;
       taskData.targetPeriod = data.targetPeriod;
-      // Convert refractory value to minutes
-      if (refractoryValue && Number(refractoryValue) > 0) {
+      if (refractoryEnabled && refractoryValue && Number(refractoryValue) > 0) {
         const val = Number(refractoryValue);
         if (refractoryUnit === 'hours') {
           taskData.refractoryMinutes = val * 60;
@@ -439,6 +439,7 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     {...register("targetPeriod")}
                   >
+                    <option value="day">Day</option>
                     <option value="week">Week</option>
                     <option value="month">Month</option>
                   </select>
@@ -446,31 +447,48 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="refractoryValue">Minimum time between completions (optional)</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input 
-                    type="number" 
-                    id="refractoryValue" 
-                    data-testid="input-refractory-value"
-                    min="0" 
-                    placeholder="1"
-                    value={refractoryValue}
-                    onChange={(e) => setRefractoryValue(e.target.value)}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={refractoryEnabled}
+                    onChange={(e) => {
+                      setRefractoryEnabled(e.target.checked);
+                      if (e.target.checked && !refractoryValue) {
+                        setRefractoryValue('1');
+                        setRefractoryUnit('hours');
+                      }
+                    }}
+                    className="rounded border-input"
+                    data-testid="checkbox-refractory"
                   />
-                  <select 
-                    id="refractoryUnit"
-                    data-testid="select-refractory-unit"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={refractoryUnit}
-                    onChange={(e) => setRefractoryUnit(e.target.value as 'minutes' | 'hours' | 'days')}
-                  >
-                    <option value="minutes">Minutes</option>
-                    <option value="hours">Hours</option>
-                    <option value="days">Days</option>
-                  </select>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Prevents gaming by requiring time between completions. E.g., 1 hour means doing 3 exercises in 3 minutes only counts as 1.
+                  <span className="text-sm font-medium">Minimum time between completions</span>
+                </label>
+                {refractoryEnabled && (
+                  <div className="grid grid-cols-2 gap-2 pl-6">
+                    <Input 
+                      type="number" 
+                      id="refractoryValue" 
+                      data-testid="input-refractory-value"
+                      min="1" 
+                      placeholder="1"
+                      value={refractoryValue}
+                      onChange={(e) => setRefractoryValue(e.target.value)}
+                    />
+                    <select 
+                      id="refractoryUnit"
+                      data-testid="select-refractory-unit"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={refractoryUnit}
+                      onChange={(e) => setRefractoryUnit(e.target.value as 'minutes' | 'hours' | 'days')}
+                    >
+                      <option value="minutes">Minutes</option>
+                      <option value="hours">Hours</option>
+                      <option value="days">Days</option>
+                    </select>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground pl-6">
+                  Requires time between completions to prevent logging multiple at once.
                 </p>
               </div>
               

@@ -1,4 +1,4 @@
-import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO } from 'date-fns';
+import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO } from 'date-fns';
 import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
 
@@ -12,13 +12,17 @@ export interface BatchData {
   streaksMap: Map<number, TaskStreak>;
   completionsInPeriodMap: Map<number, Completion[]>;
   completionsMap: Map<number, Completion[]>;
-  overridesMap: Map<number, { plannedDate: string; originalDate: string }[]>;
+  assignmentsMap: Map<number, { plannedDate: string }[]>;
+  assignedTodaySet: Set<number>;
+  movedFromTodaySet: Set<number>;
 }
 
 // Get period boundaries for frequency-based tasks
 export function getPeriodBounds(period: string): { start: Date, end: Date } {
   const now = new Date();
-  if (period === 'week') {
+  if (period === 'day') {
+    return { start: startOfDay(now), end: endOfDay(now) };
+  } else if (period === 'week') {
     return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfWeek(now, { weekStartsOn: 0 }) };
   } else if (period === 'month') {
     return { start: startOfMonth(now), end: endOfMonth(now) };
@@ -83,6 +87,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
   let nextDue = new Date();
   let completionsThisPeriod = 0;
   let targetProgress = 0;
+  let recentCompletionDates: string[] = [];
 
   // Handle frequency-based tasks differently
   if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
@@ -90,18 +95,20 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     const allCompletions = batch
       ? (batch.completionsInPeriodMap.get(task.id) || [])
       : await storage.getCompletionsInPeriod(task.id, start, end);
-    const validCompletions = filterCompletionsWithRefractory(allCompletions, task.refractoryMinutes);
 
-    completionsThisPeriod = validCompletions.length;
+    completionsThisPeriod = allCompletions.length;
+    recentCompletionDates = allCompletions.map(c =>
+      c.completedAt.toISOString().split('T')[0]
+    );
     targetProgress = Math.min(100, (completionsThisPeriod / task.targetCount) * 100);
 
-    const periodDays = task.targetPeriod === 'week' ? 7 : 30;
+    const periodDays = task.targetPeriod === 'day' ? 1 : task.targetPeriod === 'week' ? 7 : 30;
     const spacing = periodDays / task.targetCount;
 
     if (completionsThisPeriod >= task.targetCount) {
       nextDue = end;
     } else {
-      const evenlySpaced = addDays(start, (completionsThisPeriod + 1) * spacing);
+      const evenlySpaced = addDays(start, (completionsThisPeriod + 0.5) * spacing);
       nextDue = isBefore(evenlySpaced, end) ? evenlySpaced : end;
     }
   } else if (task.taskType === 'scheduled') {
@@ -214,13 +221,15 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     }
   }
 
-  // Apply override: if an assignment moves this task's nextDue to a different day, use that instead
-  const overrides = batch?.overridesMap.get(task.id) || [];
-  for (const override of overrides) {
-    const overrideOriginal = parseISO(override.originalDate);
-    if (isSameDay(nextDue, overrideOriginal)) {
-      nextDue = parseISO(override.plannedDate);
-      break;
+  // Capture pre-assignment nextDue for effectiveDueToday calculation
+  const naturalNextDue = new Date(nextDue.getTime());
+
+  // Apply assignments: if active assignments exist, they define the real due date
+  const activeAssignments = batch?.assignmentsMap.get(task.id) || [];
+  if (activeAssignments.length > 0) {
+    const isFrequencyGoalMet = task.taskType === 'frequency' && completionsThisPeriod >= (task.targetCount || 0);
+    if (!isFrequencyGoalMet) {
+      nextDue = parseISO(activeAssignments[0].plannedDate);
     }
   }
 
@@ -256,7 +265,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     } else if (isBefore(nextDue, now)) {
       status = 'overdue';
     } else {
-      const frequencySpacing = (task.targetPeriod === 'week' ? 7 : 30) / (task.targetCount || 1);
+      const frequencySpacing = (task.targetPeriod === 'day' ? 1 : task.targetPeriod === 'week' ? 7 : 30) / (task.targetCount || 1);
       const frequencyThreshold = getDueSoonThreshold(frequencySpacing);
       if (daysUntilDue <= frequencyThreshold) {
         status = 'due_soon';
@@ -313,6 +322,15 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     completedToday = isSameDay(new Date(task.lastCompletedAt), today);
   }
 
+  // Compute effectiveDueToday: was this task due today (before completion may have shifted nextDue)?
+  const isAssignedToday = batch?.assignedTodaySet.has(task.id) ?? false;
+  const isMovedFromToday = batch?.movedFromTodaySet.has(task.id) ?? false;
+  const naturallyDueToday =
+    isSameDay(naturalNextDue, today) || isBefore(naturalNextDue, today) ||
+    (task.taskType === 'scheduled' && task.scheduledDaysOfWeek?.split(',').map(Number).includes(today.getDay())) ||
+    (task.taskType === 'interval' && task.intervalUnit === 'days' && task.intervalValue === 1);
+  const effectiveDueToday = isAssignedToday || (!isMovedFromToday && naturallyDueToday);
+
   return {
     ...task,
     category,
@@ -327,6 +345,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     completionsThisPeriod,
     targetProgress,
     completedToday,
+    effectiveDueToday,
+    recentCompletionDates: recentCompletionDates.length > 0 ? recentCompletionDates : undefined,
     streak: streak ? {
       currentStreak: streak.currentStreak,
       longestStreak: streak.longestStreak,
@@ -341,13 +361,13 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
 
   const taskIds = tasks.map(t => t.id);
 
-  const [categories, tagsMap, metricsMap, variationsMap, streaksMap, overrideAssignments] = await Promise.all([
+  const [categories, tagsMap, metricsMap, variationsMap, streaksMap, activeAssignments] = await Promise.all([
     storage.getCategories(userId),
     storage.getTaskTagsBatch(taskIds),
     storage.getTaskMetricsBatch(taskIds),
     storage.getTaskVariationsBatch(taskIds),
     storage.getTaskStreaksBatch(taskIds, userId),
-    storage.getOverrideAssignments(userId),
+    storage.getActiveAssignments(userId),
   ]);
 
   // Batch-fetch completions for frequency tasks, grouped by period type
@@ -375,11 +395,20 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
     ? await storage.getCompletionsBatch(tasksWithVariationIds)
     : new Map<number, Completion[]>();
 
-  const overridesMap = new Map<number, { plannedDate: string; originalDate: string }[]>();
-  for (const a of overrideAssignments) {
-    if (!a.originalDate) continue;
-    if (!overridesMap.has(a.taskId)) overridesMap.set(a.taskId, []);
-    overridesMap.get(a.taskId)!.push({ plannedDate: a.plannedDate, originalDate: a.originalDate });
+  // Build per-task assignment map (sorted by plannedDate from the query)
+  const assignmentsMap = new Map<number, { plannedDate: string }[]>();
+  const todayStr = new Date().toISOString().split('T')[0];
+  const assignedTodaySet = new Set<number>();
+  const movedFromTodaySet = new Set<number>();
+  for (const a of activeAssignments) {
+    if (!assignmentsMap.has(a.taskId)) assignmentsMap.set(a.taskId, []);
+    assignmentsMap.get(a.taskId)!.push({ plannedDate: a.plannedDate });
+    if (a.plannedDate === todayStr) {
+      assignedTodaySet.add(a.taskId);
+    }
+    if (a.originalDate === todayStr && a.plannedDate !== todayStr) {
+      movedFromTodaySet.add(a.taskId);
+    }
   }
 
   const batch: BatchData = {
@@ -390,7 +419,9 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
     streaksMap,
     completionsInPeriodMap,
     completionsMap,
-    overridesMap,
+    assignmentsMap,
+    assignedTodaySet,
+    movedFromTodaySet,
   };
 
   return Promise.all(tasks.map(task => enrichTask(task, userId, batch)));

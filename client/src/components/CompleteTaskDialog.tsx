@@ -16,15 +16,16 @@ interface CompleteTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   task: TaskWithDetails;
+  defaultDate?: Date;
 }
 
-export function CompleteTaskDialog({ open, onOpenChange, task }: CompleteTaskDialogProps) {
+export function CompleteTaskDialog({ open, onOpenChange, task, defaultDate }: CompleteTaskDialogProps) {
   const completeMutation = useCompleteTask();
   const [metricValues, setMetricValues] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState("");
-  const [completedAt, setCompletedAt] = useState<Date | undefined>(undefined);
+  const [completedAt, setCompletedAt] = useState<Date | undefined>(defaultDate);
   const [completionTime, setCompletionTime] = useState<string>("");
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(!!defaultDate);
   const [selectedVariationId, setSelectedVariationId] = useState<number | undefined>(undefined);
   const [showAddVariation, setShowAddVariation] = useState(false);
   const [newVariationName, setNewVariationName] = useState("");

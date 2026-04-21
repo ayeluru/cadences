@@ -5,13 +5,24 @@ import { useCompleteTask } from "@/hooks/use-tasks";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, ChevronLeft, ChevronRight, Eye, EyeOff, Calendar, MoveHorizontal, RotateCcw, Undo2, Lock } from "lucide-react";
-import { format, startOfWeek, endOfWeek, addDays, addWeeks, isSameDay, isAfter, isBefore, parseISO } from "date-fns";
+import { Check, ChevronLeft, ChevronRight, Eye, EyeOff, Sparkles, Calendar, MoveHorizontal, RotateCcw, Undo2, Lock } from "lucide-react";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, addWeeks, isSameDay, isAfter, isBefore, parseISO } from "date-fns";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { CompleteTaskDialog } from "./CompleteTaskDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface WeekViewProps {
   tasks: TaskWithDetails[];
@@ -39,6 +50,7 @@ type DayTaskEntry = {
   rootOriginalDate?: string;
   isMovable: boolean;
   isCompletedPlacement?: boolean;
+  isPseudoScheduled?: boolean;
 };
 
 type DayTasks = {
@@ -57,12 +69,15 @@ function formatDateKey(d: Date): string {
 
 export function WeekView({ tasks }: WeekViewProps) {
   const [weekOffset, setWeekOffset] = useState(0);
-  const [showCompleted, setShowCompleted] = useState(true);
+  type FilterState = 'normal' | 'highlight' | 'hide';
+  const [showDone, setShowDone] = useState(true);
+  const [immovableFilter, setImmovableFilter] = useState<FilterState>('normal');
+  const [movableFilter, setMovableFilter] = useState<FilterState>('normal');
   const [selectedTask, setSelectedTask] = useState<SelectedTask | null>(null);
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
-  const [expandedCardKey, setExpandedCardKey] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [moveMode, setMoveMode] = useState(false);
+  const [backdatePrompt, setBackdatePrompt] = useState<{ task: TaskWithDetails; targetDate: Date } | null>(null);
+  const [backdateComplete, setBackdateComplete] = useState<{ task: TaskWithDetails; targetDate: Date } | null>(null);
 
   const now = new Date();
   const weekStart = startOfWeek(addWeeks(now, weekOffset), { weekStartsOn: 0 });
@@ -82,20 +97,21 @@ export function WeekView({ tasks }: WeekViewProps) {
     setSelectedTask(null);
     setUndoStack([]);
     setConfirmReset(false);
-    setMoveMode(false);
+    setShowDone(true);
+    setImmovableFilter('normal');
+    setMovableFilter('normal');
   }, [weekOffset]);
 
   useEffect(() => {
-    if (!selectedTask && !moveMode) return;
+    if (!selectedTask) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSelectedTask(null);
-        setMoveMode(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedTask, moveMode]);
+  }, [selectedTask]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState<number | undefined>();
@@ -119,9 +135,10 @@ export function WeekView({ tasks }: WeekViewProps) {
   }, [tasks]);
 
   // Build auto-schedule, then apply override suppressions
-  const { effectiveSchedule, overrideEntries } = useMemo(() => {
+  const { effectiveSchedule, overrideEntries, pseudoScheduledTaskIds } = useMemo(() => {
     const schedule = new Map<string, Set<number>>();
     weekDays.forEach(d => schedule.set(formatDateKey(d), new Set()));
+    const pseudoScheduledIds = new Set<number>();
 
     tasks.forEach(task => {
       if (task.isArchived) return;
@@ -157,6 +174,38 @@ export function WeekView({ tasks }: WeekViewProps) {
             }
           } catch {}
         });
+      } else if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
+        if (task.targetPeriod === 'day') {
+          weekDays.forEach(d => {
+            schedule.get(formatDateKey(d))!.add(task.id);
+          });
+        } else {
+          const now = new Date();
+          const periodStart = task.targetPeriod === 'week'
+            ? startOfWeek(now, { weekStartsOn: 0 })
+            : startOfMonth(now);
+          const periodDays = task.targetPeriod === 'week' ? 7 : 30;
+          const spacing = periodDays / task.targetCount;
+          const done = task.completionsThisPeriod ?? 0;
+
+          for (let i = done; i < task.targetCount; i++) {
+            const pseudoDate = addDays(periodStart, (i + 0.5) * spacing);
+            weekDays.forEach(d => {
+              if (isSameDay(d, pseudoDate)) {
+                schedule.get(formatDateKey(d))!.add(task.id);
+                pseudoScheduledIds.add(task.id);
+              }
+            });
+          }
+        }
+      }
+
+      // Overdue tasks whose due date fell before this week: place on today
+      if (task.status === 'overdue' && !weekDays.some(d => schedule.get(formatDateKey(d))!.has(task.id))) {
+        const todayKey = formatDateKey(new Date());
+        if (schedule.has(todayKey)) {
+          schedule.get(todayKey)!.add(task.id);
+        }
       }
     });
 
@@ -171,7 +220,7 @@ export function WeekView({ tasks }: WeekViewProps) {
       }
     }
 
-    return { effectiveSchedule: schedule, overrideEntries: overrides };
+    return { effectiveSchedule: schedule, overrideEntries: overrides, pseudoScheduledTaskIds: pseudoScheduledIds };
   }, [tasks, weekDays, assignments]);
 
   // Reverse map: taskId -> set of dateStrs where it appears (across schedule + manual)
@@ -225,17 +274,30 @@ export function WeekView({ tasks }: WeekViewProps) {
   }, [effectiveSchedule, assignments]);
 
   // Tasks completed this week that aren't auto-scheduled — place on calendar at completion date
+  // Frequency tasks use recentCompletionDates to show all completions, not just the latest
   const completedUnscheduledMap = useMemo(() => {
     const map = new Map<string, TaskWithDetails[]>();
     const weekDateStrs = new Set(weekDays.map(formatDateKey));
     tasks.forEach(task => {
       if (task.isArchived) return;
-      if (assignedTaskIds.has(task.id)) return;
-      if (!task.lastCompletedAt) return;
-      const completedDateStr = formatDateKey(new Date(task.lastCompletedAt));
-      if (!weekDateStrs.has(completedDateStr)) return;
-      if (!map.has(completedDateStr)) map.set(completedDateStr, []);
-      map.get(completedDateStr)!.push(task);
+      if (assignedTaskIds.has(task.id) && task.taskType !== 'frequency') return;
+
+      if (task.taskType === 'frequency' && task.recentCompletionDates) {
+        const placed = new Set<string>();
+        for (const dateStr of task.recentCompletionDates) {
+          if (weekDateStrs.has(dateStr) && !placed.has(dateStr)) {
+            placed.add(dateStr);
+            if (!map.has(dateStr)) map.set(dateStr, []);
+            map.get(dateStr)!.push(task);
+          }
+        }
+      } else {
+        if (!task.lastCompletedAt) return;
+        const completedDateStr = formatDateKey(new Date(task.lastCompletedAt));
+        if (!weekDateStrs.has(completedDateStr)) return;
+        if (!map.has(completedDateStr)) map.set(completedDateStr, []);
+        map.get(completedDateStr)!.push(task);
+      }
     });
     return map;
   }, [tasks, assignedTaskIds, weekDays]);
@@ -292,6 +354,7 @@ export function WeekView({ tasks }: WeekViewProps) {
           assignmentId: overrideEntry?.assignmentId,
           rootOriginalDate: overrideEntry?.originalDate,
           isMovable: daysPresent < 7,
+          isPseudoScheduled: pseudoScheduledTaskIds.has(id),
         });
       }
 
@@ -321,7 +384,7 @@ export function WeekView({ tasks }: WeekViewProps) {
 
       return { date, dateStr, tasks: taskEntries };
     });
-  }, [weekDays, effectiveSchedule, manualMap, overrideMap, tasksById, taskDaysMap, completedUnscheduledMap]);
+  }, [weekDays, effectiveSchedule, manualMap, overrideMap, tasksById, taskDaysMap, completedUnscheduledMap, pseudoScheduledTaskIds]);
 
   // Viable target days for the currently selected task
   const viableTargetDays = useMemo(() => {
@@ -352,27 +415,29 @@ export function WeekView({ tasks }: WeekViewProps) {
   const weekProgress = weekStats.total > 0 ? Math.round((weekStats.done / weekStats.total) * 100) : 0;
   const hasManualAssignments = assignments.length > 0;
 
-  const movableTaskCount = useMemo(() => {
-    let count = 0;
-    dayColumns.forEach(col => {
-      col.tasks.forEach(({ isMovable, task }) => {
-        if (isMovable && !isTaskDoneOnDay(task, col.date)) count++;
-      });
-    });
-    return count;
-  }, [dayColumns]);
-
   const handleMoveClick = useCallback((taskId: number, sourceDate?: string, assignmentId?: number, rootOriginalDate?: string) => {
     setSelectedTask(prev => {
       if (prev && prev.taskId === taskId && prev.sourceDate === sourceDate) return null;
       return { taskId, sourceDate, assignmentId, rootOriginalDate };
     });
-    setExpandedCardKey(null);
   }, []);
 
   const handleDayClick = useCallback(async (targetDate: string) => {
     if (!selectedTask) return;
     if (selectedTask.sourceDate === targetDate) {
+      setSelectedTask(null);
+      return;
+    }
+
+    const targetDateObj = parseISO(targetDate);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    if (isBefore(targetDateObj, todayStart)) {
+      const task = tasks.find(t => t.id === selectedTask.taskId);
+      if (task) {
+        setBackdatePrompt({ task, targetDate: targetDateObj });
+      }
       setSelectedTask(null);
       return;
     }
@@ -405,7 +470,8 @@ export function WeekView({ tasks }: WeekViewProps) {
     } catch {
       // Mutations already show toast on error via the hook
     }
-  }, [selectedTask, createAssignment, deleteAssignment]);
+  }, [selectedTask, tasks, createAssignment, deleteAssignment]);
+
 
   const handleUndo = useCallback(async () => {
     const lastAction = undoStack[undoStack.length - 1];
@@ -432,22 +498,14 @@ export function WeekView({ tasks }: WeekViewProps) {
           setUndoStack([]);
           setConfirmReset(false);
           setSelectedTask(null);
-          setMoveMode(false);
+          setShowDone(true);
+          setImmovableFilter('normal');
+          setMovableFilter('normal');
         },
       },
     );
   }, [resetAssignments, startStr, endStr]);
 
-  const handleCardClick = useCallback((key: string) => {
-    setExpandedCardKey(prev => prev === key ? null : key);
-  }, []);
-
-  const toggleMoveMode = useCallback(() => {
-    setMoveMode(prev => {
-      if (!prev) setSelectedTask(null);
-      return !prev;
-    });
-  }, []);
 
   return (
     <div
@@ -477,7 +535,7 @@ export function WeekView({ tasks }: WeekViewProps) {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
             <Progress value={weekProgress} className="h-1.5 w-20" />
             <span className="text-xs text-muted-foreground tabular-nums">
@@ -485,64 +543,52 @@ export function WeekView({ tasks }: WeekViewProps) {
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          {undoStack.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={handleUndo} className="h-7 w-7">
+                  <Undo2 className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Undo ({undoStack.length})</TooltipContent>
+            </Tooltip>
+          )}
+          {hasManualAssignments && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setShowCompleted(!showCompleted)}
-                  className="h-7 w-7"
+                  onClick={() => confirmReset ? handleReset() : setConfirmReset(true)}
+                  disabled={resetAssignments.isPending}
+                  className={`h-7 w-7 ${confirmReset ? "text-destructive" : ""}`}
                 >
-                  {showCompleted ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  <RotateCcw className={`w-3.5 h-3.5 ${resetAssignments.isPending ? "animate-spin" : ""}`} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {showCompleted ? "Hide completed" : "Show completed"}
+                {confirmReset ? "Click again to confirm reset" : "Reset week to defaults"}
               </TooltipContent>
             </Tooltip>
-            {undoStack.length > 0 && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleUndo} className="h-7 w-7">
-                    <Undo2 className="w-3.5 h-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Undo ({undoStack.length})</TooltipContent>
-              </Tooltip>
-            )}
-            {hasManualAssignments && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => confirmReset ? handleReset() : setConfirmReset(true)}
-                    disabled={resetAssignments.isPending}
-                    className={`h-7 w-7 ${confirmReset ? "text-destructive" : ""}`}
-                  >
-                    <RotateCcw className={`w-3.5 h-3.5 ${resetAssignments.isPending ? "animate-spin" : ""}`} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {confirmReset ? "Click again to confirm reset" : "Reset week to defaults"}
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-
-          {movableTaskCount > 0 && (
-            <Button
-              variant={moveMode ? "default" : "outline"}
-              size="sm"
-              onClick={toggleMoveMode}
-              className="h-7 text-xs gap-1"
-            >
-              <MoveHorizontal className="w-3 h-3" />
-              {moveMode ? "Done" : "Rearrange"}
-            </Button>
           )}
         </div>
+      </div>
+
+      {/* View filters */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
+          <span className="text-[11px] font-medium mr-auto">Done</span>
+          <button
+            onClick={() => setShowDone(!showDone)}
+            className={`flex items-center justify-center p-1 rounded transition-colors ${
+              showDone ? "text-muted-foreground hover:bg-accent" : "bg-primary text-primary-foreground"
+            }`}
+          >
+            {showDone ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        <FilterGroup label="Immovable" state={immovableFilter} onChange={setImmovableFilter} />
+        <FilterGroup label="Movable" state={movableFilter} onChange={setMovableFilter} />
       </div>
 
       {/* Selection indicator */}
@@ -557,13 +603,6 @@ export function WeekView({ tasks }: WeekViewProps) {
         </div>
       )}
 
-      {/* Move mode indicator */}
-      {moveMode && !selectedTask && (
-        <div className="text-xs text-primary bg-primary/10 border border-primary/30 rounded-lg px-3 py-2">
-          Click a highlighted task to select it, then click a day to move it there
-        </div>
-      )}
-
       {/* Weekly grid */}
       <div className="overflow-x-auto -mx-2 px-2 flex-1 min-h-0">
         <div className="grid grid-cols-7 gap-2 min-w-[700px] h-full">
@@ -573,15 +612,14 @@ export function WeekView({ tasks }: WeekViewProps) {
               day={col}
               isToday={isSameDay(col.date, now)}
               isPast={isBefore(col.date, now) && !isSameDay(col.date, now)}
-              showCompleted={showCompleted}
+              showDone={showDone}
+              immovableFilter={immovableFilter}
+              movableFilter={movableFilter}
               isDropTarget={!!selectedTask}
               isViableTarget={viableTargetDays.has(col.dateStr)}
               selectedTaskId={selectedTask?.taskId ?? null}
               selectedSourceDate={selectedTask?.sourceDate}
-              expandedCardKey={expandedCardKey}
-              moveMode={moveMode}
               onDayClick={handleDayClick}
-              onCardClick={handleCardClick}
               onMoveClick={handleMoveClick}
             />
           ))}
@@ -607,20 +645,11 @@ export function WeekView({ tasks }: WeekViewProps) {
                   key={task.id}
                   task={task}
                   cardKey={`${task.id}-unscheduled`}
-                  isExpanded={expandedCardKey === `${task.id}-unscheduled`}
                   isSelected={selectedTask?.taskId === task.id && !selectedTask?.sourceDate}
                   isMovable={true}
-                  moveMode={moveMode}
+                  movableFilter={movableFilter}
                   frequencyLabel={freqLabel}
                   onCardClick={(e) => {
-                    e.stopPropagation();
-                    if (moveMode) {
-                      handleMoveClick(task.id);
-                    } else {
-                      handleCardClick(`${task.id}-unscheduled`);
-                    }
-                  }}
-                  onMoveClick={(e) => {
                     e.stopPropagation();
                     handleMoveClick(task.id);
                   }}
@@ -631,6 +660,35 @@ export function WeekView({ tasks }: WeekViewProps) {
         </div>
       )}
 
+      <AlertDialog open={!!backdatePrompt} onOpenChange={(open) => { if (!open) setBackdatePrompt(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Log completion?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Did you complete <strong>{backdatePrompt?.task.title}</strong> on{" "}
+              <strong>{backdatePrompt ? format(backdatePrompt.targetDate, "EEEE, MMM d") : ""}</strong>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setBackdateComplete(backdatePrompt);
+              setBackdatePrompt(null);
+            }}>
+              Yes, log it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {backdateComplete && (
+        <CompleteTaskDialog
+          open={true}
+          onOpenChange={(open) => { if (!open) setBackdateComplete(null); }}
+          task={backdateComplete.task}
+          defaultDate={backdateComplete.targetDate}
+        />
+      )}
     </div>
   );
 }
@@ -641,34 +699,36 @@ function DayColumn({
   day,
   isToday,
   isPast,
-  showCompleted,
+  showDone,
+  immovableFilter,
+  movableFilter,
   isDropTarget,
   isViableTarget,
   selectedTaskId,
   selectedSourceDate,
-  expandedCardKey,
-  moveMode,
   onDayClick,
-  onCardClick,
   onMoveClick,
 }: {
   day: DayTasks;
   isToday: boolean;
   isPast: boolean;
-  showCompleted: boolean;
+  showDone: boolean;
+  immovableFilter: 'normal' | 'highlight' | 'hide';
+  movableFilter: 'normal' | 'highlight' | 'hide';
   isDropTarget: boolean;
   isViableTarget: boolean;
   selectedTaskId: number | null;
   selectedSourceDate?: string;
-  expandedCardKey: string | null;
-  moveMode: boolean;
   onDayClick: (dateStr: string) => void;
-  onCardClick: (key: string) => void;
   onMoveClick: (taskId: number, sourceDate?: string, assignmentId?: number, rootOriginalDate?: string) => void;
 }) {
-  const incompleteTasks = day.tasks.filter(({ task }) => !isTaskDoneOnDay(task, day.date));
-  const completedTasks = day.tasks.filter(({ task }) => isTaskDoneOnDay(task, day.date));
-  const visibleTasks = showCompleted ? [...incompleteTasks, ...completedTasks] : incompleteTasks;
+  const visibleTasks = day.tasks.filter(({ task, isMovable }) => {
+    const isDone = isTaskDoneOnDay(task, day.date);
+    if (isDone && !showDone) return false;
+    if (!isDone && !isMovable && immovableFilter === 'hide') return false;
+    if (!isDone && isMovable && movableFilter === 'hide') return false;
+    return true;
+  });
 
   const isSourceDay = selectedSourceDate === day.dateStr;
   const canDrop = isDropTarget && isViableTarget && !isSourceDay;
@@ -699,33 +759,25 @@ function DayColumn({
         </div>
       )}
 
-      {visibleTasks.map(({ task, assignmentId, rootOriginalDate, isMovable }) => {
+      {visibleTasks.map(({ task, assignmentId, rootOriginalDate, isMovable, isPseudoScheduled }) => {
         const isDone = isTaskDoneOnDay(task, day.date);
         const cardKey = `${task.id}-${day.dateStr}`;
         const isSelected = selectedTaskId === task.id && selectedSourceDate === day.dateStr;
-        const isExpanded = expandedCardKey === cardKey;
         return (
-          <div key={task.id} className={isDone ? "opacity-50" : ""}>
+          <div key={task.id}>
             <CompactCard
               task={task}
               cardKey={cardKey}
               isDone={isDone}
               isSelected={isSelected}
-              isExpanded={isExpanded}
               isMovable={isMovable}
-              moveMode={moveMode}
+              isPseudoScheduled={isPseudoScheduled}
+              immovableFilter={immovableFilter}
+              movableFilter={movableFilter}
               compact
               onCardClick={(e) => {
                 e.stopPropagation();
-                if (moveMode && isMovable && !isDone) {
-                  onMoveClick(task.id, day.dateStr, assignmentId, rootOriginalDate);
-                } else {
-                  onCardClick(cardKey);
-                }
-              }}
-              onMoveClick={(e) => {
-                e.stopPropagation();
-                if (isMovable) {
+                if (isMovable && !isDone) {
                   onMoveClick(task.id, day.dateStr, assignmentId, rootOriginalDate);
                 }
               }}
@@ -733,12 +785,43 @@ function DayColumn({
           </div>
         );
       })}
+    </div>
+  );
+}
 
-      {!showCompleted && completedTasks.length > 0 && (
-        <div className="text-[10px] text-muted-foreground/60 text-center mt-auto pt-1">
-          <Check className="w-3 h-3 inline mr-0.5" />{completedTasks.length} done
-        </div>
-      )}
+// --- Filter Group ---
+
+function FilterGroup({ label, state, onChange }: {
+  label: string;
+  state: 'normal' | 'highlight' | 'hide';
+  onChange: (state: 'normal' | 'highlight' | 'hide') => void;
+}) {
+  const isHidden = state === 'hide';
+  const isHighlighted = state === 'highlight';
+
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-border px-1.5 py-1">
+      <span className="text-[11px] font-medium mr-auto">{label}</span>
+      <button
+        onClick={() => onChange(isHighlighted ? 'normal' : 'highlight')}
+        className={`flex items-center justify-center p-1 rounded transition-colors ${
+          isHighlighted
+            ? "bg-primary text-primary-foreground"
+            : "hover:bg-accent text-muted-foreground"
+        }`}
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+      </button>
+      <button
+        onClick={() => onChange(isHidden ? 'normal' : 'hide')}
+        className={`flex items-center justify-center p-1 rounded transition-colors ${
+          isHidden
+            ? "bg-primary text-primary-foreground"
+            : "hover:bg-accent text-muted-foreground"
+        }`}
+      >
+        {isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+      </button>
     </div>
   );
 }
@@ -750,80 +833,83 @@ function CompactCard({
   cardKey,
   isDone,
   isSelected,
-  isExpanded,
   isMovable,
-  moveMode,
+  isPseudoScheduled,
+  immovableFilter = 'normal',
+  movableFilter = 'normal',
   compact,
   frequencyLabel,
   onCardClick,
-  onMoveClick,
 }: {
   task: TaskWithDetails;
   cardKey: string;
   isDone?: boolean;
   isSelected?: boolean;
-  isExpanded?: boolean;
   isMovable: boolean;
-  moveMode: boolean;
+  isPseudoScheduled?: boolean;
+  immovableFilter?: 'normal' | 'highlight' | 'hide';
+  movableFilter?: 'normal' | 'highlight' | 'hide';
   compact?: boolean;
   frequencyLabel?: string;
   onCardClick: (e: React.MouseEvent) => void;
-  onMoveClick: (e: React.MouseEvent) => void;
 }) {
-  const movableHighlight = moveMode && isMovable && !isDone;
-  const statusColor = isDone
-    ? "border-green-500/30"
-    : task.status === "overdue"
-    ? "border-red-500/40"
-    : task.status === "due_soon"
-    ? "border-yellow-500/40"
+  const category: 'done' | 'movable' | 'immovable' = isDone ? 'done' : isMovable ? 'movable' : 'immovable';
+  const myFilter = category === 'done' ? 'normal' : category === 'movable' ? movableFilter : immovableFilter;
+  const anyHighlightActive = immovableFilter === 'highlight' || movableFilter === 'highlight';
+  const isHighlighted = myFilter === 'highlight';
+  const isDimmed = anyHighlightActive && !isHighlighted && !isSelected;
+  const highlightStyle = !isHighlighted ? ""
+    : category === 'movable' ? "ring-1 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20 shadow-sm"
+    : "ring-1 ring-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm";
+  const pseudoStyle = isPseudoScheduled && !isDone;
+  const borderColor = isDone ? "border-green-500/30"
+    : pseudoStyle ? "border-blue-400/50"
     : "border-border";
 
-  return (
+  const tooltipLines: string[] = [task.title];
+  if (task.category) tooltipLines.push(task.category.name);
+  if (task.taskType === "frequency" && task.targetCount) {
+    tooltipLines.push(`${task.targetCount}x per ${task.targetPeriod}`);
+  } else if (task.taskType === "interval" && task.intervalValue) {
+    tooltipLines.push(`Every ${task.intervalValue} ${task.intervalUnit}`);
+  } else if (task.taskType === "scheduled") {
+    tooltipLines.push("Scheduled");
+  }
+  if (isPseudoScheduled) tooltipLines.push("Suggested date — click to move");
+  else if (isMovable && !isDone) tooltipLines.push("Click to move");
+
+  const card = (
     <div
       onClick={onCardClick}
       className={`
-        group flex items-start gap-1.5 rounded-lg border px-2 py-1.5 cursor-pointer
+        group flex items-start gap-1.5 rounded-lg border px-2 py-1.5
         transition-all select-none relative
-        ${statusColor}
+        ${isMovable && !isDone ? "cursor-pointer" : "cursor-default"}
+        ${borderColor}
+        ${pseudoStyle ? "border-dashed bg-blue-50/50 dark:bg-blue-950/20" : ""}
         ${isSelected ? "ring-2 ring-primary bg-primary/10" : "hover:bg-accent/50"}
-        ${isDone ? "line-through text-muted-foreground" : ""}
+        ${isDone ? "line-through text-muted-foreground opacity-50" : ""}
         ${compact ? "text-[11px]" : "text-xs"}
-        ${movableHighlight ? "ring-1 ring-primary/50 bg-primary/5 shadow-sm" : ""}
-        ${moveMode && !movableHighlight && !isSelected ? "opacity-40" : ""}
+        ${highlightStyle}
+        ${isDimmed ? "opacity-40" : ""}
       `}
     >
       {isDone && (
         <Check className="w-3 h-3 text-green-500 flex-shrink-0 mt-0.5" />
       )}
-      {movableHighlight && !isSelected && (
-        <MoveHorizontal className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />
+      {isHighlighted && !isSelected && category === 'movable' && (
+        <MoveHorizontal className="w-3 h-3 flex-shrink-0 mt-0.5 text-blue-500" />
       )}
-      <span className={`font-medium leading-tight ${isExpanded ? "" : "line-clamp-2"}`}>
+      {isHighlighted && !isSelected && category === 'immovable' && (
+        <Lock className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-500" />
+      )}
+      <span className="font-medium leading-tight line-clamp-2">
         {task.title}
       </span>
       {frequencyLabel && (
         <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted rounded px-1 py-0.5 leading-none">
           {frequencyLabel}
         </span>
-      )}
-      {!isDone && !moveMode && (
-        isMovable ? (
-          <button
-            onClick={onMoveClick}
-            className="flex-shrink-0 ml-auto opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity p-0.5 -mr-1"
-            title="Move to another day"
-          >
-            <MoveHorizontal className="w-3 h-3" />
-          </button>
-        ) : (
-          <span
-            className="flex-shrink-0 ml-auto opacity-0 group-hover:opacity-40 transition-opacity p-0.5 -mr-1"
-            title="This task is on every day and cannot be moved"
-          >
-            <Lock className="w-2.5 h-2.5" />
-          </span>
-        )
       )}
       {task.category && !compact && (
         <span className="text-[10px] text-muted-foreground line-clamp-1 ml-auto flex-shrink-0">
@@ -832,11 +918,29 @@ function CompactCard({
       )}
     </div>
   );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{card}</TooltipTrigger>
+      <TooltipContent side="top" className="text-xs max-w-[200px]">
+        {tooltipLines.map((line, i) => (
+          <div key={i} className={i === 0 ? "font-medium" : "text-muted-foreground"}>
+            {line}
+          </div>
+        ))}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 // --- Helpers ---
 
 function isTaskDoneOnDay(task: TaskWithDetails, day: Date): boolean {
+  if (task.taskType === 'frequency' && task.targetPeriod === 'day' && task.targetCount) {
+    return (task.completionsThisPeriod ?? 0) >= task.targetCount;
+  }
+  const dayStr = formatDateKey(day);
+  if (task.recentCompletionDates?.includes(dayStr)) return true;
   const today = new Date();
   if (isSameDay(day, today) && task.completedToday) return true;
   if (task.lastCompletedAt) {
