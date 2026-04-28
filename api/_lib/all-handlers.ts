@@ -846,7 +846,7 @@ export async function tasksIndex(req: VercelRequest, res: VercelResponse) {
   const user = await verifyAuth(req);
   if (!user) return unauthorized(res);
 
-  await touchLastActive(user.id);
+  touchLastActive(user.id);
 
   if (req.method === 'GET') {
     return tasksIndexHandleGet(req, res, user.id);
