@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.2
+
+- **Fixed missing "Could Do" and "Due Soon" sections**: `daysUntilDue` now uses calendar-day difference in the user's timezone instead of raw 24-hour periods, so tasks due tomorrow correctly get `daysUntilDue = 1` regardless of the time of day
+
 ## 2.2.1
 
 - **Fixed aggressive overdue marking**: interval tasks now snap to end-of-day (11:59 PM local) instead of start-of-day (midnight), so tasks stay "due today" throughout the day and only become "overdue" after the day ends
