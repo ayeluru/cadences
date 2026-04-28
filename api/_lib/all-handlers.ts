@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden } from './auth.js';
+import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden, touchLastActive } from './auth.js';
 import { storage, enrichTask, enrichTasks } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
 import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays } from 'date-fns';
@@ -845,6 +845,8 @@ async function tagsIndexHandlePost(req: VercelRequest, res: VercelResponse, user
 export async function tasksIndex(req: VercelRequest, res: VercelResponse) {
   const user = await verifyAuth(req);
   if (!user) return unauthorized(res);
+
+  touchLastActive(user.id).catch(() => {});
 
   if (req.method === 'GET') {
     return tasksIndexHandleGet(req, res, user.id);
