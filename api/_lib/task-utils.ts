@@ -256,7 +256,9 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
   }
 
   const now = new Date();
-  const daysUntilDue = differenceInDays(nextDue, now);
+  const nowLocalDay = startOfDay(toLocal(now, timezone));
+  const nextDueLocalDay = startOfDay(toLocal(nextDue, timezone));
+  const daysUntilDue = differenceInDays(nextDueLocalDay, nowLocalDay);
   const cadenceDays = getCadenceDays(task);
   const dueSoonThreshold = getDueSoonThreshold(cadenceDays);
 
