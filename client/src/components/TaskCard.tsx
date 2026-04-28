@@ -28,9 +28,10 @@ interface TaskCardProps {
   condensed?: boolean;
   expanded?: boolean;
   onToggleExpand?: () => void;
+  suggested?: boolean;
 }
 
-export function TaskCard({ task, showVariations = true, condensed = false, expanded = false, onToggleExpand }: TaskCardProps) {
+export function TaskCard({ task, showVariations = true, condensed = false, expanded = false, onToggleExpand, suggested = false }: TaskCardProps) {
   const tz = useTimezone();
   const completeMutation = useCompleteTask();
   const deleteCascadeMutation = useDeleteTaskWithCascade();
@@ -134,7 +135,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
         <div
           className={cn(
             "group relative bg-card transition-all duration-200 rounded-lg border px-3 py-2 cursor-pointer",
-            getStatusColor(task.status),
+            suggested ? "border-l-4 border-dashed border-l-[hsl(var(--urgency-soon))]" : getStatusColor(task.status),
             isVariation && "ml-6 border-l-2 border-l-primary/30"
           )}
           onClick={onToggleExpand}
@@ -143,6 +144,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
           <div className="flex items-center gap-3">
             {getStatusIcon(task.status)}
             <span className="font-medium text-sm flex-1 truncate">{task.title}</span>
+            {suggested && <Badge variant="outline" className="text-[10px] px-1.5 h-5 shrink-0 border-dashed text-muted-foreground">Suggested</Badge>}
             <span className="text-xs text-muted-foreground shrink-0">{getStatusText()}</span>
             {task.streak && task.streak.currentStreak > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 h-5 shrink-0">
@@ -223,7 +225,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
         exit={{ opacity: 0, scale: 0.95 }}
         className={cn(
           "group relative bg-card hover:bg-card/80 transition-all duration-300 rounded-xl shadow-sm hover:shadow-md border p-4 md:p-5",
-          getStatusColor(task.status),
+          suggested ? "border-l-4 border-dashed border-l-[hsl(var(--urgency-soon))]" : getStatusColor(task.status),
           isVariation && "ml-6 border-l-2 border-l-primary/30"
         )}
         data-testid={`task-card-${task.id}`}
@@ -236,6 +238,9 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                   <Folder className="w-3 h-3" />
                   {task.category.name}
                 </span>
+              )}
+              {suggested && (
+                <Badge variant="outline" className="text-[10px] px-1.5 h-5 border-dashed text-muted-foreground">Suggested</Badge>
               )}
               {isVariation && (
                 <Badge variant="outline" className="text-[10px] px-1.5 h-5">Variation</Badge>
