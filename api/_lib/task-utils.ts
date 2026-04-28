@@ -235,9 +235,9 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
         default:
           nextDue = addDays(lastCompleted, task.intervalValue);
       }
-      // Snap to start-of-day in user's timezone so daily tasks reset at local midnight
+      // Snap to end-of-day in user's timezone so tasks stay "due today" until the day ends
       const nextDueLocal = toLocal(nextDue, timezone);
-      nextDue = toUTC(startOfDay(nextDueLocal), timezone);
+      nextDue = toUTC(endOfDay(nextDueLocal), timezone);
     } else {
       nextDue = new Date(0);
     }
