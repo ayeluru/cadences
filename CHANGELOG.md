@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.0
+
+- **Last active tracking in admin view**: each user row now shows when they were last active (e.g. "5m ago", "3d ago"), tracked via a `user_activity` table updated on every authenticated API request
+
 ## 2.2.4
 
 - **Fixed frequency tasks incorrectly showing as Due Today**: frequency tasks whose pseudo-scheduled date passed (e.g. yesterday) no longer get force-promoted to "Due Today" — they correctly route to "Could Do" instead, since they remain completable anytime within the period
