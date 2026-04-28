@@ -1777,8 +1777,13 @@ export class DatabaseStorage implements IStorage {
 
     const lastCompletion = streak.lastCompletedAt;
 
+    // Use max(streak.lastCompletedAt, task.resumedAt) so pauses don't create a gap
+    const effectiveBase = lastCompletion && task.resumedAt && new Date(task.resumedAt) > lastCompletion
+      ? new Date(task.resumedAt)
+      : lastCompletion;
+
     const completedDay = startOfDay(toZonedTime(completedAt, timezone));
-    const lastCompletionDay = lastCompletion ? startOfDay(toZonedTime(lastCompletion, timezone)) : null;
+    const lastCompletionDay = effectiveBase ? startOfDay(toZonedTime(effectiveBase, timezone)) : null;
     const calendarDaysDiff = lastCompletionDay
       ? differenceInDays(completedDay, lastCompletionDay)
       : Infinity;
@@ -2474,6 +2479,54 @@ export class DatabaseStorage implements IStorage {
         target: userSettings.userId,
         set: { ...updates, updatedAt: new Date() },
       })
+      .returning();
+    return result;
+  }
+
+  // ============ Task Pause / Vacation ============
+
+  async pauseTask(taskId: number, userId: string, until?: Date): Promise<Task> {
+    const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
+    if (!task) throw new Error('Task not found');
+
+    const [updated] = await db.update(tasks)
+      .set({ isPaused: true, pausedUntil: until ?? null })
+      .where(eq(tasks.id, taskId))
+      .returning();
+    return updated;
+  }
+
+  async resumeTask(taskId: number, userId: string): Promise<Task> {
+    const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
+    if (!task) throw new Error('Task not found');
+
+    const [updated] = await db.update(tasks)
+      .set({ isPaused: false, pausedUntil: null, resumedAt: new Date() })
+      .where(eq(tasks.id, taskId))
+      .returning();
+    return updated;
+  }
+
+  async startVacation(userId: string, until?: Date): Promise<UserSettings> {
+    const [result] = await db.insert(userSettings)
+      .values({ userId, vacationMode: true, vacationUntil: until ?? null, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: { vacationMode: true, vacationUntil: until ?? null, updatedAt: new Date() },
+      })
+      .returning();
+    return result;
+  }
+
+  async endVacation(userId: string): Promise<UserSettings> {
+    const now = new Date();
+    await db.update(tasks)
+      .set({ resumedAt: now })
+      .where(eq(tasks.userId, userId));
+
+    const [result] = await db.update(userSettings)
+      .set({ vacationMode: false, vacationUntil: null, updatedAt: now })
+      .where(eq(userSettings.userId, userId))
       .returning();
     return result;
   }

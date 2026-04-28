@@ -2,7 +2,7 @@ import { TaskWithDetails, TaskMetric } from "@shared/schema";
 import { formatDistanceToNow, addDays, isPast } from "date-fns";
 import { useTimezone } from "@/hooks/use-user-settings";
 import { formatLocal } from "@/lib/tz";
-import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History, Archive, XCircle, Folder, Tag as TagIcon } from "lucide-react";
+import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History, Archive, XCircle, Folder, Tag as TagIcon, Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -14,11 +14,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useCompleteTask, useDeleteTaskWithCascade, useArchiveTask } from "@/hooks/use-tasks";
+import { useCompleteTask, useDeleteTaskWithCascade, useArchiveTask, usePauseTask, useResumeTask } from "@/hooks/use-tasks";
 import { useState } from "react";
 import { EditTaskDialog } from "./EditTaskDialog";
 import { TaskHistoryDialog } from "./TaskHistoryDialog";
 import { CompleteTaskDialog } from "./CompleteTaskDialog";
+import { PauseTaskDialog } from "./PauseTaskDialog";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -36,10 +37,15 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
   const completeMutation = useCompleteTask();
   const deleteCascadeMutation = useDeleteTaskWithCascade();
   const archiveMutation = useArchiveTask();
+  const pauseMutation = usePauseTask();
+  const resumeMutation = useResumeTask();
   const [editOpen, setEditOpen] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [variationsExpanded, setVariationsExpanded] = useState(false);
+
+  const isPaused = task.effectivelyPaused || task.status === 'paused';
 
   const isFrequencyTask = task.taskType === 'frequency';
   const hasVariations = task.variations && task.variations.length > 0;
@@ -52,11 +58,15 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
       case 'due_soon': return 'border-l-4 border-l-[hsl(var(--urgency-soon))] bg-amber-50/50 dark:bg-amber-900/10';
       case 'later': return 'border-l-4 border-l-[hsl(var(--urgency-later))]';
       case 'never_done': return 'border-l-4 border-l-[hsl(var(--urgency-never))] bg-gray-50/50 dark:bg-gray-900/10';
+      case 'paused': return 'border-l-4 border-l-muted-foreground/40 opacity-60';
       default: return 'border-l-4 border-l-border';
     }
   };
 
   const getStatusIcon = (status: string | undefined) => {
+    if (status === 'paused') {
+      return <Pause className="w-5 h-5 text-muted-foreground" />;
+    }
     if (isFrequencyTask) {
       return <Target className="w-5 h-5 text-primary" />;
     }
@@ -70,6 +80,12 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
   };
 
   const getStatusText = () => {
+    if (isPaused) {
+      if (task.pausedUntilDate) {
+        return `Paused until ${formatLocal(task.pausedUntilDate, tz, "MMM d")}`;
+      }
+      return "Paused";
+    }
     if (isFrequencyTask) {
       const done = task.completionsThisPeriod || 0;
       const target = task.targetCount || 0;
@@ -185,9 +201,15 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                   </div>
                 )}
                 <div className="flex gap-2 pt-2">
-                  <Button size="sm" onClick={(e) => { e.stopPropagation(); handleComplete(); }}>
-                    <CheckCircle2 className="w-4 h-4 mr-1" /> Done
-                  </Button>
+                  {isPaused ? (
+                    <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); resumeMutation.mutate(task.id); }}>
+                      <Play className="w-4 h-4 mr-1" /> Resume
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={(e) => { e.stopPropagation(); handleComplete(); }}>
+                      <CheckCircle2 className="w-4 h-4 mr-1" /> Done
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditOpen(true); }}>
                     <Edit2 className="w-4 h-4 mr-1" /> Edit
                   </Button>
@@ -334,18 +356,31 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
               </Button>
             )}
 
-            <Button 
-              onClick={handleComplete}
-              disabled={completeMutation.isPending}
-              className={cn(
-                "rounded-full px-6 shadow-md transition-all duration-300",
-                completeMutation.isPending ? "opacity-70" : "hover:scale-105 active:scale-95"
-              )}
-              size="sm"
-              data-testid={`button-complete-${task.id}`}
-            >
-              {completeMutation.isPending ? "Saving..." : "Done"}
-            </Button>
+            {isPaused ? (
+              <Button 
+                onClick={() => resumeMutation.mutate(task.id)}
+                disabled={resumeMutation.isPending}
+                variant="outline"
+                className="rounded-full px-6 shadow-md transition-all duration-300 hover:scale-105 active:scale-95"
+                size="sm"
+              >
+                <Play className="w-4 h-4 mr-1" />
+                {resumeMutation.isPending ? "Resuming..." : "Resume"}
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleComplete}
+                disabled={completeMutation.isPending}
+                className={cn(
+                  "rounded-full px-6 shadow-md transition-all duration-300",
+                  completeMutation.isPending ? "opacity-70" : "hover:scale-105 active:scale-95"
+                )}
+                size="sm"
+                data-testid={`button-complete-${task.id}`}
+              >
+                {completeMutation.isPending ? "Saving..." : "Done"}
+              </Button>
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -361,9 +396,21 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                 <DropdownMenuItem onClick={() => setHistoryOpen(true)} data-testid={`menu-history-${task.id}`}>
                   <History className="w-4 h-4 mr-2" /> View History
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleCompleteWithDetails} data-testid={`menu-complete-${task.id}`}>
-                  <CalendarCheck className="w-4 h-4 mr-2" /> Complete with details...
-                </DropdownMenuItem>
+                {!isPaused && (
+                  <DropdownMenuItem onClick={handleCompleteWithDetails} data-testid={`menu-complete-${task.id}`}>
+                    <CalendarCheck className="w-4 h-4 mr-2" /> Complete with details...
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                {isPaused ? (
+                  <DropdownMenuItem onClick={() => resumeMutation.mutate(task.id)}>
+                    <Play className="w-4 h-4 mr-2" /> Resume Task
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => setPauseDialogOpen(true)}>
+                    <Pause className="w-4 h-4 mr-2" /> Pause Task
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
                   onClick={() => {
@@ -442,6 +489,12 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
         open={completeDialogOpen} 
         onOpenChange={setCompleteDialogOpen} 
         task={task} 
+      />}
+      {pauseDialogOpen && <PauseTaskDialog
+        open={pauseDialogOpen}
+        onOpenChange={setPauseDialogOpen}
+        taskId={task.id}
+        taskTitle={task.title}
       />}
     </>
   );

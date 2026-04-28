@@ -751,7 +751,10 @@ async function streaksIndexHandleGet(req: VercelRequest, res: VercelResponse, us
       if (task && streak.currentStreak > 0 && streak.lastCompletedAt) {
         const intervalDays = storage.getIntervalInDays(task);
         const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
-        const lastLocal = startOfDay(toZonedTime(streak.lastCompletedAt, tz));
+        const effectiveBase = task.resumedAt && new Date(task.resumedAt) > streak.lastCompletedAt
+          ? new Date(task.resumedAt)
+          : streak.lastCompletedAt;
+        const lastLocal = startOfDay(toZonedTime(effectiveBase, tz));
         const daysSince = differenceInDays(nowLocal, lastLocal);
         if (daysSince > graceWindow) {
           effectiveCurrentStreak = 0;
@@ -1949,6 +1952,99 @@ export async function userSettingsHandler(req: VercelRequest, res: VercelRespons
     } catch (err) {
       console.error('[userSettingsHandler] PUT failed:', err);
       return res.status(500).json({ error: 'Failed to save timezone' });
+    }
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ---------------------------------------------------------------------------
+// tasks-id-pause
+// ---------------------------------------------------------------------------
+
+export async function tasksIdPause(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  const { id } = req.query;
+  const taskId = parseInt(id as string, 10);
+  if (isNaN(taskId)) {
+    return res.status(400).json({ error: 'Invalid task ID' });
+  }
+
+  try {
+    const { until } = req.body || {};
+    const untilDate = until ? new Date(until) : undefined;
+    const task = await storage.pauseTask(taskId, user.id, untilDate);
+    const tz = await getUserTimezone(user.id);
+    const enriched = await enrichTask(task, user.id, undefined, tz);
+    return res.status(200).json(enriched);
+  } catch (error) {
+    console.error('Error pausing task:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// tasks-id-resume
+// ---------------------------------------------------------------------------
+
+export async function tasksIdResume(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  const { id } = req.query;
+  const taskId = parseInt(id as string, 10);
+  if (isNaN(taskId)) {
+    return res.status(400).json({ error: 'Invalid task ID' });
+  }
+
+  try {
+    const task = await storage.resumeTask(taskId, user.id);
+    const tz = await getUserTimezone(user.id);
+    const enriched = await enrichTask(task, user.id, undefined, tz);
+    return res.status(200).json(enriched);
+  } catch (error) {
+    console.error('Error resuming task:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// vacation
+// ---------------------------------------------------------------------------
+
+export async function vacationHandler(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  if (req.method === 'POST') {
+    try {
+      const { until } = req.body || {};
+      const untilDate = until ? new Date(until) : undefined;
+      const settings = await storage.startVacation(user.id, untilDate);
+      return res.status(200).json(settings);
+    } catch (error) {
+      console.error('Error starting vacation:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  if (req.method === 'DELETE') {
+    try {
+      const settings = await storage.endVacation(user.id);
+      return res.status(200).json(settings);
+    } catch (error) {
+      console.error('Error ending vacation:', error);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.0
+
+- **Task pausing**: pause individual tasks indefinitely or until a specific date — paused tasks are hidden from the Today view and grouped in a collapsible "Paused" section
+- **Vacation mode**: global toggle in Settings that pauses all tasks at once, with an optional end date; a banner shows on the Dashboard while active
+- **Streak preservation**: streaks are frozen during pauses and resume cleanly — no streak loss for time away
+- **Pause UI**: pause/resume actions in the task card dropdown menu, with a date-picker dialog for scheduled pauses
+
 ## 2.3.1
 
 - **Fixed serverless timeout**: moved activity tracking out of `verifyAuth` to prevent deadlocking the single DB connection on Vercel, which caused 60-second timeouts on all authenticated endpoints

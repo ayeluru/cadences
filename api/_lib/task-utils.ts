@@ -16,6 +16,7 @@ export interface BatchData {
   assignmentsMap: Map<number, { plannedDate: string }[]>;
   assignedTodaySet: Set<number>;
   movedFromTodaySet: Set<number>;
+  vacationMode?: boolean;
 }
 
 // Convert a UTC date to the user's local timezone for date-fns operations
@@ -101,6 +102,44 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
   const taskMetrics = batch ? (batch.metricsMap.get(task.id) || []) : await storage.getTaskMetrics(task.id);
   const variations = batch ? (batch.variationsMap.get(task.id) || []) : await storage.getTaskVariations(task.id);
 
+  // --- Pause logic ---
+  const now = new Date();
+  const isIndividuallyPaused = task.isPaused && (!task.pausedUntil || new Date(task.pausedUntil) > now);
+  const vacationActive = batch?.vacationMode ?? false;
+  const effectivelyPaused = isIndividuallyPaused || vacationActive;
+  const pausedUntilDate = task.isPaused && task.pausedUntil ? new Date(task.pausedUntil).toISOString() : null;
+
+  if (effectivelyPaused) {
+    const rawStreak = batch ? batch.streaksMap.get(task.id) : await storage.getTaskStreak(task.id, userId);
+    return {
+      ...task,
+      category,
+      tags: taskTags,
+      metrics: taskMetrics,
+      variations,
+      variationStats: [],
+      nextDue: null,
+      status: 'paused' as const,
+      urgency: -9999,
+      daysUntilDue: undefined,
+      completionsThisPeriod: 0,
+      targetProgress: 0,
+      completedToday: false,
+      effectiveDueToday: false,
+      effectivelyPaused: true,
+      pausedUntilDate,
+      streak: rawStreak ? {
+        currentStreak: rawStreak.currentStreak,
+        longestStreak: rawStreak.longestStreak,
+        lastCompletedAt: rawStreak.lastCompletedAt,
+      } : null,
+    };
+  }
+
+  // resumedAt is only used for streak grace window checks (below), not for scheduling.
+  // This way tasks that were due during a pause show as due/overdue when resumed.
+  const taskForCalc = task;
+
   let nextDue = new Date();
   let completionsThisPeriod = 0;
   let targetProgress = 0;
@@ -130,8 +169,6 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
       nextDue = isBefore(evenlySpaced, end) ? evenlySpaced : end;
     }
   } else if (task.taskType === 'scheduled') {
-    // Scheduled task - find next occurrence based on schedule
-    const now = new Date();
     const nowLocal = toLocal(now, timezone);
     const today = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate());
     let foundNextDue = false;
@@ -145,8 +182,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     }
 
     const wasCompletedAfter = (dateTime: Date): boolean => {
-      if (!task.lastCompletedAt) return false;
-      return new Date(task.lastCompletedAt) >= dateTime;
+      if (!taskForCalc.lastCompletedAt) return false;
+      return new Date(taskForCalc.lastCompletedAt) >= dateTime;
     };
 
     // Check specific dates first
@@ -217,8 +254,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
       nextDue = new Date();
     }
   } else if (task.intervalValue && task.intervalUnit) {
-    if (task.lastCompletedAt) {
-      const lastCompleted = new Date(task.lastCompletedAt);
+    if (taskForCalc.lastCompletedAt) {
+      const lastCompleted = new Date(taskForCalc.lastCompletedAt);
       switch (task.intervalUnit) {
         case 'days':
           nextDue = addDays(lastCompleted, task.intervalValue);
@@ -255,7 +292,6 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     }
   }
 
-  const now = new Date();
   const nowLocalDay = startOfDay(toLocal(now, timezone));
   const nextDueLocalDay = startOfDay(toLocal(nextDue, timezone));
   const daysUntilDue = differenceInDays(nextDueLocalDay, nowLocalDay);
@@ -313,13 +349,17 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
   }
 
   // Get streak data and check if it's still active (hasn't expired)
+  // Use max(streak.lastCompletedAt, task.resumedAt) so pauses don't break streaks
   const rawStreak = batch ? batch.streaksMap.get(task.id) : await storage.getTaskStreak(task.id, userId);
   let streak = rawStreak;
   if (streak && streak.currentStreak > 0 && streak.lastCompletedAt) {
     const intervalDays = storage.getIntervalInDays(task);
     const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
     const nowLocalForStreak = toLocal(now, timezone);
-    const lastStreakLocal = toLocal(streak.lastCompletedAt, timezone);
+    const effectiveStreakBase = task.resumedAt && new Date(task.resumedAt) > streak.lastCompletedAt
+      ? new Date(task.resumedAt)
+      : streak.lastCompletedAt;
+    const lastStreakLocal = toLocal(effectiveStreakBase, timezone);
     const daysSinceLast = differenceInDays(startOfDay(nowLocalForStreak), startOfDay(lastStreakLocal));
     if (daysSinceLast > graceWindow) {
       streak = { ...streak, currentStreak: 0 };
@@ -376,6 +416,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     targetProgress,
     completedToday,
     effectiveDueToday,
+    effectivelyPaused: false,
+    pausedUntilDate: null,
     recentCompletionDates: recentCompletionDates.length > 0 ? recentCompletionDates : undefined,
     streak: streak ? {
       currentStreak: streak.currentStreak,
@@ -391,13 +433,14 @@ export async function enrichTasks(tasks: any[], userId: string, timezone: string
 
   const taskIds = tasks.map(t => t.id);
 
-  const [categories, tagsMap, metricsMap, variationsMap, streaksMap, activeAssignments] = await Promise.all([
+  const [categories, tagsMap, metricsMap, variationsMap, streaksMap, activeAssignments, userSettingsData] = await Promise.all([
     storage.getCategories(userId),
     storage.getTaskTagsBatch(taskIds),
     storage.getTaskMetricsBatch(taskIds),
     storage.getTaskVariationsBatch(taskIds),
     storage.getTaskStreaksBatch(taskIds, userId),
     storage.getActiveAssignments(userId),
+    storage.getUserSettings(userId),
   ]);
 
   // Batch-fetch completions for frequency tasks, grouped by period type
@@ -442,6 +485,9 @@ export async function enrichTasks(tasks: any[], userId: string, timezone: string
     }
   }
 
+  const vacationMode = userSettingsData?.vacationMode === true
+    && (!userSettingsData.vacationUntil || new Date(userSettingsData.vacationUntil) > new Date());
+
   const batch: BatchData = {
     categories,
     tagsMap,
@@ -453,6 +499,7 @@ export async function enrichTasks(tasks: any[], userId: string, timezone: string
     assignmentsMap,
     assignedTodaySet,
     movedFromTodaySet,
+    vacationMode,
   };
 
   return Promise.all(tasks.map(task => enrichTask(task, userId, batch, timezone)));

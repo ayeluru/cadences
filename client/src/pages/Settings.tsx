@@ -2,15 +2,17 @@ import { useCategories, useCreateCategory, useDeleteCategory } from "@/hooks/use
 import { useTags, useCreateTag, useDeleteTag } from "@/hooks/use-tags";
 import { useTasks } from "@/hooks/use-tasks";
 import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile, useImportFromProfile } from "@/hooks/use-profiles";
-import { useUserSettings, useUpdateUserSettings } from "@/hooks/use-user-settings";
+import { useUserSettings, useUpdateUserSettings, useVacationMode, useStartVacation, useEndVacation } from "@/hooks/use-user-settings";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Tag as TagIcon, Folder, Trash2, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, MoreHorizontal, Globe, ChevronsUpDown } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, MoreHorizontal, Globe, ChevronsUpDown, Palmtree, Calendar } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useState, useMemo } from "react";
@@ -62,6 +64,12 @@ export default function Settings() {
   const { data: userSettings } = useUserSettings();
   const updateSettingsMutation = useUpdateUserSettings();
   const [tzOpen, setTzOpen] = useState(false);
+
+  const { isActive: vacationActive, until: vacationUntil } = useVacationMode();
+  const startVacation = useStartVacation();
+  const endVacation = useEndVacation();
+  const [vacationEndDate, setVacationEndDate] = useState<Date | undefined>(undefined);
+  const [showVacationDatePicker, setShowVacationDatePicker] = useState(false);
 
   const detectedTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
@@ -240,6 +248,78 @@ export default function Settings() {
               </Command>
             </PopoverContent>
           </Popover>
+        </div>
+
+        {/* Vacation Mode */}
+        <div className="rounded-lg border px-4 py-3 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <Palmtree className="w-4 h-4" />
+                Vacation Mode
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Pause all tasks at once. Streaks are preserved while vacation mode is active.
+              </p>
+            </div>
+            <Switch
+              checked={vacationActive}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  const until = vacationEndDate?.toISOString();
+                  startVacation.mutate(until);
+                } else {
+                  endVacation.mutate();
+                  setVacationEndDate(undefined);
+                  setShowVacationDatePicker(false);
+                }
+              }}
+              disabled={startVacation.isPending || endVacation.isPending}
+            />
+          </div>
+          {vacationActive && vacationUntil && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Active until {vacationUntil.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+            </p>
+          )}
+          {vacationActive && !vacationUntil && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Active indefinitely. Turn off when you're back.
+            </p>
+          )}
+          {!vacationActive && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowVacationDatePicker(!showVacationDatePicker)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              >
+                {showVacationDatePicker ? "Hide end date" : "Set an end date (optional)"}
+              </button>
+            </div>
+          )}
+          {!vacationActive && showVacationDatePicker && (
+            <div className="space-y-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-start font-normal text-sm">
+                    <Calendar className="w-4 h-4 mr-2" />
+                    {vacationEndDate
+                      ? vacationEndDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                      : "Pick a return date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarPicker
+                    mode="single"
+                    selected={vacationEndDate}
+                    onSelect={setVacationEndDate}
+                    disabled={(date) => date <= new Date()}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
         </div>
       </section>
 
