@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import {
   Loader2, Shield, ShieldOff, Users, MessageSquarePlus, AlertCircle,
-  Eye, ChevronRight, KeyRound, Trash2, AlertTriangle, MoreVertical,
+  Eye, ChevronRight, KeyRound, Trash2, AlertTriangle, MoreVertical, Clock,
 } from "lucide-react";
 import {
   Dialog,
@@ -27,6 +27,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+function formatLastActive(dateStr: string | null): string {
+  if (!dateStr) return "Never";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 function ResetPasswordDialog({
   adminUser,
@@ -222,6 +239,12 @@ function UserRow({ adminUser, currentUserId }: { adminUser: AdminUser; currentUs
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground truncate">{adminUser.email}</p>
+            <div className="flex items-center gap-1 mt-0.5">
+              <Clock className="w-3 h-3 text-muted-foreground/60" />
+              <span className="text-[11px] text-muted-foreground/60">
+                {formatLastActive(adminUser.lastActiveAt)}
+              </span>
+            </div>
           </div>
         </div>
         <DropdownMenu>

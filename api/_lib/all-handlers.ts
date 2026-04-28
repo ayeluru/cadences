@@ -1405,11 +1405,15 @@ export async function adminUsers(req: VercelRequest, res: VercelResponse) {
   if (!admin) return forbidden(res);
 
   try {
-    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+    const [{ data: { users }, error }, roles, activity] = await Promise.all([
+      supabaseAdmin.auth.admin.listUsers(),
+      storage.getAllUserRoles(),
+      storage.getAllUserActivity(),
+    ]);
     if (error) return res.status(500).json({ error: error.message });
 
-    const roles = await storage.getAllUserRoles();
     const roleMap = new Map(roles.map(r => [r.userId, r.role]));
+    const activityMap = new Map(activity.map(a => [a.userId, a.lastActiveAt]));
 
     const result = users.map(u => ({
       id: u.id,
@@ -1418,6 +1422,7 @@ export async function adminUsers(req: VercelRequest, res: VercelResponse) {
       lastName: u.user_metadata?.lastName ?? null,
       role: roleMap.get(u.id) ?? 'user',
       createdAt: u.created_at,
+      lastActiveAt: activityMap.get(u.id)?.toISOString() ?? null,
     }));
 
     return res.status(200).json(result);
