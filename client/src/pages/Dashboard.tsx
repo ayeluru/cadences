@@ -105,6 +105,7 @@ export default function Dashboard() {
     const dueSoon: TaskWithDetails[] = [];
     const neverDone: TaskWithDetails[] = [];
     const completedToday: TaskWithDetails[] = [];
+    const suggestedIds = new Set<number>();
 
     filteredTasks.forEach(task => {
       if (task.status === 'never_done') {
@@ -112,7 +113,6 @@ export default function Dashboard() {
         return;
       }
 
-      // Daily frequency tasks (e.g. 8x/day) stay actionable until the daily goal is fully met
       const isDailyFreqUnmet = task.taskType === 'frequency' && task.targetPeriod === 'day'
         && task.targetCount && (task.completionsThisPeriod ?? 0) < task.targetCount;
 
@@ -127,12 +127,12 @@ export default function Dashboard() {
 
       const wouldBeCouldDo =
         !wouldBeDueToday && (
-          (task.taskType === 'frequency' && (task.targetProgress ?? 0) < 100 && task.status === 'later') ||
+          (task.taskType === 'frequency' && task.targetPeriod !== 'day' && (task.targetProgress ?? 0) < 100) ||
           (!frequencyGoalMet && task.status === 'later' && task.daysUntilDue !== undefined && task.daysUntilDue <= 7 && task.daysUntilDue > 0)
         );
 
       const wouldBeDueSoon =
-        !wouldBeDueToday && (
+        !wouldBeDueToday && !wouldBeCouldDo && (
           task.status === 'due_soon' && task.daysUntilDue !== undefined && task.daysUntilDue > 0
         );
 
@@ -146,6 +146,9 @@ export default function Dashboard() {
       if (task.completedToday && !isDailyFreqUnmet) return;
 
       if (wouldBeDueToday) {
+        if (task.taskType === 'frequency' && task.targetPeriod !== 'day' && !isDailyFreqUnmet) {
+          suggestedIds.add(task.id);
+        }
         dueToday.push(task);
       } else if (wouldBeCouldDo) {
         couldDo.push(task);
@@ -161,7 +164,7 @@ export default function Dashboard() {
     neverDone.sort(byUrgency);
     completedToday.sort(byUrgency);
 
-    return { dueToday, couldDo, dueSoon, neverDone, completedToday };
+    return { dueToday, couldDo, dueSoon, neverDone, completedToday, suggestedIds };
   }, [filteredTasks]);
 
   const todayTotal = todayTasks.dueToday.length + todayTasks.completedToday.length;
@@ -495,7 +498,7 @@ function TodayView({
   onToggleExpand,
   onCreateOpen,
 }: {
-  todayTasks: { dueToday: TaskWithDetails[]; couldDo: TaskWithDetails[]; dueSoon: TaskWithDetails[]; neverDone: TaskWithDetails[]; completedToday: TaskWithDetails[] };
+  todayTasks: { dueToday: TaskWithDetails[]; couldDo: TaskWithDetails[]; dueSoon: TaskWithDetails[]; neverDone: TaskWithDetails[]; completedToday: TaskWithDetails[]; suggestedIds: Set<number> };
   todayTotal: number;
   todayProgress: number;
   showDueToday: boolean;
@@ -563,6 +566,7 @@ function TodayView({
           condensedView={condensedView}
           expandedTaskId={expandedTaskId}
           onToggleExpand={onToggleExpand}
+          suggestedTaskIds={todayTasks.suggestedIds}
         />
       )}
 
@@ -693,6 +697,7 @@ function CollapsibleTaskSection({
   expandedTaskId,
   onToggleExpand,
   dimmed,
+  suggestedTaskIds,
 }: {
   label: string;
   color: string;
@@ -704,6 +709,7 @@ function CollapsibleTaskSection({
   expandedTaskId: number | null;
   onToggleExpand: (id: number) => void;
   dimmed?: boolean;
+  suggestedTaskIds?: Set<number>;
 }) {
   return (
     <motion.section
@@ -741,6 +747,7 @@ function CollapsibleTaskSection({
                   condensed={condensedView}
                   expanded={expandedTaskId === task.id}
                   onToggleExpand={() => onToggleExpand(task.id)}
+                  suggested={suggestedTaskIds?.has(task.id)}
                 />
               ))}
             </div>

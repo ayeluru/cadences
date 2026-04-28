@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.3
+
+- **Today View "Could Do" section for frequency tasks**: non-daily frequency tasks with incomplete progress now appear in "Could Do" on non-pseudo-scheduled days instead of being hidden
+- **"Suggested" indicator for pseudo-scheduled frequency tasks**: frequency tasks that land in "Due Today" via pseudo-scheduling show a dashed border and "Suggested" badge to distinguish them from hard-due tasks
+- **Prevented section overlap**: added `!wouldBeCouldDo` guard to `wouldBeDueSoon` so tasks don't appear in multiple sections
+
 ## 2.2.2
 
 - **Fixed missing "Could Do" and "Due Soon" sections**: `daysUntilDue` now uses calendar-day difference in the user's timezone instead of raw 24-hour periods, so tasks due tomorrow correctly get `daysUntilDue = 1` regardless of the time of day
