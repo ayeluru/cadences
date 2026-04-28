@@ -1,10 +1,10 @@
 import {
   categories, tags, tasks, taskTags, completions, taskMetrics, metricValues, taskStreaks, profiles, taskVariations,
-  userRoles, feedbackSubmissions, feedbackVotes, feedbackComments, taskAssignments, userSettings,
+  userRoles, feedbackSubmissions, feedbackVotes, feedbackComments, taskAssignments, userSettings, userActivity,
   type Category, type Tag, type Task, type TaskTag, type Completion,
   type TaskMetric, type MetricValue, type TaskStreak, type Profile, type TaskVariation,
   type UserRole, type FeedbackSubmission, type FeedbackVote, type FeedbackComment,
-  type TaskAssignment, type UserSettings,
+  type TaskAssignment, type UserSettings, type UserActivity,
   type InsertCategory, type InsertTag, type InsertTask,
   type InsertTaskMetric, type InsertMetricValue, type InsertProfile,
   type InsertFeedback, type InsertFeedbackComment
@@ -108,6 +108,10 @@ export interface IStorage {
 
   // Account Management
   deleteAllUserData(userId: string): Promise<void>;
+
+  // User Activity
+  updateLastActive(userId: string): Promise<void>;
+  getAllUserActivity(): Promise<UserActivity[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2181,9 +2185,25 @@ export class DatabaseStorage implements IStorage {
     await db.delete(feedbackVotes).where(eq(feedbackVotes.userId, userId));
     await db.delete(feedbackSubmissions).where(eq(feedbackSubmissions.userId, userId));
     await db.delete(userRoles).where(eq(userRoles.userId, userId));
+    await db.delete(userActivity).where(eq(userActivity.userId, userId));
     // Deleting profiles CASCADE-deletes tasks, categories, tags,
     // completions, metrics, streaks, variations, and tag associations.
     await db.delete(profiles).where(eq(profiles.userId, userId));
+  }
+
+  // ============ User Activity ============
+
+  async updateLastActive(userId: string): Promise<void> {
+    await db.insert(userActivity)
+      .values({ userId, lastActiveAt: new Date() })
+      .onConflictDoUpdate({
+        target: userActivity.userId,
+        set: { lastActiveAt: new Date() },
+      });
+  }
+
+  async getAllUserActivity(): Promise<UserActivity[]> {
+    return await db.select().from(userActivity);
   }
 
   // Batch query methods — fetch data for many tasks in a single DB round-trip

@@ -71,6 +71,13 @@
       "when": 1776988225357,
       "tag": "0009_lush_marrow",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777409171825,
+      "tag": "0010_redundant_norman_osborn",
+      "breakpoints": true
     }
   ]
 }

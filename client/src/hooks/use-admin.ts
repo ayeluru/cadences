@@ -8,6 +8,7 @@ export interface AdminUser {
   lastName: string | null;
   role: "user" | "admin";
   createdAt: string;
+  lastActiveAt: string | null;
 }
 
 export function useAdminUsers() {

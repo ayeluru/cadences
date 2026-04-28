@@ -226,6 +226,15 @@ export const userSettings = pgTable("user_settings", {
   index("user_settings_user_id_idx").on(table.userId),
 ]);
 
+export const userActivity = pgTable("user_activity", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  lastActiveAt: timestamp("last_active_at").defaultNow().notNull(),
+}, (table) => [
+  unique("user_activity_user_id_unique").on(table.userId),
+  index("user_activity_user_id_idx").on(table.userId),
+]);
+
 export const taskAssignments = pgTable("task_assignments", {
   id: serial("id").primaryKey(),
   taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
@@ -341,6 +350,7 @@ export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
 export type FeedbackVote = typeof feedbackVotes.$inferSelect;
 export type TaskAssignment = typeof taskAssignments.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
+export type UserActivity = typeof userActivity.$inferSelect;
 export type FeedbackComment = typeof feedbackComments.$inferSelect;
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;

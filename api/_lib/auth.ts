@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './supabase.js';
 import { db } from './db.js';
-import { userRoles } from '../../shared/schema.js';
+import { userRoles, userActivity } from '../../shared/schema.js';
 import { eq } from 'drizzle-orm';
 
 export interface AuthUser {
@@ -24,6 +24,15 @@ export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
     if (error || !user) {
       return null;
     }
+
+    db.insert(userActivity)
+      .values({ userId: user.id, lastActiveAt: new Date() })
+      .onConflictDoUpdate({
+        target: userActivity.userId,
+        set: { lastActiveAt: new Date() },
+      })
+      .execute()
+      .catch(() => {});
 
     return {
       id: user.id,
