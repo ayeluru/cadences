@@ -2,15 +2,18 @@ import { useCategories, useCreateCategory, useDeleteCategory } from "@/hooks/use
 import { useTags, useCreateTag, useDeleteTag } from "@/hooks/use-tags";
 import { useTasks } from "@/hooks/use-tasks";
 import { useProfiles, useCreateProfile, useDeleteProfile, useCreateDemoProfile, useClearProfileData, useClearAllProfilesData, useRegenerateDemoProfile, useImportFromProfile } from "@/hooks/use-profiles";
+import { useUserSettings, useUpdateUserSettings } from "@/hooks/use-user-settings";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Tag as TagIcon, Folder, Trash2, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, MoreHorizontal } from "lucide-react";
+import { Plus, Tag as TagIcon, Folder, Trash2, AlertTriangle, Users, Sparkles, Check, Eraser, Loader2, RefreshCw, Copy, MoreHorizontal, Globe, ChevronsUpDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { useState, useMemo } from "react";
 import { queryClient } from "@/lib/queryClient";
 import {
   DropdownMenu,
@@ -55,6 +58,50 @@ export default function Settings() {
   const [clearProfileTarget, setClearProfileTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteTagTarget, setDeleteTagTarget] = useState<{ id: number; name: string } | null>(null);
+
+  const { data: userSettings } = useUserSettings();
+  const updateSettingsMutation = useUpdateUserSettings();
+  const [tzOpen, setTzOpen] = useState(false);
+
+  const detectedTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+
+  const timezoneOptions = useMemo(() => {
+    const now = new Date();
+    const allTz = Intl.supportedValuesOf("timeZone");
+    const entries = allTz.map((tz) => {
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: tz,
+        timeZoneName: "shortOffset",
+      });
+      const parts = formatter.formatToParts(now);
+      const offsetPart = parts.find((p) => p.type === "timeZoneName");
+      const offsetStr = offsetPart?.value || "UTC";
+      const normalizedOffset = offsetStr === "GMT" ? "UTC" : offsetStr.replace("GMT", "UTC");
+
+      const offsetMatch = offsetStr.match(/GMT([+-]\d+(?::\d+)?)/);
+      let offsetMinutes = 0;
+      if (offsetMatch) {
+        const [h, m] = offsetMatch[1].split(":").map(Number);
+        offsetMinutes = (h || 0) * 60 + (m || 0);
+      }
+
+      return {
+        value: tz,
+        label: tz.replace(/_/g, " "),
+        offset: normalizedOffset,
+        offsetMinutes,
+        isDetected: tz === detectedTz,
+      };
+    });
+
+    entries.sort((a, b) => {
+      if (a.isDetected !== b.isDetected) return a.isDetected ? -1 : 1;
+      if (a.offsetMinutes !== b.offsetMinutes) return a.offsetMinutes - b.offsetMinutes;
+      return a.label.localeCompare(b.label);
+    });
+
+    return entries;
+  }, [detectedTz]);
 
   const getTaskCountForCategory = (catId: number) => allTasks?.filter(t => t.categoryId === catId).length ?? 0;
   const getTaskCountForTag = (tagId: number) => allTasks?.filter(t => t.tags?.some((tt: any) => tt.id === tagId)).length ?? 0;
@@ -118,6 +165,85 @@ export default function Settings() {
         <h2 className="text-3xl font-bold font-display tracking-tight">Settings</h2>
         <p className="text-muted-foreground mt-1">Manage your profiles, categories, tags, and data.</p>
       </div>
+
+      {/* ── General ──────────────────────────────────────── */}
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Globe className="w-4.5 h-4.5 text-primary" />
+            General
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Account-wide preferences.
+          </p>
+        </div>
+
+        <div className="rounded-lg border px-4 py-3 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Timezone</p>
+            <p className="text-xs text-muted-foreground">
+              Controls when your daily tasks reset and how completion dates are calculated.
+            </p>
+          </div>
+          <Popover open={tzOpen} onOpenChange={setTzOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={tzOpen}
+                className="w-[300px] shrink-0 justify-between font-normal"
+              >
+                <span className="truncate">
+                  {(userSettings?.timezone || "UTC").replace(/_/g, " ")}
+                </span>
+                <span className="ml-auto pl-2 text-xs text-muted-foreground shrink-0">
+                  {timezoneOptions.find(t => t.value === (userSettings?.timezone || "UTC"))?.offset}
+                </span>
+                <ChevronsUpDown className="ml-1.5 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[340px] p-0" align="end">
+              <Command>
+                <CommandInput placeholder="Search city or timezone..." />
+                <CommandList>
+                  <CommandEmpty>No timezone found.</CommandEmpty>
+                  {timezoneOptions[0]?.isDetected && (
+                    <CommandGroup heading="Detected">
+                      <CommandItem
+                        value={timezoneOptions[0].value}
+                        onSelect={() => {
+                          updateSettingsMutation.mutate({ timezone: timezoneOptions[0].value });
+                          setTzOpen(false);
+                        }}
+                      >
+                        <span className="truncate">{timezoneOptions[0].label}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">{timezoneOptions[0].offset}</span>
+                      </CommandItem>
+                    </CommandGroup>
+                  )}
+                  <CommandGroup heading="All timezones">
+                    {timezoneOptions.filter(t => !t.isDetected).map((tz) => (
+                      <CommandItem
+                        key={tz.value}
+                        value={tz.value}
+                        onSelect={() => {
+                          updateSettingsMutation.mutate({ timezone: tz.value });
+                          setTzOpen(false);
+                        }}
+                      >
+                        <span className="truncate">{tz.label}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">{tz.offset}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </section>
+
+      <Separator />
 
       {/* ── Profiles ─────────────────────────────────────── */}
       <section className="space-y-4">

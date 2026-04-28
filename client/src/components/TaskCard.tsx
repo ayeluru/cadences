@@ -1,5 +1,7 @@
 import { TaskWithDetails, TaskMetric } from "@shared/schema";
-import { format, formatDistanceToNow, addDays, isPast } from "date-fns";
+import { formatDistanceToNow, addDays, isPast } from "date-fns";
+import { useTimezone } from "@/hooks/use-user-settings";
+import { formatLocal } from "@/lib/tz";
 import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History, Archive, XCircle, Folder, Tag as TagIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +31,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, showVariations = true, condensed = false, expanded = false, onToggleExpand }: TaskCardProps) {
+  const tz = useTimezone();
   const completeMutation = useCompleteTask();
   const deleteCascadeMutation = useDeleteTaskWithCascade();
   const archiveMutation = useArchiveTask();
@@ -167,7 +170,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
                   <span>{getScheduleText()}</span>
                   {task.lastCompletedAt && (
-                    <span>Last: {format(new Date(task.lastCompletedAt), "MMM d, yyyy")}</span>
+                    <span>Last: {formatLocal(task.lastCompletedAt, tz, "MMM d, yyyy")}</span>
                   )}
                   {task.streak && (
                     <span>Best streak: {task.streak.longestStreak}</span>

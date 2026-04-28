@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { supabase } from "@/lib/supabase";
 import { differenceInDays } from "date-fns";
+import { useTimezone } from "@/hooks/use-user-settings";
+import { nowLocal, toLocal } from "@/lib/tz";
 
 interface StreakData {
   id: number;
@@ -26,11 +28,11 @@ interface StreakData {
 }
 
 // Calculate streak duration in human-readable format
-function getStreakDuration(streak: StreakData): { days: number; label: string } {
+function getStreakDuration(streak: StreakData, timezone: string): { days: number; label: string } {
   if (!streak.streakStartDate) return { days: 0, label: "No active streak" };
   
-  const now = new Date();
-  const startDate = new Date(streak.streakStartDate);
+  const now = nowLocal(timezone);
+  const startDate = toLocal(new Date(streak.streakStartDate), timezone);
   const days = differenceInDays(now, startDate);
   
   // Format label based on duration and interval
@@ -49,6 +51,7 @@ function getStreakDuration(streak: StreakData): { days: number; label: string } 
 }
 
 export default function Stats() {
+  const tz = useTimezone();
   const { currentProfile, isAggregatedView } = useProfileContext();
   const profileId = isAggregatedView ? undefined : currentProfile?.id;
   const [showAllStreaks, setShowAllStreaks] = useState(false);
@@ -81,7 +84,7 @@ export default function Stats() {
   }
 
   const chartData = stats?.completionsByMonth.map(item => ({
-    name: new Date(item.date).toLocaleDateString('default', { month: 'short', year: '2-digit' }),
+    name: toLocal(new Date(item.date), tz).toLocaleDateString('default', { month: 'short', year: '2-digit' }),
     completions: item.count
   })).reverse() || [];
 
@@ -90,7 +93,7 @@ export default function Stats() {
     .filter(s => s.currentStreak > 0)
     .map(s => ({
       ...s,
-      duration: getStreakDuration(s)
+      duration: getStreakDuration(s, tz)
     }))
     .sort((a, b) => b.duration.days - a.duration.days);
 

@@ -4,6 +4,7 @@ import { InsertTask, TaskWithDetails } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { apiRequest, getAuthHeaders } from "@/lib/queryClient";
+import { toLocal, nowLocal } from "@/lib/tz";
 
 export function useTasks(filters?: { search?: string; categoryId?: number; tagId?: number }) {
   const { currentProfile, isAggregatedView } = useProfileContext();
@@ -201,18 +202,30 @@ export function useCompleteTask() {
     onMutate: async ({ id, completedAt }) => {
       await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
       const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
-      const nowDate = completedAt ? new Date(completedAt) : new Date();
+      const tz = (queryClient.getQueryData<{ timezone: string }>(["/api/user-settings"]))?.timezone
+        ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const completionDate = completedAt ? new Date(completedAt) : new Date();
+      const completionLocal = toLocal(completionDate, tz);
+      const todayLocal = nowLocal(tz);
+      const completionDateStr = `${completionLocal.getFullYear()}-${String(completionLocal.getMonth() + 1).padStart(2, '0')}-${String(completionLocal.getDate()).padStart(2, '0')}`;
       queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
         Array.isArray(old) ? old.map((t): TaskWithDetails => {
           if (t.id !== id) return t;
           const isFrequency = t.taskType === 'frequency';
           const newCompletionsThisPeriod = (t.completionsThisPeriod || 0) + 1;
           const targetMet = isFrequency && newCompletionsThisPeriod >= (t.targetCount || 0);
-          const isCompletedToday = nowDate.toDateString() === new Date().toDateString();
+          const isCompletedToday =
+            completionLocal.getFullYear() === todayLocal.getFullYear() &&
+            completionLocal.getMonth() === todayLocal.getMonth() &&
+            completionLocal.getDate() === todayLocal.getDate();
+          const updatedRecentDates = isFrequency
+            ? [...(t.recentCompletionDates || []), completionDateStr]
+            : t.recentCompletionDates;
           return {
             ...t,
-            lastCompletedAt: nowDate,
-            completedToday: isCompletedToday || t.completedToday,
+            lastCompletedAt: completionDate,
+            completedToday: isCompletedToday,
+            recentCompletionDates: updatedRecentDates,
             status: targetMet || !isFrequency ? 'later' : t.status,
             completionsThisPeriod: isFrequency ? newCompletionsThisPeriod : t.completionsThisPeriod,
             targetProgress: isFrequency && t.targetCount
@@ -220,12 +233,12 @@ export function useCompleteTask() {
               : t.targetProgress,
             streak: (() => {
               if (!t.streak) return t.streak;
-              const lastCompleted = t.streak.lastCompletedAt ? new Date(t.streak.lastCompletedAt) : null;
-              const isSameDay = lastCompleted &&
-                nowDate.getFullYear() === lastCompleted.getFullYear() &&
-                nowDate.getMonth() === lastCompleted.getMonth() &&
-                nowDate.getDate() === lastCompleted.getDate();
-              if (isSameDay) {
+              const lastCompleted = t.streak.lastCompletedAt ? toLocal(new Date(t.streak.lastCompletedAt), tz) : null;
+              const sameDay = lastCompleted &&
+                completionLocal.getFullYear() === lastCompleted.getFullYear() &&
+                completionLocal.getMonth() === lastCompleted.getMonth() &&
+                completionLocal.getDate() === lastCompleted.getDate();
+              if (sameDay) {
                 return t.streak;
               }
               const next = t.streak.currentStreak + 1;
@@ -233,7 +246,7 @@ export function useCompleteTask() {
                 ...t.streak,
                 currentStreak: next,
                 longestStreak: Math.max(t.streak.longestStreak, next),
-                lastCompletedAt: nowDate,
+                lastCompletedAt: completionDate,
               };
             })(),
           };

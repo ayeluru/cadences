@@ -6,9 +6,11 @@ import { TaskWithDetails, TaskMetric, TaskVariation } from "@shared/schema";
 import { useState } from "react";
 import { Loader2, Calendar, Clock, Plus } from "lucide-react";
 import { useCompleteTask } from "@/hooks/use-tasks";
+import { useTimezone } from "@/hooks/use-user-settings";
+import { nowLocal, formatLocal } from "@/lib/tz";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
-import { format, setHours, setMinutes } from "date-fns";
+import { setHours, setMinutes } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 
@@ -20,6 +22,7 @@ interface CompleteTaskDialogProps {
 }
 
 export function CompleteTaskDialog({ open, onOpenChange, task, defaultDate }: CompleteTaskDialogProps) {
+  const tz = useTimezone();
   const completeMutation = useCompleteTask();
   const [metricValues, setMetricValues] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState("");
@@ -68,7 +71,6 @@ export function CompleteTaskDialog({ open, onOpenChange, task, defaultDate }: Co
       }
       finalCompletedAt = dateWithTime.toISOString();
     }
-
     completeMutation.mutate({ 
       id: task.id, 
       notes, 
@@ -151,7 +153,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task, defaultDate }: Co
                       data-testid="button-date-picker"
                     >
                       <Calendar className="mr-2 h-4 w-4" />
-                      {completedAt ? format(completedAt, "PPP") : "Pick a date"}
+                      {completedAt ? formatLocal(completedAt, tz, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -159,7 +161,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task, defaultDate }: Co
                       mode="single"
                       selected={completedAt}
                       onSelect={setCompletedAt}
-                      disabled={(date) => date > new Date()}
+                      disabled={(date) => date > nowLocal(tz)}
                       initialFocus
                     />
                   </PopoverContent>
@@ -178,7 +180,7 @@ export function CompleteTaskDialog({ open, onOpenChange, task, defaultDate }: Co
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Today, {format(new Date(), "PPP")}</p>
+              <p className="text-sm text-muted-foreground">Today, {formatLocal(new Date(), tz, "PPP")}</p>
             )}
           </div>
 

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns";
+import { useTimezone } from "@/hooks/use-user-settings";
+import { nowLocal, formatLocal } from "@/lib/tz";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CheckCircle2, Loader2, AlertCircle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { Button } from "@/components/ui/button";
@@ -19,7 +21,8 @@ interface EnhancedCalendarDay {
 }
 
 export default function CalendarView() {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const tz = useTimezone();
+  const [currentMonth, setCurrentMonth] = useState(() => nowLocal(tz));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const { currentProfile, isAggregatedView } = useProfileContext();
 
@@ -31,8 +34,10 @@ export default function CalendarView() {
     dueSoon: true,
   });
 
-  const startDate = format(startOfMonth(currentMonth), "yyyy-MM-dd");
-  const endDate = format(endOfMonth(currentMonth), "yyyy-MM-dd");
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const startDate = format(monthStart, "yyyy-MM-dd");
+  const endDate = format(monthEnd, "yyyy-MM-dd");
 
   const buildQueryParams = () => {
     const params = new URLSearchParams();
@@ -57,8 +62,6 @@ export default function CalendarView() {
     },
   });
 
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(currentMonth);
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
@@ -288,7 +291,7 @@ export default function CalendarView() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setCurrentMonth(new Date())}
+                onClick={() => setCurrentMonth(nowLocal(tz))}
                 data-testid="button-today"
               >
                 <CalendarIcon className="w-5 h-5" />
@@ -315,7 +318,7 @@ export default function CalendarView() {
               const heatValue = getHeatMapValue(dayData);
               const isCurrentMonth = isSameMonth(day, currentMonth);
               const isSelected = selectedDate && isSameDay(day, selectedDate);
-              const isTodayDate = isToday(day);
+              const isTodayDate = isSameDay(day, nowLocal(tz));
 
               const getDisplayValue = () => {
                 if (heatMapSource === "combined" && dayData) {
@@ -445,7 +448,7 @@ export default function CalendarView() {
                           >
                             <span className="truncate flex-1">{task.title}</span>
                             <span className="text-xs text-muted-foreground shrink-0">
-                              {format(new Date(task.completedAt), "h:mm a")}
+                              {formatLocal(task.completedAt, tz, "h:mm a")}
                             </span>
                           </div>
                         ))}

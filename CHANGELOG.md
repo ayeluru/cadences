@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.0
+
+- **Timezone-aware task scheduling**: all task due dates, completion tracking, and period boundaries (day/week/month) now respect the user's local timezone instead of defaulting to UTC
+- **User timezone settings**: new `user_settings` table and Settings page section with searchable timezone combobox; auto-detects browser timezone on first visit
+- **Shared date utilities**: centralized `client/src/lib/tz.ts` module (`toLocal`, `nowLocal`, `formatDateKey`, `formatLocal`) used across all views for consistent timezone handling
+- **Server-side timezone enrichment**: `enrichTask`, `getPeriodBounds`, and all API handlers thread the user's timezone through period calculations, completion date mapping, and streak logic
+- **Fixed backdated completions**: completions on past days now correctly appear on the intended calendar day in WeekView for all task types (interval, frequency, scheduled)
+- **Fixed interval task projection**: "every N days" tasks now show all future occurrences within the week, not just the next due date
+- **Fixed optimistic update for frequency tasks**: `useCompleteTask` now optimistically updates `recentCompletionDates` so completion dots appear immediately
+- **Fixed double timezone conversion**: removed incorrect `fromZonedTime` calls in CompleteTaskDialog and TaskHistoryDialog that shifted completion timestamps by the timezone offset
+- **Proper error reporting**: user settings API handlers now log and return errors instead of silently falling back to UTC
+
 ## 2.1.2
 
 - **Calendar page aesthetic refresh**: updated to match the site-wide design language — lighter open layout (`bg-card border rounded-xl`) instead of heavy Card blocks, `max-w-4xl` width constraint, `tracking-tight` header, theme CSS variable colors (`--urgency-*`) for accent stripes, softer heatmap opacity values, and fixed non-standard Tailwind classes (`bg-green-150`, etc.)

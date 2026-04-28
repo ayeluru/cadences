@@ -13,6 +13,7 @@ import { NameRequiredModal } from "@/components/NameRequiredModal";
 import { Loader2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { useTimezoneAutoDetect } from "@/hooks/use-user-settings";
 
 const DailyTasks = lazy(() => import("@/pages/DailyTasks"));
 const WeeklyTasks = lazy(() => import("@/pages/WeeklyTasks"));
@@ -49,6 +50,7 @@ function PageTransition({ children }: { children: React.ReactNode }) {
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  useTimezoneAutoDetect();
 
   if (isLoading) {
     return (

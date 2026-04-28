@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { useTimezone } from "@/hooks/use-user-settings";
+import { formatLocal } from "@/lib/tz";
 import { History, Calendar, Trash2, TrendingUp, Loader2, Circle, Pencil } from "lucide-react";
 import {
   Dialog,
@@ -53,22 +55,21 @@ interface EditCompletionDialogProps {
   metrics: TaskMetric[];
   variations: TaskVariation[];
   taskId: number;
+  timezone: string;
 }
 
-function EditCompletionDialog({ open, onOpenChange, completion, metrics, variations, taskId }: EditCompletionDialogProps) {
+function EditCompletionDialog({ open, onOpenChange, completion, metrics, variations, taskId, timezone }: EditCompletionDialogProps) {
   const updateMutation = useUpdateCompletion();
 
-  const completedDate = new Date(completion.completedAt);
-  const [date, setDate] = useState(format(completedDate, "yyyy-MM-dd"));
-  const [time, setTime] = useState(format(completedDate, "HH:mm"));
+  const [date, setDate] = useState(formatLocal(completion.completedAt, timezone, "yyyy-MM-dd"));
+  const [time, setTime] = useState(formatLocal(completion.completedAt, timezone, "HH:mm"));
   const [notes, setNotes] = useState(completion.notes || "");
   const [variationId, setVariationId] = useState<number | null>(completion.variationId);
   const [metricInputs, setMetricInputs] = useState<Record<number, string>>({});
 
   useEffect(() => {
-    const d = new Date(completion.completedAt);
-    setDate(format(d, "yyyy-MM-dd"));
-    setTime(format(d, "HH:mm"));
+    setDate(formatLocal(completion.completedAt, timezone, "yyyy-MM-dd"));
+    setTime(formatLocal(completion.completedAt, timezone, "HH:mm"));
     setNotes(completion.notes || "");
     setVariationId(completion.variationId);
     const inputs: Record<number, string> = {};
@@ -204,6 +205,7 @@ function EditCompletionDialog({ open, onOpenChange, completion, metrics, variati
 }
 
 export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: TaskHistoryDialogProps) {
+  const tz = useTimezone();
   const { toast } = useToast();
   const [selectedMetric, setSelectedMetric] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
@@ -285,7 +287,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
       }>;
     
     const metric = historyData?.metrics.find(m => m.id === metricId);
-    return buildVariationChartSeries(metricValues, metric?.name, metric?.unit);
+    return buildVariationChartSeries(metricValues, metric?.name, metric?.unit, 0, tz);
   };
 
   const hasMetrics = historyData?.metrics && historyData.metrics.length > 0;
@@ -343,10 +345,10 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2 flex-wrap">
                             <span className="text-sm font-medium text-foreground">
-                              {format(new Date(completion.completedAt), "MMM d, yyyy")}
+                              {formatLocal(completion.completedAt, tz, "MMM d, yyyy")}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {format(new Date(completion.completedAt), "h:mm a")}
+                              {formatLocal(completion.completedAt, tz, "h:mm a")}
                             </span>
                             {completion.variationId && historyData?.task?.variations && (
                               <Badge variant="secondary" className="text-[10px] px-1.5 h-5 font-normal">
@@ -476,7 +478,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                                 dataKey="timestamp"
                                 type="number"
                                 domain={domain}
-                                tickFormatter={(ts) => format(new Date(ts), "MMM d")}
+                                tickFormatter={(ts) => formatLocal(new Date(ts), tz, "MMM d")}
                                 tick={{ fontSize: 11 }}
                                 className="text-muted-foreground"
                                 allowDuplicatedCategory={false}
@@ -487,7 +489,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
                                 width={50}
                               />
                               <Tooltip 
-                                labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy h:mm a")}
+                                labelFormatter={(ts) => formatLocal(new Date(ts as number), tz, "MMM d, yyyy h:mm a")}
                                 contentStyle={{
                                   backgroundColor: 'hsl(var(--card))',
                                   border: '1px solid hsl(var(--border))',
@@ -534,6 +536,7 @@ export function TaskHistoryDialog({ open, onOpenChange, taskId, taskTitle }: Tas
           metrics={historyData.metrics}
           variations={variations}
           taskId={taskId}
+          timezone={tz}
         />
       )}
     </Dialog>
