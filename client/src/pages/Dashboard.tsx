@@ -8,6 +8,7 @@ import { TaskWithDetails } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
+import { useTimezone } from "@/hooks/use-user-settings";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -33,6 +34,7 @@ const UNCATEGORIZED_FILTER = -1;
 type DashboardTab = "today" | "week" | "all";
 
 export default function Dashboard() {
+  useTimezone();
   const { user, isLoading: authLoading } = useAuth();
   const [filterCategory, setFilterCategory] = useState<number | undefined>();
   const [filterTagIds, setFilterTagIds] = useState<number[]>([]);

@@ -2,11 +2,13 @@ import { useState, useMemo, useEffect, useCallback, useRef, useLayoutEffect } fr
 import { TaskWithDetails, TaskAssignment } from "@shared/schema";
 import { useAssignments, useCreateAssignment, useDeleteAssignment, useResetAssignments } from "@/hooks/use-assignments";
 import { useCompleteTask } from "@/hooks/use-tasks";
+import { useTimezone } from "@/hooks/use-user-settings";
+import { formatDateKey, nowLocal, toLocal } from "@/lib/tz";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, X, ChevronLeft, ChevronRight, Eye, EyeOff, Sparkles, Calendar, MoveHorizontal, RotateCcw, Undo2, Lock } from "lucide-react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, addWeeks, isSameDay, isAfter, isBefore, parseISO } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfMonth, addDays, addWeeks, isSameDay, isAfter, isBefore, parseISO } from "date-fns";
 import {
   Tooltip,
   TooltipContent,
@@ -72,11 +74,8 @@ function getWeekDays(weekStart: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 }
 
-function formatDateKey(d: Date): string {
-  return format(d, "yyyy-MM-dd");
-}
-
 export function WeekView({ tasks }: WeekViewProps) {
+  const tz = useTimezone();
   const [weekOffset, setWeekOffset] = useState(0);
   type FilterState = 'normal' | 'highlight' | 'hide';
   const [showDone, setShowDone] = useState(true);
@@ -92,13 +91,13 @@ export function WeekView({ tasks }: WeekViewProps) {
     sourceDate: string; assignmentId?: number; rootOriginalDate?: string;
   } | null>(null);
 
-  const now = new Date();
+  const now = nowLocal(tz);
   const weekStart = startOfWeek(addWeeks(now, weekOffset), { weekStartsOn: 0 });
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
   const weekDays = getWeekDays(weekStart);
 
-  const startStr = formatDateKey(weekStart);
-  const endStr = formatDateKey(weekEnd);
+  const startStr = format(weekStart, "yyyy-MM-dd");
+  const endStr = format(weekEnd, "yyyy-MM-dd");
 
   const { data: assignments = [] } = useAssignments(startStr, endStr);
   const createAssignment = useCreateAssignment();
@@ -150,7 +149,8 @@ export function WeekView({ tasks }: WeekViewProps) {
   // Build auto-schedule, then apply override suppressions
   const { effectiveSchedule, overrideEntries, pseudoScheduledTaskIds } = useMemo(() => {
     const schedule = new Map<string, Set<number>>();
-    weekDays.forEach(d => schedule.set(formatDateKey(d), new Set()));
+    const fmtDay = (d: Date) => format(d, "yyyy-MM-dd");
+    weekDays.forEach(d => schedule.set(fmtDay(d), new Set()));
     const pseudoScheduledIds = new Set<number>();
 
     tasks.forEach(task => {
@@ -160,28 +160,36 @@ export function WeekView({ tasks }: WeekViewProps) {
         const scheduledDays = task.scheduledDaysOfWeek.split(',').map(Number);
         weekDays.forEach(d => {
           if (scheduledDays.includes(d.getDay())) {
-            schedule.get(formatDateKey(d))!.add(task.id);
+            schedule.get(fmtDay(d))!.add(task.id);
           }
         });
       } else if (task.taskType === 'interval' && task.intervalValue && task.intervalUnit) {
         if (task.intervalUnit === 'days' && task.intervalValue === 1) {
           weekDays.forEach(d => {
-            schedule.get(formatDateKey(d))!.add(task.id);
+            schedule.get(fmtDay(d))!.add(task.id);
           });
         } else if (task.nextDue) {
-          const nextDue = parseISO(task.nextDue);
-          weekDays.forEach(d => {
-            if (isSameDay(d, nextDue)) {
-              schedule.get(formatDateKey(d))!.add(task.id);
+          const nextDue = toLocal(new Date(task.nextDue), tz);
+          const intervalDays = task.intervalUnit === 'days' ? task.intervalValue
+            : task.intervalUnit === 'weeks' ? task.intervalValue * 7
+            : task.intervalUnit === 'months' ? task.intervalValue * 30
+            : task.intervalValue;
+          const weekEnd = weekDays[weekDays.length - 1];
+          let occurrence = nextDue;
+          while (!isAfter(occurrence, weekEnd)) {
+            const key = fmtDay(occurrence);
+            if (schedule.has(key)) {
+              schedule.get(key)!.add(task.id);
             }
-          });
+            occurrence = addDays(occurrence, intervalDays);
+          }
         }
       } else if (task.taskType === 'scheduled' && task.scheduledDates) {
         const dates = task.scheduledDates.split(',').map(s => s.trim());
         dates.forEach(dateStr => {
           try {
             const d = parseISO(dateStr);
-            const key = formatDateKey(d);
+            const key = formatDateKey(d, tz);
             if (schedule.has(key)) {
               schedule.get(key)!.add(task.id);
             }
@@ -190,13 +198,13 @@ export function WeekView({ tasks }: WeekViewProps) {
       } else if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
         if (task.targetPeriod === 'day') {
           weekDays.forEach(d => {
-            schedule.get(formatDateKey(d))!.add(task.id);
+            schedule.get(fmtDay(d))!.add(task.id);
           });
         } else {
-          const now = new Date();
+          const nowTz = nowLocal(tz);
           const periodStart = task.targetPeriod === 'week'
-            ? startOfWeek(now, { weekStartsOn: 0 })
-            : startOfMonth(now);
+            ? startOfWeek(nowTz, { weekStartsOn: 0 })
+            : startOfMonth(nowTz);
           const periodDays = task.targetPeriod === 'week' ? 7 : 30;
           const spacing = periodDays / task.targetCount;
           const done = task.completionsThisPeriod ?? 0;
@@ -205,7 +213,7 @@ export function WeekView({ tasks }: WeekViewProps) {
             const pseudoDate = addDays(periodStart, (i + 0.5) * spacing);
             weekDays.forEach(d => {
               if (isSameDay(d, pseudoDate)) {
-                schedule.get(formatDateKey(d))!.add(task.id);
+                schedule.get(fmtDay(d))!.add(task.id);
                 pseudoScheduledIds.add(task.id);
               }
             });
@@ -214,8 +222,8 @@ export function WeekView({ tasks }: WeekViewProps) {
       }
 
       // Overdue tasks whose due date fell before this week: place on today
-      if (task.status === 'overdue' && !weekDays.some(d => schedule.get(formatDateKey(d))!.has(task.id))) {
-        const todayKey = formatDateKey(new Date());
+      if (task.status === 'overdue' && !weekDays.some(d => schedule.get(fmtDay(d))!.has(task.id))) {
+        const todayKey = format(nowLocal(tz), "yyyy-MM-dd");
         if (schedule.has(todayKey)) {
           schedule.get(todayKey)!.add(task.id);
         }
@@ -234,7 +242,7 @@ export function WeekView({ tasks }: WeekViewProps) {
     }
 
     return { effectiveSchedule: schedule, overrideEntries: overrides, pseudoScheduledTaskIds: pseudoScheduledIds };
-  }, [tasks, weekDays, assignments]);
+  }, [tasks, weekDays, assignments, tz]);
 
   // Reverse map: taskId -> set of dateStrs where it appears (across schedule + manual)
   const taskDaysMap = useMemo(() => {
@@ -253,7 +261,7 @@ export function WeekView({ tasks }: WeekViewProps) {
     return map;
   }, [effectiveSchedule, assignments]);
 
-  const allDateStrs = useMemo(() => weekDays.map(formatDateKey), [weekDays]);
+  const allDateStrs = useMemo(() => weekDays.map(d => format(d, "yyyy-MM-dd")), [weekDays]);
 
   // Manual assignments (non-override)
   const manualMap = useMemo(() => {
@@ -290,10 +298,9 @@ export function WeekView({ tasks }: WeekViewProps) {
   // Frequency tasks use recentCompletionDates to show all completions, not just the latest
   const completedUnscheduledMap = useMemo(() => {
     const map = new Map<string, TaskWithDetails[]>();
-    const weekDateStrs = new Set(weekDays.map(formatDateKey));
+    const weekDateStrs = new Set(weekDays.map(d => format(d, "yyyy-MM-dd")));
     tasks.forEach(task => {
       if (task.isArchived) return;
-      if (assignedTaskIds.has(task.id) && task.taskType !== 'frequency') return;
 
       if (task.taskType === 'frequency' && task.recentCompletionDates) {
         const placed = new Set<string>();
@@ -306,14 +313,14 @@ export function WeekView({ tasks }: WeekViewProps) {
         }
       } else {
         if (!task.lastCompletedAt) return;
-        const completedDateStr = formatDateKey(new Date(task.lastCompletedAt));
+        const completedDateStr = formatDateKey(new Date(task.lastCompletedAt), tz);
         if (!weekDateStrs.has(completedDateStr)) return;
         if (!map.has(completedDateStr)) map.set(completedDateStr, []);
         map.get(completedDateStr)!.push(task);
       }
     });
     return map;
-  }, [tasks, assignedTaskIds, weekDays]);
+  }, [tasks, assignedTaskIds, weekDays, tz]);
 
   const completedOnCalendarIds = useMemo(() => {
     const ids = new Set<number>();
@@ -347,7 +354,7 @@ export function WeekView({ tasks }: WeekViewProps) {
 
   const dayColumns: DayTasks[] = useMemo(() => {
     return weekDays.map(date => {
-      const dateStr = formatDateKey(date);
+      const dateStr = format(date, "yyyy-MM-dd");
       const autoIds = effectiveSchedule.get(dateStr) || new Set();
       const manualEntries = manualMap.get(dateStr) || [];
       const overrideEntriesForDay = overrideMap.get(dateStr) || [];
@@ -417,13 +424,13 @@ export function WeekView({ tasks }: WeekViewProps) {
     dayColumns.forEach(col => {
       col.tasks.forEach(({ task }) => {
         total++;
-        if (isTaskDoneOnDay(task, col.date)) {
+        if (isTaskDoneOnDay(task, col.date, tz)) {
           done++;
         }
       });
     });
     return { total, done };
-  }, [dayColumns]);
+  }, [dayColumns, tz]);
 
   const weekProgress = weekStats.total > 0 ? Math.round((weekStats.done / weekStats.total) * 100) : 0;
   const hasManualAssignments = assignments.length > 0;
@@ -435,6 +442,12 @@ export function WeekView({ tasks }: WeekViewProps) {
     });
   }, []);
 
+  const weekDaysByStr = useMemo(() => {
+    const map = new Map<string, Date>();
+    weekDays.forEach(d => map.set(format(d, "yyyy-MM-dd"), d));
+    return map;
+  }, [weekDays]);
+
   const handleDayClick = useCallback(async (targetDate: string) => {
     if (!selectedTask) return;
     if (selectedTask.sourceDate === targetDate) {
@@ -442,11 +455,11 @@ export function WeekView({ tasks }: WeekViewProps) {
       return;
     }
 
-    const targetDateObj = parseISO(targetDate);
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const targetDateObj = weekDaysByStr.get(targetDate) || parseISO(targetDate);
+    const todayLocal = nowLocal(tz);
+    todayLocal.setHours(0, 0, 0, 0);
 
-    if (isBefore(targetDateObj, todayStart)) {
+    if (isBefore(targetDateObj, todayLocal)) {
       const task = tasks.find(t => t.id === selectedTask.taskId);
       if (task) {
         setBackdatePrompt({ task, targetDate: targetDateObj });
@@ -483,7 +496,7 @@ export function WeekView({ tasks }: WeekViewProps) {
     } catch {
       // Mutations already show toast on error via the hook
     }
-  }, [selectedTask, tasks, createAssignment, deleteAssignment]);
+  }, [selectedTask, tasks, createAssignment, deleteAssignment, weekDaysByStr, tz]);
 
 
   const handleUndo = useCallback(async () => {
@@ -640,6 +653,7 @@ export function WeekView({ tasks }: WeekViewProps) {
             <DayColumn
               key={col.dateStr}
               day={col}
+              tz={tz}
               isToday={isSameDay(col.date, now)}
               isPast={isBefore(col.date, now) && !isSameDay(col.date, now)}
               showDone={showDone}
@@ -773,6 +787,7 @@ export function WeekView({ tasks }: WeekViewProps) {
 
 function DayColumn({
   day,
+  tz,
   isToday,
   isPast,
   showDone,
@@ -787,6 +802,7 @@ function DayColumn({
   onMissedClick,
 }: {
   day: DayTasks;
+  tz: string;
   isToday: boolean;
   isPast: boolean;
   showDone: boolean;
@@ -801,7 +817,7 @@ function DayColumn({
   onMissedClick?: (task: TaskWithDetails, date: Date, isMovable: boolean, sourceDate: string, assignmentId?: number, rootOriginalDate?: string) => void;
 }) {
   const visibleTasks = day.tasks.filter(({ task, isMovable }) => {
-    const isDone = isTaskDoneOnDay(task, day.date);
+    const isDone = isTaskDoneOnDay(task, day.date, tz);
     if (isDone && !showDone) return false;
     if (!isDone && !isMovable && immovableFilter === 'hide') return false;
     if (!isDone && isMovable && movableFilter === 'hide') return false;
@@ -837,7 +853,7 @@ function DayColumn({
       )}
 
       {visibleTasks.map(({ task, assignmentId, rootOriginalDate, isMovable, isPseudoScheduled }) => {
-        const isDone = isTaskDoneOnDay(task, day.date);
+        const isDone = isTaskDoneOnDay(task, day.date, tz);
         const cardKey = `${task.id}-${day.dateStr}`;
         const isSelected = selectedTaskId === task.id && selectedSourceDate === day.dateStr;
         return (
@@ -1033,16 +1049,16 @@ function CompactCard({
 
 // --- Helpers ---
 
-function isTaskDoneOnDay(task: TaskWithDetails, day: Date): boolean {
+function isTaskDoneOnDay(task: TaskWithDetails, day: Date, timezone: string): boolean {
   if (task.taskType === 'frequency' && task.targetPeriod === 'day' && task.targetCount) {
     return (task.completionsThisPeriod ?? 0) >= task.targetCount;
   }
-  const dayStr = formatDateKey(day);
+  const dayStr = format(day, "yyyy-MM-dd");
   if (task.recentCompletionDates?.includes(dayStr)) return true;
-  const today = new Date();
+  const today = nowLocal(timezone);
   if (isSameDay(day, today) && task.completedToday) return true;
   if (task.lastCompletedAt) {
-    const completedDate = new Date(task.lastCompletedAt);
+    const completedDate = toLocal(new Date(task.lastCompletedAt), timezone);
     if (isSameDay(completedDate, day)) return true;
   }
   return false;

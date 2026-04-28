@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 
 export const CHART_COLORS = [
   "hsl(var(--primary))",
@@ -63,7 +64,8 @@ export function buildVariationChartSeries(
   values: MetricValueWithVariation[],
   metricName?: string,
   metricUnit?: string | null,
-  colorOffset: number = 0
+  colorOffset: number = 0,
+  timezone?: string
 ): ChartSeries[] {
   if (!values.length) return [];
   
@@ -88,11 +90,13 @@ export function buildVariationChartSeries(
     const numericValue = typeof v.value === 'number' ? v.value : parseFloat(String(v.value));
     if (isNaN(numericValue)) return;
     
+    const completedDate = new Date(v.completedAt);
+    const displayDate = timezone ? toZonedTime(completedDate, timezone) : completedDate;
     variationGroups.get(varId)!.dataPoints.push({
-      timestamp: new Date(v.completedAt).getTime(),
+      timestamp: completedDate.getTime(),
       value: numericValue,
-      date: format(new Date(v.completedAt), "MMM d"),
-      fullDate: format(new Date(v.completedAt), "MMM d, yyyy h:mm a"),
+      date: format(displayDate, "MMM d"),
+      fullDate: format(displayDate, "MMM d, yyyy h:mm a"),
     });
   });
   

@@ -215,6 +215,17 @@ export const feedbackComments = pgTable("feedback_comments", {
   index("feedback_comments_feedback_id_idx").on(table.feedbackId),
 ]);
 
+export const userSettings = pgTable("user_settings", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  timezone: varchar("timezone", { length: 100 }).default("UTC").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("user_settings_user_id_unique").on(table.userId),
+  index("user_settings_user_id_idx").on(table.userId),
+]);
+
 export const taskAssignments = pgTable("task_assignments", {
   id: serial("id").primaryKey(),
   taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
@@ -309,6 +320,7 @@ export const insertCompletionSchema = createInsertSchema(completions).omit({ id:
 export const insertMetricValueSchema = createInsertSchema(metricValues).omit({ id: true });
 export const insertTaskVariationSchema = createInsertSchema(taskVariations).omit({ id: true, createdAt: true });
 
+export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
 export const insertTaskAssignmentSchema = createInsertSchema(taskAssignments).omit({ id: true, userId: true, createdAt: true });
 export const insertFeedbackSchema = createInsertSchema(feedbackSubmissions).omit({ id: true, userId: true, status: true, isPublic: true, isAnonymous: true, adminResponse: true, adminResponseBy: true, createdAt: true, updatedAt: true });
 export const insertFeedbackCommentSchema = createInsertSchema(feedbackComments).omit({ id: true, userId: true, createdAt: true });
@@ -328,6 +340,7 @@ export type UserRole = typeof userRoles.$inferSelect;
 export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
 export type FeedbackVote = typeof feedbackVotes.$inferSelect;
 export type TaskAssignment = typeof taskAssignments.$inferSelect;
+export type UserSettings = typeof userSettings.$inferSelect;
 export type FeedbackComment = typeof feedbackComments.$inferSelect;
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
@@ -338,6 +351,7 @@ export type InsertTaskMetric = z.infer<typeof insertTaskMetricSchema>;
 export type InsertMetricValue = z.infer<typeof insertMetricValueSchema>;
 export type InsertTaskVariation = z.infer<typeof insertTaskVariationSchema>;
 export type InsertTaskAssignment = z.infer<typeof insertTaskAssignmentSchema>;
+export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type InsertFeedbackComment = z.infer<typeof insertFeedbackCommentSchema>;
 

@@ -1,10 +1,10 @@
 import {
   categories, tags, tasks, taskTags, completions, taskMetrics, metricValues, taskStreaks, profiles, taskVariations,
-  userRoles, feedbackSubmissions, feedbackVotes, feedbackComments, taskAssignments,
+  userRoles, feedbackSubmissions, feedbackVotes, feedbackComments, taskAssignments, userSettings,
   type Category, type Tag, type Task, type TaskTag, type Completion,
   type TaskMetric, type MetricValue, type TaskStreak, type Profile, type TaskVariation,
   type UserRole, type FeedbackSubmission, type FeedbackVote, type FeedbackComment,
-  type TaskAssignment,
+  type TaskAssignment, type UserSettings,
   type InsertCategory, type InsertTag, type InsertTask,
   type InsertTaskMetric, type InsertMetricValue, type InsertProfile,
   type InsertFeedback, type InsertFeedbackComment
@@ -15,6 +15,7 @@ export type User = { id: string; email?: string };
 import { db } from "./db.js";
 import { eq, desc, asc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount, isNotNull } from "drizzle-orm";
 import { startOfDay, differenceInDays } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 
 export interface IStorage {
   // Users
@@ -87,7 +88,7 @@ export interface IStorage {
   
   // Streaks
   getTaskStreak(taskId: number, userId: string): Promise<TaskStreak | undefined>;
-  updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date): Promise<TaskStreak>;
+  updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date, timezone?: string): Promise<TaskStreak>;
   getAllStreaks(userId: string): Promise<TaskStreak[]>;
   
   // Task Migration
@@ -1338,12 +1339,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async completeTask(
-    taskId: number, 
-    completedAt: Date = new Date(), 
+    taskId: number,
+    completedAt: Date = new Date(),
     notes?: string,
     metricData?: {metricId: number, value: number | string}[],
     userId?: string,
-    variationId?: number
+    variationId?: number,
+    timezone: string = 'UTC'
   ): Promise<{task: Task, completion: Completion, streak?: TaskStreak}> {
     // Get the task
     const task = await this.getTask(taskId);
@@ -1377,7 +1379,7 @@ export class DatabaseStorage implements IStorage {
     // Update streak if userId provided
     let streak: TaskStreak | undefined;
     if (userId && task) {
-      streak = await this.updateTaskStreak(taskId, userId, task, completedAt);
+      streak = await this.updateTaskStreak(taskId, userId, task, completedAt, timezone);
     }
 
     return { task: updatedTask, completion, streak };
@@ -1498,7 +1500,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async deleteCompletion(completionId: number, userId: string): Promise<void> {
+  async deleteCompletion(completionId: number, userId: string, timezone: string = 'UTC'): Promise<void> {
     const [completion] = await db.select().from(completions).where(eq(completions.id, completionId));
     if (!completion) throw new Error("Completion not found");
 
@@ -1523,7 +1525,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tasks.id, completion.taskId));
 
     // Recalculate the streak from remaining completion history
-    await this.recalculateStreak(completion.taskId, userId, task);
+    await this.recalculateStreak(completion.taskId, userId, task, timezone);
   }
 
   async updateCompletion(completionId: number, userId: string, updates: {
@@ -1531,7 +1533,7 @@ export class DatabaseStorage implements IStorage {
     notes?: string | null;
     variationId?: number | null;
     metrics?: { metricId: number; value: number | string }[];
-  }): Promise<Completion> {
+  }, timezone: string = 'UTC'): Promise<Completion> {
     const [completion] = await db.select().from(completions).where(eq(completions.id, completionId));
     if (!completion) throw new Error("Completion not found");
 
@@ -1579,13 +1581,13 @@ export class DatabaseStorage implements IStorage {
       await db.update(tasks)
         .set({ lastCompletedAt: latestCompletion?.completedAt || null })
         .where(eq(tasks.id, completion.taskId));
-      await this.recalculateStreak(completion.taskId, userId, task);
+      await this.recalculateStreak(completion.taskId, userId, task, timezone);
     }
 
     return updated;
   }
 
-  private async recalculateStreak(taskId: number, userId: string, task: Task): Promise<void> {
+  private async recalculateStreak(taskId: number, userId: string, task: Task, timezone: string = 'UTC'): Promise<void> {
     const allCompletions = await db.select()
       .from(completions)
       .where(eq(completions.taskId, taskId))
@@ -1607,10 +1609,10 @@ export class DatabaseStorage implements IStorage {
     let currentStreak = 1;
     let longestStreak = 1;
     let streakStartDate = allCompletions[0].completedAt;
-    let lastDay = startOfDay(allCompletions[0].completedAt);
+    let lastDay = startOfDay(toZonedTime(allCompletions[0].completedAt, timezone));
 
     for (let i = 1; i < allCompletions.length; i++) {
-      const day = startOfDay(allCompletions[i].completedAt);
+      const day = startOfDay(toZonedTime(allCompletions[i].completedAt, timezone));
       const gap = differenceInDays(day, lastDay);
 
       if (gap === 0) continue; // same calendar day
@@ -1751,7 +1753,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(taskStreaks.currentStreak));
   }
 
-  async updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date): Promise<TaskStreak> {
+  async updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date, timezone: string = 'UTC'): Promise<TaskStreak> {
     let streak = await this.getTaskStreak(taskId, userId);
     
     const intervalDays = this.getIntervalInDays(task);
@@ -1771,9 +1773,8 @@ export class DatabaseStorage implements IStorage {
 
     const lastCompletion = streak.lastCompletedAt;
 
-    // Use calendar-day comparison to avoid midnight edge cases
-    const completedDay = startOfDay(completedAt);
-    const lastCompletionDay = lastCompletion ? startOfDay(lastCompletion) : null;
+    const completedDay = startOfDay(toZonedTime(completedAt, timezone));
+    const lastCompletionDay = lastCompletion ? startOfDay(toZonedTime(lastCompletion, timezone)) : null;
     const calendarDaysDiff = lastCompletionDay
       ? differenceInDays(completedDay, lastCompletionDay)
       : Infinity;
@@ -2437,6 +2438,24 @@ export class DatabaseStorage implements IStorage {
   async getFeedbackComment(commentId: number): Promise<FeedbackComment | undefined> {
     const [comment] = await db.select().from(feedbackComments).where(eq(feedbackComments.id, commentId));
     return comment;
+  }
+
+  // ============ User Settings ============
+
+  async getUserSettings(userId: string): Promise<UserSettings | undefined> {
+    const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+    return settings;
+  }
+
+  async upsertUserSettings(userId: string, updates: { timezone?: string }): Promise<UserSettings> {
+    const [result] = await db.insert(userSettings)
+      .values({ userId, ...updates, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: { ...updates, updatedAt: new Date() },
+      })
+      .returning();
+    return result;
   }
 }
 

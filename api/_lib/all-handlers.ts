@@ -3,6 +3,17 @@ import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden } from './aut
 import { storage, enrichTask, enrichTasks } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
 import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
+
+async function getUserTimezone(userId: string): Promise<string> {
+  try {
+    const settings = await storage.getUserSettings(userId);
+    return settings?.timezone || 'UTC';
+  } catch (err) {
+    console.error('[getUserTimezone] DB error, falling back to UTC:', err);
+    return 'UTC';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // auth-user
@@ -96,7 +107,8 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
     const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate, profileId, excludeDemo);
 
     const allTasks = await storage.getTasks(userId, profileId, excludeDemo);
-    const enrichedTasks = await enrichTasks(allTasks, userId);
+    const tz = await getUserTimezone(userId);
+    const enrichedTasks = await enrichTasks(allTasks, userId, tz);
 
     const days = eachDayOfInterval({ start: startDate, end: endDate });
     const calendarMap = new Map<string, {
@@ -255,8 +267,9 @@ export async function completionsId(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const tz = await getUserTimezone(user.id);
     if (req.method === 'DELETE') {
-      await storage.deleteCompletion(completionId, user.id);
+      await storage.deleteCompletion(completionId, user.id, tz);
       return res.status(200).json({ success: true });
     }
 
@@ -267,7 +280,7 @@ export async function completionsId(req: VercelRequest, res: VercelResponse) {
     if (body.variationId !== undefined) updates.variationId = body.variationId;
     if (body.metrics !== undefined) updates.metrics = body.metrics;
 
-    const updated = await storage.updateCompletion(completionId, user.id, updates);
+    const updated = await storage.updateCompletion(completionId, user.id, updates, tz);
     return res.status(200).json(updated);
   } catch (error: any) {
     console.error('Error handling completion:', error);
@@ -680,7 +693,8 @@ async function statsIndexHandleGet(req: VercelRequest, res: VercelResponse, user
 
     const completions = await storage.getAllCompletions(userId, profileId, excludeDemo);
     const tasks = await storage.getTasks(userId, profileId, excludeDemo);
-    const enrichedTasks = await enrichTasks(tasks, userId);
+    const tz = await getUserTimezone(userId);
+    const enrichedTasks = await enrichTasks(tasks, userId, tz);
 
     const totalCompletions = completions.length;
 
@@ -728,16 +742,17 @@ async function streaksIndexHandleGet(req: VercelRequest, res: VercelResponse, us
     const streakTaskIds = allStreaks.map(s => s.taskId);
     const taskMap = await storage.getTasksBatch(streakTaskIds);
 
-    const now = startOfDay(new Date());
+    const tz = await getUserTimezone(userId);
+    const nowLocal = startOfDay(toZonedTime(new Date(), tz));
     const enrichedStreaks = allStreaks.map(streak => {
       const task = taskMap.get(streak.taskId);
       let effectiveCurrentStreak = streak.currentStreak;
 
-      // Check if the streak has expired (grace window elapsed since last completion)
       if (task && streak.currentStreak > 0 && streak.lastCompletedAt) {
         const intervalDays = storage.getIntervalInDays(task);
         const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
-        const daysSince = differenceInDays(now, startOfDay(streak.lastCompletedAt));
+        const lastLocal = startOfDay(toZonedTime(streak.lastCompletedAt, tz));
+        const daysSince = differenceInDays(nowLocal, lastLocal);
         if (daysSince > graceWindow) {
           effectiveCurrentStreak = 0;
         }
@@ -862,7 +877,8 @@ async function tasksIndexHandleGet(req: VercelRequest, res: VercelResponse, user
       tasks = tasks.filter(task => task.categoryId === catId);
     }
 
-    const enrichedTasks = await enrichTasks(tasks, userId);
+    const tz = await getUserTimezone(userId);
+    const enrichedTasks = await enrichTasks(tasks, userId, tz);
 
     let filteredTasks = enrichedTasks;
     if (tagId) {
@@ -886,7 +902,8 @@ async function tasksIndexHandlePost(req: VercelRequest, res: VercelResponse, use
     const { tagIds, metrics, ...taskData } = req.body;
 
     const task = await storage.createTask(userId, taskData, tagIds, metrics);
-    const enrichedTask = await enrichTask(task, userId);
+    const tz = await getUserTimezone(userId);
+    const enrichedTask = await enrichTask(task, userId, undefined, tz);
 
     return res.status(201).json(enrichedTask);
   } catch (error) {
@@ -959,7 +976,8 @@ async function tasksIdHandleGet(req: VercelRequest, res: VercelResponse, userId:
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    const enrichedTask = await enrichTask(task, userId);
+    const tz = await getUserTimezone(userId);
+    const enrichedTask = await enrichTask(task, userId, undefined, tz);
     return res.status(200).json(enrichedTask);
   } catch (error) {
     console.error('Error fetching task:', error);
@@ -977,7 +995,8 @@ async function tasksIdHandlePut(req: VercelRequest, res: VercelResponse, userId:
     const { tagIds, metrics, ...updates } = req.body;
 
     const task = await storage.updateTask(taskId, updates, tagIds, metrics);
-    const enrichedTask = await enrichTask(task, userId);
+    const tz = await getUserTimezone(userId);
+    const enrichedTask = await enrichTask(task, userId, undefined, tz);
 
     return res.status(200).json(enrichedTask);
   } catch (error) {
@@ -1022,7 +1041,8 @@ export async function tasksIdArchive(req: VercelRequest, res: VercelResponse) {
 
   try {
     const archived = await storage.archiveTask(taskId, user.id);
-    const enriched = await enrichTask(archived, user.id);
+    const tz = await getUserTimezone(user.id);
+    const enriched = await enrichTask(archived, user.id, undefined, tz);
     res.json(enriched);
   } catch (error) {
     console.error('Error archiving task:', error);
@@ -1097,16 +1117,18 @@ export async function tasksIdComplete(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    const tz = await getUserTimezone(user.id);
     const result = await storage.completeTask(
       taskId,
       completedAt ? new Date(completedAt) : undefined,
       notes,
       metrics,
       user.id,
-      variationId
+      variationId,
+      tz
     );
 
-    const enrichedTask = await enrichTask(result.task, user.id);
+    const enrichedTask = await enrichTask(result.task, user.id, undefined, tz);
 
     return res.status(200).json({
       task: enrichedTask,
@@ -1186,8 +1208,9 @@ export async function tasksIdHistory(req: VercelRequest, res: VercelResponse) {
       metricValues: metricValuesMap.get(completion.id) || [],
     }));
 
+    const tz = await getUserTimezone(user.id);
     res.json({
-      task: await enrichTask(task, user.id),
+      task: await enrichTask(task, user.id, undefined, tz),
       completions: completionsWithMetrics,
       metrics: taskMetrics,
     });
@@ -1884,6 +1907,42 @@ export async function assignmentsId(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'DELETE') {
     await storage.deleteAssignment(assignmentId, user.id);
     return res.status(200).json({ success: true });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+export async function userSettingsHandler(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  if (req.method === 'GET') {
+    try {
+      const settings = await storage.getUserSettings(user.id);
+      return res.status(200).json(settings || { timezone: 'UTC' });
+    } catch (err) {
+      console.error('[userSettingsHandler] GET failed:', err);
+      return res.status(500).json({ error: 'Failed to load user settings' });
+    }
+  }
+
+  if (req.method === 'PUT') {
+    const { timezone } = req.body;
+    if (!timezone || typeof timezone !== 'string') {
+      return res.status(400).json({ error: 'timezone is required' });
+    }
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    } catch {
+      return res.status(400).json({ error: 'Invalid IANA timezone' });
+    }
+    try {
+      const settings = await storage.upsertUserSettings(user.id, { timezone });
+      return res.status(200).json(settings);
+    } catch (err) {
+      console.error('[userSettingsHandler] PUT failed:', err);
+      return res.status(500).json({ error: 'Failed to save timezone' });
+    }
   }
 
   return res.status(405).json({ error: 'Method not allowed' });

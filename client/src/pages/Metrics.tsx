@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { useTimezone } from "@/hooks/use-user-settings";
+import { formatLocal } from "@/lib/tz";
 import { Loader2, TrendingUp, TrendingDown, Minus, Activity, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ interface MetricHistory {
 }
 
 export default function MetricsPage() {
+  const tz = useTimezone();
   const { currentProfile } = useProfileContext();
   const queryParams = currentProfile?.id ? `?profileId=${currentProfile.id}` : '';
   
@@ -153,7 +155,8 @@ export default function MetricsPage() {
         filteredValues,
         metric.metricName,
         metric.unit,
-        colorIndex
+        colorIndex,
+        tz
       );
       
       allSeries.push(...series);
@@ -311,7 +314,7 @@ export default function MetricsPage() {
                           dataKey="timestamp"
                           type="number"
                           domain={domain}
-                          tickFormatter={(ts) => format(new Date(ts), "MMM d")}
+                          tickFormatter={(ts) => formatLocal(new Date(ts), tz, "MMM d")}
                           tick={{ fontSize: 11 }} 
                           className="text-muted-foreground"
                           allowDuplicatedCategory={false}
@@ -322,7 +325,7 @@ export default function MetricsPage() {
                           width={50}
                         />
                         <Tooltip 
-                          labelFormatter={(ts) => format(new Date(ts as number), "MMM d, yyyy")}
+                          labelFormatter={(ts) => formatLocal(new Date(ts as number), tz, "MMM d, yyyy")}
                           contentStyle={{ 
                             backgroundColor: "hsl(var(--card))", 
                             border: "1px solid hsl(var(--border))",

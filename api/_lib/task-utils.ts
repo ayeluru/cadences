@@ -1,4 +1,5 @@
 import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO } from 'date-fns';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
 
@@ -17,24 +18,40 @@ export interface BatchData {
   movedFromTodaySet: Set<number>;
 }
 
-// Get period boundaries for frequency-based tasks
-export function getPeriodBounds(period: string): { start: Date, end: Date } {
-  const now = new Date();
+// Convert a UTC date to the user's local timezone for date-fns operations
+function toLocal(date: Date, timezone: string): Date {
+  return toZonedTime(date, timezone);
+}
+
+// Convert a "local" date (from date-fns ops on a zoned time) back to UTC
+function toUTC(localDate: Date, timezone: string): Date {
+  return fromZonedTime(localDate, timezone);
+}
+
+// Get period boundaries for frequency-based tasks, in UTC, aligned to user's local timezone
+export function getPeriodBounds(period: string, timezone: string = 'UTC'): { start: Date, end: Date } {
+  const nowLocal = toLocal(new Date(), timezone);
+  let localStart: Date, localEnd: Date;
   if (period === 'day') {
-    return { start: startOfDay(now), end: endOfDay(now) };
+    localStart = startOfDay(nowLocal);
+    localEnd = endOfDay(nowLocal);
   } else if (period === 'week') {
-    return { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfWeek(now, { weekStartsOn: 0 }) };
+    localStart = startOfWeek(nowLocal, { weekStartsOn: 0 });
+    localEnd = endOfWeek(nowLocal, { weekStartsOn: 0 });
   } else if (period === 'month') {
-    return { start: startOfMonth(now), end: endOfMonth(now) };
+    localStart = startOfMonth(nowLocal);
+    localEnd = endOfMonth(nowLocal);
   } else {
-    return { start: startOfYear(now), end: endOfYear(now) };
+    localStart = startOfYear(nowLocal);
+    localEnd = endOfYear(nowLocal);
   }
+  return { start: toUTC(localStart, timezone), end: toUTC(localEnd, timezone) };
 }
 
 // Calculate cadence duration in days
 export function getCadenceDays(task: any): number {
   if (task.taskType === 'frequency' && task.targetPeriod) {
-    const periodDays = task.targetPeriod === 'week' ? 7 : task.targetPeriod === 'month' ? 30 : 365;
+    const periodDays = task.targetPeriod === 'day' ? 1 : task.targetPeriod === 'week' ? 7 : task.targetPeriod === 'month' ? 30 : 365;
     return periodDays / (task.targetCount || 1);
   } else if (task.intervalValue && task.intervalUnit) {
     switch (task.intervalUnit) {
@@ -77,7 +94,7 @@ export function filterCompletionsWithRefractory(completions: any[], refractoryMi
 }
 
 // Helper to calculate task details — accepts optional pre-fetched BatchData to avoid N+1 queries
-export async function enrichTask(task: any, userId: string, batch?: BatchData) {
+export async function enrichTask(task: any, userId: string, batch?: BatchData, timezone: string = 'UTC') {
   const categoriesList = batch ? batch.categories : await storage.getCategories(userId);
   const category = task.categoryId ? categoriesList.find(c => c.id === task.categoryId) : null;
   const taskTags = batch ? (batch.tagsMap.get(task.id) || []) : await storage.getTaskTags(task.id);
@@ -91,14 +108,14 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
 
   // Handle frequency-based tasks differently
   if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
-    const { start, end } = getPeriodBounds(task.targetPeriod);
+    const { start, end } = getPeriodBounds(task.targetPeriod, timezone);
     const allCompletions = batch
       ? (batch.completionsInPeriodMap.get(task.id) || [])
       : await storage.getCompletionsInPeriod(task.id, start, end);
 
     completionsThisPeriod = allCompletions.length;
     recentCompletionDates = allCompletions.map(c => {
-      const d = c.completedAt;
+      const d = toLocal(c.completedAt, timezone);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     });
     targetProgress = Math.min(100, (completionsThisPeriod / task.targetCount) * 100);
@@ -115,7 +132,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
   } else if (task.taskType === 'scheduled') {
     // Scheduled task - find next occurrence based on schedule
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const nowLocal = toLocal(now, timezone);
+    const today = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate());
     let foundNextDue = false;
 
     let scheduledHour = 0;
@@ -217,6 +235,9 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
         default:
           nextDue = addDays(lastCompleted, task.intervalValue);
       }
+      // Snap to start-of-day in user's timezone so daily tasks reset at local midnight
+      const nextDueLocal = toLocal(nextDue, timezone);
+      nextDue = toUTC(startOfDay(nextDueLocal), timezone);
     } else {
       nextDue = new Date(0);
     }
@@ -295,7 +316,9 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
   if (streak && streak.currentStreak > 0 && streak.lastCompletedAt) {
     const intervalDays = storage.getIntervalInDays(task);
     const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
-    const daysSinceLast = differenceInDays(startOfDay(now), startOfDay(streak.lastCompletedAt));
+    const nowLocalForStreak = toLocal(now, timezone);
+    const lastStreakLocal = toLocal(streak.lastCompletedAt, timezone);
+    const daysSinceLast = differenceInDays(startOfDay(nowLocalForStreak), startOfDay(lastStreakLocal));
     if (daysSinceLast > graceWindow) {
       streak = { ...streak, currentStreak: 0 };
     }
@@ -317,19 +340,21 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
     }
   }
 
-  const today = startOfDay(now);
+  const nowLocal = toLocal(now, timezone);
+  const today = startOfDay(nowLocal);
   let completedToday = false;
   if (task.lastCompletedAt) {
-    completedToday = isSameDay(new Date(task.lastCompletedAt), today);
+    const lastCompletedLocal = toLocal(new Date(task.lastCompletedAt), timezone);
+    completedToday = isSameDay(lastCompletedLocal, today);
   }
 
   // Compute effectiveDueToday: was this task due today (before completion may have shifted nextDue)?
   const isAssignedToday = batch?.assignedTodaySet.has(task.id) ?? false;
   const isMovedFromToday = batch?.movedFromTodaySet.has(task.id) ?? false;
+  const naturalNextDueLocal = toLocal(naturalNextDue, timezone);
   const naturallyDueToday =
-    isSameDay(naturalNextDue, today) || isBefore(naturalNextDue, today) ||
-    (task.taskType === 'scheduled' && task.scheduledDaysOfWeek?.split(',').map(Number).includes(today.getDay())) ||
-    (task.taskType === 'interval' && task.intervalUnit === 'days' && task.intervalValue === 1);
+    isSameDay(naturalNextDueLocal, today) || isBefore(naturalNextDueLocal, today) ||
+    (task.taskType === 'scheduled' && task.scheduledDaysOfWeek?.split(',').map(Number).includes(today.getDay()));
   const effectiveDueToday = isAssignedToday || (!isMovedFromToday && naturallyDueToday);
 
   return {
@@ -357,7 +382,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData) {
 }
 
 // Batch-enrich multiple tasks with ~8 queries total instead of ~6N
-export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> {
+export async function enrichTasks(tasks: any[], userId: string, timezone: string = 'UTC'): Promise<any[]> {
   if (tasks.length === 0) return [];
 
   const taskIds = tasks.map(t => t.id);
@@ -382,7 +407,7 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
   }
   await Promise.all(
     Array.from(periodGroups.entries()).map(async ([period, ids]) => {
-      const { start, end } = getPeriodBounds(period);
+      const { start, end } = getPeriodBounds(period, timezone);
       const batchResult = await storage.getCompletionsInPeriodBatch(ids, start, end);
       batchResult.forEach((comps, taskId) => {
         completionsInPeriodMap.set(taskId, comps);
@@ -398,7 +423,8 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
 
   // Build per-task assignment map (sorted by plannedDate from the query)
   const assignmentsMap = new Map<number, { plannedDate: string }[]>();
-  const todayStr = new Date().toISOString().split('T')[0];
+  const nowLocalBatch = toLocal(new Date(), timezone);
+  const todayStr = `${nowLocalBatch.getFullYear()}-${String(nowLocalBatch.getMonth() + 1).padStart(2, '0')}-${String(nowLocalBatch.getDate()).padStart(2, '0')}`;
   const assignedTodaySet = new Set<number>();
   const movedFromTodaySet = new Set<number>();
   for (const a of activeAssignments) {
@@ -425,7 +451,7 @@ export async function enrichTasks(tasks: any[], userId: string): Promise<any[]> 
     movedFromTodaySet,
   };
 
-  return Promise.all(tasks.map(task => enrichTask(task, userId, batch)));
+  return Promise.all(tasks.map(task => enrichTask(task, userId, batch, timezone)));
 }
 
 export { storage };
