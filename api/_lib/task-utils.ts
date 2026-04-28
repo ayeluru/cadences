@@ -354,8 +354,10 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
   const isAssignedToday = batch?.assignedTodaySet.has(task.id) ?? false;
   const isMovedFromToday = batch?.movedFromTodaySet.has(task.id) ?? false;
   const naturalNextDueLocal = toLocal(naturalNextDue, timezone);
+  const isFrequencyType = task.taskType === 'frequency';
   const naturallyDueToday =
-    isSameDay(naturalNextDueLocal, today) || isBefore(naturalNextDueLocal, today) ||
+    isSameDay(naturalNextDueLocal, today) ||
+    (!isFrequencyType && isBefore(naturalNextDueLocal, today)) ||
     (task.taskType === 'scheduled' && task.scheduledDaysOfWeek?.split(',').map(Number).includes(today.getDay()));
   const effectiveDueToday = isAssignedToday || (!isMovedFromToday && naturallyDueToday);
 

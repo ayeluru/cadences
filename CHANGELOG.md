@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.4
+
+- **Fixed frequency tasks incorrectly showing as Due Today**: frequency tasks whose pseudo-scheduled date passed (e.g. yesterday) no longer get force-promoted to "Due Today" — they correctly route to "Could Do" instead, since they remain completable anytime within the period
+
 ## 2.2.3
 
 - **Today View "Could Do" section for frequency tasks**: non-daily frequency tasks with incomplete progress now appear in "Could Do" on non-pseudo-scheduled days instead of being hidden
