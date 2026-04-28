@@ -25,15 +25,6 @@ export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
       return null;
     }
 
-    db.insert(userActivity)
-      .values({ userId: user.id, lastActiveAt: new Date() })
-      .onConflictDoUpdate({
-        target: userActivity.userId,
-        set: { lastActiveAt: new Date() },
-      })
-      .execute()
-      .catch(() => {});
-
     return {
       id: user.id,
       email: user.email,
@@ -41,6 +32,17 @@ export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
   } catch {
     return null;
   }
+}
+
+export async function touchLastActive(userId: string): Promise<void> {
+  try {
+    await db.insert(userActivity)
+      .values({ userId, lastActiveAt: new Date() })
+      .onConflictDoUpdate({
+        target: userActivity.userId,
+        set: { lastActiveAt: new Date() },
+      });
+  } catch {}
 }
 
 export async function isAdmin(userId: string): Promise<boolean> {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.1
+
+- **Fixed serverless timeout**: moved activity tracking out of `verifyAuth` to prevent deadlocking the single DB connection on Vercel, which caused 60-second timeouts on all authenticated endpoints
+
 ## 2.3.0
 
 - **Last active tracking in admin view**: each user row now shows when they were last active (e.g. "5m ago", "3d ago"), tracked via a `user_activity` table updated on every authenticated API request
