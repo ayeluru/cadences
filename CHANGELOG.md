@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.1
+
+- **Fixed aggressive overdue marking**: interval tasks now snap to end-of-day (11:59 PM local) instead of start-of-day (midnight), so tasks stay "due today" throughout the day and only become "overdue" after the day ends
+
 ## 2.2.0
 
 - **Timezone-aware task scheduling**: all task due dates, completion tracking, and period boundaries (day/week/month) now respect the user's local timezone instead of defaulting to UTC
