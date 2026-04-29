@@ -1,14 +1,14 @@
 import { useTasks } from "@/hooks/use-tasks";
 import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
-import { Plus, SlidersHorizontal, LayoutGrid, List, X, Folder, Tag as TagIcon, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, SlidersHorizontal, LayoutGrid, List, X, Folder, Tag as TagIcon, Check, ChevronDown, ChevronRight, Palmtree, Pause } from "lucide-react";
 import { useState, useMemo } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { TaskWithDetails } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
-import { useTimezone } from "@/hooks/use-user-settings";
+import { useTimezone, useVacationMode, useEndVacation } from "@/hooks/use-user-settings";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -50,6 +50,7 @@ export default function Dashboard() {
   const [showDueSoon, setShowDueSoon] = useState(false);
   const [showNeverDone, setShowNeverDone] = useState(false);
   const [showCompletedToday, setShowCompletedToday] = useState(false);
+  const [showPaused, setShowPaused] = useState(false);
 
   const hasActiveFilters = filterCategory !== undefined || filterTagIds.length > 0;
 
@@ -105,9 +106,15 @@ export default function Dashboard() {
     const dueSoon: TaskWithDetails[] = [];
     const neverDone: TaskWithDetails[] = [];
     const completedToday: TaskWithDetails[] = [];
+    const paused: TaskWithDetails[] = [];
     const suggestedIds = new Set<number>();
 
     filteredTasks.forEach(task => {
+      if (task.effectivelyPaused || task.status === 'paused') {
+        paused.push(task);
+        return;
+      }
+
       if (task.status === 'never_done') {
         neverDone.push(task);
         return;
@@ -164,7 +171,7 @@ export default function Dashboard() {
     neverDone.sort(byUrgency);
     completedToday.sort(byUrgency);
 
-    return { dueToday, couldDo, dueSoon, neverDone, completedToday, suggestedIds };
+    return { dueToday, couldDo, dueSoon, neverDone, completedToday, paused, suggestedIds };
   }, [filteredTasks]);
 
   const todayTotal = todayTasks.dueToday.length + todayTasks.completedToday.length;
@@ -176,7 +183,8 @@ export default function Dashboard() {
       overdue: [],
       due_soon: [],
       later: [],
-      never_done: []
+      never_done: [],
+      paused: [],
     };
 
     filteredTasks.forEach(task => {
@@ -200,6 +208,7 @@ export default function Dashboard() {
     { id: 'due_soon', label: 'Due Soon', color: 'text-[hsl(var(--urgency-soon))]', count: groupedTasks.due_soon.length },
     { id: 'later', label: 'Up Next', color: 'text-[hsl(var(--urgency-later))]', count: groupedTasks.later.length },
     { id: 'never_done', label: 'Never Completed', color: 'text-muted-foreground', count: groupedTasks.never_done.length },
+    { id: 'paused', label: 'Paused', color: 'text-muted-foreground', count: groupedTasks.paused.length },
   ];
 
   const hasTasks = filteredTasks.length > 0;
@@ -431,6 +440,9 @@ export default function Dashboard() {
         </TabsList>
       </Tabs>
 
+      {/* Vacation Banner */}
+      <VacationBanner />
+
       {/* Tab Content */}
       {activeTab === "today" && (
         <TodayView
@@ -447,6 +459,8 @@ export default function Dashboard() {
           onToggleShowNeverDone={() => setShowNeverDone(!showNeverDone)}
           showCompleted={showCompletedToday}
           onToggleShowCompleted={() => setShowCompletedToday(!showCompletedToday)}
+          showPaused={showPaused}
+          onToggleShowPaused={() => setShowPaused(!showPaused)}
           condensedView={condensedView}
           expandedTaskId={expandedTaskId}
           onToggleExpand={(id) => setExpandedTaskId(expandedTaskId === id ? null : id)}
@@ -493,12 +507,14 @@ function TodayView({
   onToggleShowNeverDone,
   showCompleted,
   onToggleShowCompleted,
+  showPaused,
+  onToggleShowPaused,
   condensedView,
   expandedTaskId,
   onToggleExpand,
   onCreateOpen,
 }: {
-  todayTasks: { dueToday: TaskWithDetails[]; couldDo: TaskWithDetails[]; dueSoon: TaskWithDetails[]; neverDone: TaskWithDetails[]; completedToday: TaskWithDetails[]; suggestedIds: Set<number> };
+  todayTasks: { dueToday: TaskWithDetails[]; couldDo: TaskWithDetails[]; dueSoon: TaskWithDetails[]; neverDone: TaskWithDetails[]; completedToday: TaskWithDetails[]; paused: TaskWithDetails[]; suggestedIds: Set<number> };
   todayTotal: number;
   todayProgress: number;
   showDueToday: boolean;
@@ -511,12 +527,14 @@ function TodayView({
   onToggleShowNeverDone: () => void;
   showCompleted: boolean;
   onToggleShowCompleted: () => void;
+  showPaused: boolean;
+  onToggleShowPaused: () => void;
   condensedView: boolean;
   expandedTaskId: number | null;
   onToggleExpand: (id: number) => void;
   onCreateOpen: () => void;
 }) {
-  const hasAnything = todayTasks.dueToday.length + todayTasks.couldDo.length + todayTasks.dueSoon.length + todayTasks.neverDone.length + todayTasks.completedToday.length > 0;
+  const hasAnything = todayTasks.dueToday.length + todayTasks.couldDo.length + todayTasks.dueSoon.length + todayTasks.neverDone.length + todayTasks.completedToday.length + todayTasks.paused.length > 0;
 
   if (!hasAnything) {
     return (
@@ -621,6 +639,22 @@ function TodayView({
           tasks={todayTasks.completedToday}
           isOpen={showCompleted}
           onToggle={onToggleShowCompleted}
+          condensedView={condensedView}
+          expandedTaskId={expandedTaskId}
+          onToggleExpand={onToggleExpand}
+          dimmed
+        />
+      )}
+
+      {/* 6. Paused — collapsed by default */}
+      {todayTasks.paused.length > 0 && (
+        <CollapsibleTaskSection
+          label="Paused"
+          color="text-muted-foreground"
+          icon={<Pause className="w-4 h-4 text-muted-foreground" />}
+          tasks={todayTasks.paused}
+          isOpen={showPaused}
+          onToggle={onToggleShowPaused}
           condensedView={condensedView}
           expandedTaskId={expandedTaskId}
           onToggleExpand={onToggleExpand}
@@ -838,5 +872,46 @@ function AllTasksView({
         })
       )}
     </div>
+  );
+}
+
+// --- Vacation Banner ---
+
+function VacationBanner() {
+  const { isActive, until } = useVacationMode();
+  const endVacation = useEndVacation();
+
+  if (!isActive) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center gap-3"
+    >
+      <Palmtree className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+      <div className="flex-1">
+        <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+          Vacation mode is active
+          {until && (
+            <span className="font-normal text-amber-700 dark:text-amber-300">
+              {" "}until {until.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </span>
+          )}
+        </p>
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          All tasks are paused. Streaks will be preserved.
+        </p>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        className="border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-800/50"
+        onClick={() => endVacation.mutate()}
+        disabled={endVacation.isPending}
+      >
+        {endVacation.isPending ? "Ending..." : "End Vacation"}
+      </Button>
+    </motion.div>
   );
 }

@@ -6,6 +6,8 @@ const USER_SETTINGS_KEY = ["/api/user-settings"];
 
 interface UserSettings {
   timezone: string;
+  vacationMode?: boolean;
+  vacationUntil?: string | null;
 }
 
 export function useUserSettings() {
@@ -53,6 +55,48 @@ export function useUpdateUserSettings() {
 export function useTimezone(): string {
   const { data } = useUserSettings();
   return data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+export function useStartVacation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (until?: string) => {
+      const res = await apiRequest("POST", "/api/vacation", { until });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: USER_SETTINGS_KEY });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+    },
+  });
+}
+
+export function useEndVacation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/vacation");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: USER_SETTINGS_KEY });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+    },
+  });
+}
+
+export function useVacationMode() {
+  const { data } = useUserSettings();
+  const isActive = data?.vacationMode === true
+    && (!data.vacationUntil || new Date(data.vacationUntil) > new Date());
+  return {
+    isActive,
+    until: data?.vacationUntil ? new Date(data.vacationUntil) : null,
+  };
 }
 
 export function useTimezoneAutoDetect() {

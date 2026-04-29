@@ -47,6 +47,9 @@ import {
   assignmentsList,
   assignmentsId,
   userSettingsHandler,
+  tasksIdPause,
+  tasksIdResume,
+  vacationHandler,
 } from './_lib/all-handlers.js';
 
 type Handler = (req: VercelRequest, res: VercelResponse) => any;
@@ -91,6 +94,8 @@ const routes: Route[] = [
   { pattern: /^tags\/(\d+)$/, handler: tagsId, params: ['id'] },
   { pattern: /^tags$/, handler: tagsIndex, params: [] },
   { pattern: /^tasks\/migrate$/, handler: tasksMigrate, params: [] },
+  { pattern: /^tasks\/(\d+)\/pause$/, handler: tasksIdPause, params: ['id'] },
+  { pattern: /^tasks\/(\d+)\/resume$/, handler: tasksIdResume, params: ['id'] },
   { pattern: /^tasks\/(\d+)\/archive$/, handler: tasksIdArchive, params: ['id'] },
   { pattern: /^tasks\/(\d+)\/cascade$/, handler: tasksIdCascade, params: ['id'] },
   { pattern: /^tasks\/(\d+)\/complete$/, handler: tasksIdComplete, params: ['id'] },
@@ -105,6 +110,7 @@ const routes: Route[] = [
   { pattern: /^assignments\/(\d+)$/, handler: assignmentsId, params: ['id'] },
   { pattern: /^assignments$/, handler: assignmentsList, params: [] },
   { pattern: /^user-settings$/, handler: userSettingsHandler, params: [] },
+  { pattern: /^vacation$/, handler: vacationHandler, params: [] },
 ];
 
 export const config = { maxDuration: 60 };

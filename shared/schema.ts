@@ -91,6 +91,9 @@ export const tasks = pgTable("tasks", {
   userId: varchar("user_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   isArchived: boolean("is_archived").default(false),
+  isPaused: boolean("is_paused").default(false),
+  pausedUntil: timestamp("paused_until"),
+  resumedAt: timestamp("resumed_at"),
 }, (table) => [
   index("tasks_user_id_idx").on(table.userId),
   index("tasks_profile_id_idx").on(table.profileId),
@@ -219,6 +222,8 @@ export const userSettings = pgTable("user_settings", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
   timezone: varchar("timezone", { length: 100 }).default("UTC").notNull(),
+  vacationMode: boolean("vacation_mode").default(false),
+  vacationUntil: timestamp("vacation_until"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -323,13 +328,13 @@ export const feedbackCommentsRelations = relations(feedbackComments, ({ one }) =
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, createdAt: true });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, userId: true });
 export const insertTagSchema = createInsertSchema(tags).omit({ id: true, userId: true });
-export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true });
+export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, userId: true, createdAt: true, lastCompletedAt: true, isPaused: true, pausedUntil: true, resumedAt: true });
 export const insertTaskMetricSchema = createInsertSchema(taskMetrics).omit({ id: true });
 export const insertCompletionSchema = createInsertSchema(completions).omit({ id: true, completedAt: true });
 export const insertMetricValueSchema = createInsertSchema(metricValues).omit({ id: true });
 export const insertTaskVariationSchema = createInsertSchema(taskVariations).omit({ id: true, createdAt: true });
 
-export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
+export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({ id: true, userId: true, createdAt: true, updatedAt: true, vacationMode: true, vacationUntil: true });
 export const insertTaskAssignmentSchema = createInsertSchema(taskAssignments).omit({ id: true, userId: true, createdAt: true });
 export const insertFeedbackSchema = createInsertSchema(feedbackSubmissions).omit({ id: true, userId: true, status: true, isPublic: true, isAnonymous: true, adminResponse: true, adminResponseBy: true, createdAt: true, updatedAt: true });
 export const insertFeedbackCommentSchema = createInsertSchema(feedbackComments).omit({ id: true, userId: true, createdAt: true });
@@ -373,7 +378,7 @@ export type TaskWithDetails = Task & {
   metrics?: TaskMetric[];
   variations?: TaskVariation[];
   urgency?: number;
-  status?: 'overdue' | 'due_soon' | 'later' | 'never_done';
+  status?: 'overdue' | 'due_soon' | 'later' | 'never_done' | 'paused';
   nextDue?: string;
   daysUntilDue?: number;
   completionsThisPeriod?: number;
@@ -383,4 +388,6 @@ export type TaskWithDetails = Task & {
   completedToday?: boolean;
   effectiveDueToday?: boolean;
   recentCompletionDates?: string[];
+  effectivelyPaused?: boolean;
+  pausedUntilDate?: string | null;
 };

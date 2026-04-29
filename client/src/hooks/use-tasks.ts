@@ -321,6 +321,74 @@ export function useReassignTask() {
   });
 }
 
+export function usePauseTask() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, until }: { id: number; until?: string }) => {
+      const res = await apiRequest("POST", `/api/tasks/${id}/pause`, { until });
+      return res.json();
+    },
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
+      const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
+      queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
+        Array.isArray(old) ? old.map(t =>
+          t.id === id ? { ...t, isPaused: true, status: 'paused' as const, effectivelyPaused: true } : t
+        ) : old
+      );
+      return { previous };
+    },
+    onError: (err, _vars, context) => {
+      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+    },
+    onSuccess: () => {
+      toast({ title: "Task paused", description: "Task is paused. Streaks will be preserved." });
+    },
+  });
+}
+
+export function useResumeTask() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/tasks/${id}/resume`);
+      return res.json();
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
+      const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
+      queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
+        Array.isArray(old) ? old.map(t =>
+          t.id === id ? { ...t, isPaused: false, status: 'later' as const, effectivelyPaused: false } : t
+        ) : old
+      );
+      return { previous };
+    },
+    onError: (err, _id, context) => {
+      context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
+    },
+    onSuccess: () => {
+      toast({ title: "Task resumed", description: "Task is active again." });
+    },
+  });
+}
+
 export function useMigrateTasks() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
