@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.1
+
+- **Fixed admin page timeout**: replaced `supabaseAdmin.auth.admin.listUsers()` HTTP call — which was hanging on Vercel — with a direct `auth.users` database query
+
 ## 2.4.0
 
 - **Task pausing**: pause individual tasks indefinitely or until a specific date — paused tasks are hidden from the Today view and grouped in a collapsible "Paused" section
