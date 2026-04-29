@@ -428,20 +428,27 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
 }
 
 // Batch-enrich multiple tasks with ~8 queries total instead of ~6N
-export async function enrichTasks(tasks: any[], userId: string, timezone: string = 'UTC'): Promise<any[]> {
+// Accepts optional pre-fetched userSettings to avoid duplicate DB calls
+export async function enrichTasks(tasks: any[], userId: string, timezone: string = 'UTC', preloadedSettings?: any): Promise<any[]> {
   if (tasks.length === 0) return [];
 
   const taskIds = tasks.map(t => t.id);
 
-  const [categories, tagsMap, metricsMap, variationsMap, streaksMap, activeAssignments, userSettingsData] = await Promise.all([
+  const queries: Promise<any>[] = [
     storage.getCategories(userId),
     storage.getTaskTagsBatch(taskIds),
     storage.getTaskMetricsBatch(taskIds),
     storage.getTaskVariationsBatch(taskIds),
     storage.getTaskStreaksBatch(taskIds, userId),
     storage.getActiveAssignments(userId),
-    storage.getUserSettings(userId),
-  ]);
+  ];
+  if (!preloadedSettings) {
+    queries.push(storage.getUserSettings(userId));
+  }
+
+  const results = await Promise.all(queries);
+  const [categories, tagsMap, metricsMap, variationsMap, streaksMap, activeAssignments] = results;
+  const userSettingsData = preloadedSettings ?? results[6];
 
   // Batch-fetch completions for frequency tasks, grouped by period type
   const completionsInPeriodMap = new Map<number, Completion[]>();

@@ -5,14 +5,19 @@ import { supabaseAdmin } from './supabase.js';
 import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 
-async function getUserTimezone(userId: string): Promise<string> {
+async function getUserSettings(userId: string): Promise<{ timezone: string; settings: any }> {
   try {
     const settings = await storage.getUserSettings(userId);
-    return settings?.timezone || 'UTC';
+    return { timezone: settings?.timezone || 'UTC', settings };
   } catch (err) {
-    console.error('[getUserTimezone] DB error, falling back to UTC:', err);
-    return 'UTC';
+    console.error('[getUserSettings] DB error, falling back to defaults:', err);
+    return { timezone: 'UTC', settings: null };
   }
+}
+
+async function getUserTimezone(userId: string): Promise<string> {
+  const { timezone } = await getUserSettings(userId);
+  return timezone;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,8 +112,8 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
     const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate, profileId, excludeDemo);
 
     const allTasks = await storage.getTasks(userId, profileId, excludeDemo);
-    const tz = await getUserTimezone(userId);
-    const enrichedTasks = await enrichTasks(allTasks, userId, tz);
+    const { timezone: tz, settings: userSettings } = await getUserSettings(userId);
+    const enrichedTasks = await enrichTasks(allTasks, userId, tz, userSettings);
 
     const days = eachDayOfInterval({ start: startDate, end: endDate });
     const calendarMap = new Map<string, {
@@ -693,8 +698,8 @@ async function statsIndexHandleGet(req: VercelRequest, res: VercelResponse, user
 
     const completions = await storage.getAllCompletions(userId, profileId, excludeDemo);
     const tasks = await storage.getTasks(userId, profileId, excludeDemo);
-    const tz = await getUserTimezone(userId);
-    const enrichedTasks = await enrichTasks(tasks, userId, tz);
+    const { timezone: tz, settings: userSettings } = await getUserSettings(userId);
+    const enrichedTasks = await enrichTasks(tasks, userId, tz, userSettings);
 
     const totalCompletions = completions.length;
 
@@ -849,8 +854,6 @@ export async function tasksIndex(req: VercelRequest, res: VercelResponse) {
   const user = await verifyAuth(req);
   if (!user) return unauthorized(res);
 
-  touchLastActive(user.id);
-
   if (req.method === 'GET') {
     return tasksIndexHandleGet(req, res, user.id);
   } else if (req.method === 'POST') {
@@ -882,8 +885,8 @@ async function tasksIndexHandleGet(req: VercelRequest, res: VercelResponse, user
       tasks = tasks.filter(task => task.categoryId === catId);
     }
 
-    const tz = await getUserTimezone(userId);
-    const enrichedTasks = await enrichTasks(tasks, userId, tz);
+    const { timezone: tz, settings: userSettings } = await getUserSettings(userId);
+    const enrichedTasks = await enrichTasks(tasks, userId, tz, userSettings);
 
     let filteredTasks = enrichedTasks;
     if (tagId) {
@@ -1094,6 +1097,8 @@ export async function tasksIdComplete(req: VercelRequest, res: VercelResponse) {
 
   const user = await verifyAuth(req);
   if (!user) return unauthorized(res);
+
+  touchLastActive(user.id);
 
   const { id } = req.query;
   const taskId = parseInt(id as string, 10);
