@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.2
+
+- **Fixed serverless performance**: removed `touchLastActive` DB write from the task loading hot path (now only fires on task completion), deduplicated `getUserSettings` queries, and added connection/query timeouts to prevent 60-second hangs
+
 ## 2.4.1
 
 - **Fixed admin page timeout**: replaced `supabaseAdmin.auth.admin.listUsers()` HTTP call — which was hanging on Vercel — with a direct `auth.users` database query
