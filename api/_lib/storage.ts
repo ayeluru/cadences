@@ -2215,13 +2215,17 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.execute(sql`
       SELECT id, email, raw_user_meta_data, created_at FROM auth.users ORDER BY created_at ASC
     `);
-    return (rows as any[]).map(r => ({
+    const result = (rows as any[]).map(r => ({
       id: r.id,
       email: r.email,
       firstName: r.raw_user_meta_data?.firstName ?? null,
       lastName: r.raw_user_meta_data?.lastName ?? null,
       createdAt: r.created_at,
     }));
+    if (result.length === 0) {
+      console.warn('[getAuthUsers] query returned 0 rows — auth.users may not be accessible through pooler');
+    }
+    return result;
   }
 
   // Batch query methods — fetch data for many tasks in a single DB round-trip

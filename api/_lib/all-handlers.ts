@@ -1415,8 +1415,32 @@ export async function adminUsers(req: VercelRequest, res: VercelResponse) {
   if (!admin) return forbidden(res);
 
   try {
-    const [authUsers, roles, activity] = await Promise.all([
-      storage.getAuthUsers(),
+    const listUsersWithTimeout = async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+        if (error) throw error;
+        return users.map(u => ({
+          id: u.id,
+          email: u.email ?? '',
+          firstName: (u.user_metadata?.firstName as string) ?? null,
+          lastName: (u.user_metadata?.lastName as string) ?? null,
+          createdAt: u.created_at,
+        }));
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    let authUsers: { id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string }[];
+    try {
+      authUsers = await storage.getAuthUsers();
+    } catch {
+      authUsers = await listUsersWithTimeout();
+    }
+
+    const [roles, activity] = await Promise.all([
       storage.getAllUserRoles(),
       storage.getAllUserActivity(),
     ]);
