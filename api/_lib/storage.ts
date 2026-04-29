@@ -2212,9 +2212,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAuthUsers(): Promise<{ id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string }[]> {
-    const rows = await db.execute(sql`
-      SELECT id, email, raw_user_meta_data, created_at FROM auth.users ORDER BY created_at ASC
-    `);
+    const rows = await Promise.race([
+      db.execute(sql`SELECT * FROM public.list_auth_users()`),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('getAuthUsers timed out after 8s')), 8000)
+      ),
+    ]);
     const result = (rows as any[]).map(r => ({
       id: r.id,
       email: r.email,
@@ -2223,7 +2226,7 @@ export class DatabaseStorage implements IStorage {
       createdAt: r.created_at,
     }));
     if (result.length === 0) {
-      console.warn('[getAuthUsers] query returned 0 rows — auth.users may not be accessible through pooler');
+      console.warn('[getAuthUsers] query returned 0 rows — list_auth_users() may not be accessible');
     }
     return result;
   }
