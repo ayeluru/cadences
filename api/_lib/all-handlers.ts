@@ -1417,23 +1417,45 @@ export async function adminUsers(req: VercelRequest, res: VercelResponse) {
   try {
     const t0 = Date.now();
 
-    let authUsers: { id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string }[];
+    type AuthUser = { id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string };
+    let authUsers: AuthUser[] | null = null;
+
+    // Strategy 1: DB function (SECURITY DEFINER, works through pooler)
     try {
       authUsers = await storage.getAuthUsers();
       console.log(`[admin] getAuthUsers (DB): ${Date.now() - t0}ms, ${authUsers.length} users`);
     } catch (dbErr) {
       console.warn(`[admin] getAuthUsers (DB) failed after ${Date.now() - t0}ms:`, dbErr);
-      const t1 = Date.now();
-      const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
-      console.log(`[admin] listUsers (API): ${Date.now() - t1}ms`);
-      if (error) throw error;
-      authUsers = users.map(u => ({
-        id: u.id,
-        email: u.email ?? '',
-        firstName: (u.user_metadata?.firstName as string) ?? null,
-        lastName: (u.user_metadata?.lastName as string) ?? null,
-        createdAt: u.created_at,
-      }));
+    }
+
+    // Strategy 2: direct HTTP to GoTrue admin API with timeout
+    if (!authUsers || authUsers.length === 0) {
+      try {
+        const t1 = Date.now();
+        const response = await fetch(
+          `${process.env.VITE_SUPABASE_URL}/auth/v1/admin/users?per_page=1000`,
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            },
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
+        if (!response.ok) throw new Error(`GoTrue ${response.status}`);
+        const data = await response.json();
+        const users = data.users ?? data;
+        authUsers = (users as any[]).map((u: any) => ({
+          id: u.id,
+          email: u.email ?? '',
+          firstName: (u.user_metadata?.firstName as string) ?? null,
+          lastName: (u.user_metadata?.lastName as string) ?? null,
+          createdAt: u.created_at,
+        }));
+        console.log(`[admin] listUsers (HTTP): ${Date.now() - t1}ms, ${authUsers.length} users`);
+      } catch (httpErr) {
+        console.warn(`[admin] listUsers (HTTP) failed after ${Date.now() - t0}ms:`, httpErr);
+      }
     }
 
     const t2 = Date.now();
@@ -1445,6 +1467,19 @@ export async function adminUsers(req: VercelRequest, res: VercelResponse) {
 
     const roleMap = new Map(roles.map(r => [r.userId, r.role]));
     const activityMap = new Map(activity.map(a => [a.userId, a.lastActiveAt]));
+
+    // Strategy 3: if both auth sources failed, build user list from our own tables
+    if (!authUsers || authUsers.length === 0) {
+      console.warn('[admin] all auth sources failed — building list from app DB tables');
+      const knownIds = new Set([...Array.from(roleMap.keys()), ...Array.from(activityMap.keys())]);
+      authUsers = Array.from(knownIds).map(id => ({
+        id,
+        email: '',
+        firstName: null,
+        lastName: null,
+        createdAt: '',
+      }));
+    }
 
     const result = authUsers.map(u => ({
       id: u.id,
