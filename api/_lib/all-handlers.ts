@@ -1415,35 +1415,33 @@ export async function adminUsers(req: VercelRequest, res: VercelResponse) {
   if (!admin) return forbidden(res);
 
   try {
-    const listUsersWithTimeout = async () => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-      try {
-        const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
-        if (error) throw error;
-        return users.map(u => ({
-          id: u.id,
-          email: u.email ?? '',
-          firstName: (u.user_metadata?.firstName as string) ?? null,
-          lastName: (u.user_metadata?.lastName as string) ?? null,
-          createdAt: u.created_at,
-        }));
-      } finally {
-        clearTimeout(timer);
-      }
-    };
+    const t0 = Date.now();
 
     let authUsers: { id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string }[];
     try {
       authUsers = await storage.getAuthUsers();
-    } catch {
-      authUsers = await listUsersWithTimeout();
+      console.log(`[admin] getAuthUsers (DB): ${Date.now() - t0}ms, ${authUsers.length} users`);
+    } catch (dbErr) {
+      console.warn(`[admin] getAuthUsers (DB) failed after ${Date.now() - t0}ms:`, dbErr);
+      const t1 = Date.now();
+      const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+      console.log(`[admin] listUsers (API): ${Date.now() - t1}ms`);
+      if (error) throw error;
+      authUsers = users.map(u => ({
+        id: u.id,
+        email: u.email ?? '',
+        firstName: (u.user_metadata?.firstName as string) ?? null,
+        lastName: (u.user_metadata?.lastName as string) ?? null,
+        createdAt: u.created_at,
+      }));
     }
 
+    const t2 = Date.now();
     const [roles, activity] = await Promise.all([
       storage.getAllUserRoles(),
       storage.getAllUserActivity(),
     ]);
+    console.log(`[admin] roles+activity (DB): ${Date.now() - t2}ms`);
 
     const roleMap = new Map(roles.map(r => [r.userId, r.role]));
     const activityMap = new Map(activity.map(a => [a.userId, a.lastActiveAt]));
@@ -1458,6 +1456,7 @@ export async function adminUsers(req: VercelRequest, res: VercelResponse) {
       lastActiveAt: activityMap.get(u.id)?.toISOString() ?? null,
     }));
 
+    console.log(`[admin] total: ${Date.now() - t0}ms`);
     return res.status(200).json(result);
   } catch (error) {
     console.error('Error listing admin users:', error);
