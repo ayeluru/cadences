@@ -2211,26 +2211,6 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(userActivity);
   }
 
-  async getAuthUsers(): Promise<{ id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string }[]> {
-    const rows = await Promise.race([
-      db.execute(sql`SELECT * FROM public.list_auth_users()`),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('getAuthUsers timed out after 8s')), 8000)
-      ),
-    ]);
-    const result = (rows as any[]).map(r => ({
-      id: r.id,
-      email: r.email,
-      firstName: r.raw_user_meta_data?.firstName ?? null,
-      lastName: r.raw_user_meta_data?.lastName ?? null,
-      createdAt: r.created_at,
-    }));
-    if (result.length === 0) {
-      console.warn('[getAuthUsers] query returned 0 rows — list_auth_users() may not be accessible');
-    }
-    return result;
-  }
-
   // Batch query methods — fetch data for many tasks in a single DB round-trip
 
   async getTaskTagsBatch(taskIds: number[]): Promise<Map<number, Tag[]>> {
