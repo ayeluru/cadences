@@ -6,6 +6,7 @@
 - **Vacation mode**: global toggle in Settings that pauses all tasks at once, with an optional end date; a banner shows on the Dashboard while active
 - **Streak preservation**: streaks are frozen during pauses and resume cleanly — no streak loss for time away
 - **Pause UI**: pause/resume actions in the task card dropdown menu, with a date-picker dialog for scheduled pauses
+- **Fixed resume scheduling**: ending vacation no longer marks all tasks as "done for today" — `resumedAt` is now only used for streak grace windows, not for shifting `nextDue` calculations
 
 ## 2.3.1
 
