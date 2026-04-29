@@ -2211,6 +2211,19 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(userActivity);
   }
 
+  async getAuthUsers(): Promise<{ id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string }[]> {
+    const rows = await db.execute(sql`
+      SELECT id, email, raw_user_meta_data, created_at FROM auth.users ORDER BY created_at ASC
+    `);
+    return (rows as any[]).map(r => ({
+      id: r.id,
+      email: r.email,
+      firstName: r.raw_user_meta_data?.firstName ?? null,
+      lastName: r.raw_user_meta_data?.lastName ?? null,
+      createdAt: r.created_at,
+    }));
+  }
+
   // Batch query methods — fetch data for many tasks in a single DB round-trip
 
   async getTaskTagsBatch(taskIds: number[]): Promise<Map<number, Tag[]>> {
