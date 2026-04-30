@@ -109,10 +109,10 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
     const today = new Date();
     const profileId = profileIdStr ? parseInt(profileIdStr, 10) : undefined;
 
-    const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate, profileId, excludeDemo);
+    const { timezone: tz, settings: userSettings } = await getUserSettings(userId);
+    const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate, profileId, excludeDemo, tz);
 
     const allTasks = await storage.getTasks(userId, profileId, excludeDemo);
-    const { timezone: tz, settings: userSettings } = await getUserSettings(userId);
     const enrichedTasks = await enrichTasks(allTasks, userId, tz, userSettings);
 
     const days = eachDayOfInterval({ start: startDate, end: endDate });
@@ -321,7 +321,8 @@ export async function completionsCalendar(req: VercelRequest, res: VercelRespons
 
     const startDate = parseISO(startStr);
     const endDate = parseISO(endStr);
-    const calendarData = await storage.getCompletionsForCalendar(user.id, startDate, endDate);
+    const { timezone: tz } = await getUserSettings(user.id);
+    const calendarData = await storage.getCompletionsForCalendar(user.id, startDate, endDate, undefined, false, tz);
     return res.status(200).json(calendarData);
   } catch (error) {
     console.error('Error fetching calendar data:', error);

@@ -15,7 +15,7 @@ export type User = { id: string; email?: string };
 import { db } from "./db.js";
 import { eq, desc, asc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount, isNotNull } from "drizzle-orm";
 import { startOfDay, differenceInDays } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
+import { toZonedTime, formatInTimeZone } from "date-fns-tz";
 
 export interface IStorage {
   // Users
@@ -69,7 +69,7 @@ export interface IStorage {
   getCompletionWithMetrics(completionId: number): Promise<{completion: Completion, metrics: MetricValue[]} | undefined>;
   getAllCompletions(userId: string): Promise<Completion[]>;
   getCompletionsInPeriod(taskId: number, startDate: Date, endDate: Date): Promise<Completion[]>;
-  getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date, profileId?: number, excludeDemo?: boolean): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]>;
+  getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date, profileId?: number, excludeDemo?: boolean, timezone?: string): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]>;
   deleteCompletion(completionId: number, userId: string): Promise<void>;
   updateCompletion(completionId: number, userId: string, updates: {
     completedAt?: Date;
@@ -1452,17 +1452,17 @@ export class DatabaseStorage implements IStorage {
     return { completion, metrics };
   }
 
-  async getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date, profileId?: number, excludeDemo?: boolean): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]> {
+  async getCompletionsForCalendar(userId: string, startDate: Date, endDate: Date, profileId?: number, excludeDemo?: boolean, timezone: string = 'UTC'): Promise<{date: string, count: number, tasks: {id: number, title: string, completedAt: string}[]}[]> {
     const conditions = [
       eq(tasks.userId, userId),
       gte(completions.completedAt, startDate),
       lte(completions.completedAt, endDate)
     ];
-    
+
     if (profileId !== undefined) {
       conditions.push(eq(tasks.profileId, profileId));
     }
-    
+
     if (excludeDemo) {
       // Exclude tasks from demo profiles
       const demoProfileIds = await db.select({ id: profiles.id })
@@ -1473,7 +1473,7 @@ export class DatabaseStorage implements IStorage {
         conditions.push(notInArray(tasks.profileId, demoIds));
       }
     }
-    
+
     const result = await db.select({
       completion: completions,
       task: tasks,
@@ -1482,11 +1482,13 @@ export class DatabaseStorage implements IStorage {
     .innerJoin(tasks, eq(completions.taskId, tasks.id))
     .where(and(...conditions))
     .orderBy(completions.completedAt);
-    
-    // Group by date
+
+    // Group by date in the user's local timezone — using toISOString() here
+    // would bucket completions by UTC date, splitting evenings across days
+    // for any user whose timezone differs from UTC.
     const groupedByDate = new Map<string, {id: number, title: string, completedAt: string}[]>();
     for (const row of result) {
-      const dateStr = row.completion.completedAt.toISOString().slice(0, 10);
+      const dateStr = formatInTimeZone(row.completion.completedAt, timezone, 'yyyy-MM-dd');
       if (!groupedByDate.has(dateStr)) {
         groupedByDate.set(dateStr, []);
       }
@@ -1496,7 +1498,7 @@ export class DatabaseStorage implements IStorage {
         completedAt: row.completion.completedAt.toISOString(),
       });
     }
-    
+
     return Array.from(groupedByDate.entries()).map(([date, taskList]) => ({
       date,
       count: taskList.length,
