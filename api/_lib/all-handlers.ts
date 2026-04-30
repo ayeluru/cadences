@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden, touchLastActive } from './auth.js';
 import { storage, enrichTask, enrichTasks } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
-import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays } from 'date-fns';
+import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 
 async function getUserSettings(userId: string): Promise<{ timezone: string; settings: any }> {
@@ -110,7 +110,12 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
     const profileId = profileIdStr ? parseInt(profileIdStr, 10) : undefined;
 
     const { timezone: tz, settings: userSettings } = await getUserSettings(userId);
-    const completionsData = await storage.getCompletionsForCalendar(userId, startDate, endDate, profileId, excludeDemo, tz);
+    // Pad the DB-side range by 1 day on each side so completions that fall in
+    // the user's local-date range but outside the UTC range still get fetched
+    // (the storage layer buckets them by user's local date afterwards).
+    const fetchStart = subDays(startDate, 1);
+    const fetchEnd = addDays(endDate, 1);
+    const completionsData = await storage.getCompletionsForCalendar(userId, fetchStart, fetchEnd, profileId, excludeDemo, tz);
 
     const allTasks = await storage.getTasks(userId, profileId, excludeDemo);
     const enrichedTasks = await enrichTasks(allTasks, userId, tz, userSettings);
@@ -322,7 +327,11 @@ export async function completionsCalendar(req: VercelRequest, res: VercelRespons
     const startDate = parseISO(startStr);
     const endDate = parseISO(endStr);
     const { timezone: tz } = await getUserSettings(user.id);
-    const calendarData = await storage.getCompletionsForCalendar(user.id, startDate, endDate, undefined, false, tz);
+    // Pad the range by 1 day on each side to cover timezone offsets — the
+    // storage layer buckets by user's local date.
+    const fetchStart = subDays(startDate, 1);
+    const fetchEnd = addDays(endDate, 1);
+    const calendarData = await storage.getCompletionsForCalendar(user.id, fetchStart, fetchEnd, undefined, false, tz);
     return res.status(200).json(calendarData);
   } catch (error) {
     console.error('Error fetching calendar data:', error);
