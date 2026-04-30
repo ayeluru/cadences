@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { queryPersister } from "@/lib/queryClient";
 import type { User, Session } from "@supabase/supabase-js";
 
 export function getDisplayName(user: User | null): string {
@@ -126,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           sessionStorage.removeItem('userRole');
           setUserRole('user');
           queryClient.clear();
+          queryPersister.removeClient();
         }
       }
     );
@@ -138,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem('userRole');
     await supabase.auth.signOut({ scope: 'local' });
     queryClient.clear();
+    queryPersister.removeClient();
     window.location.replace("/");
   }, [queryClient]);
 

@@ -1,5 +1,9 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { supabase } from "./supabase";
+
+export const PERSISTED_CACHE_KEY = "CADENCES_QUERY_CACHE";
+export const PERSISTED_CACHE_MAX_AGE = 1000 * 60 * 60 * 24; // 24h
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -99,6 +103,8 @@ export const queryClient = new QueryClient({
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
+      // Must be >= persister maxAge or queries get GC'd before they can be persisted.
+      gcTime: PERSISTED_CACHE_MAX_AGE,
       retry: (failureCount, error) => {
         if (error instanceof Error && error.message.startsWith('401:')) return false;
         return failureCount < 2;
@@ -109,4 +115,9 @@ export const queryClient = new QueryClient({
       retry: false,
     },
   },
+});
+
+export const queryPersister = createSyncStoragePersister({
+  storage: window.localStorage,
+  key: PERSISTED_CACHE_KEY,
 });
