@@ -215,7 +215,53 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
       }
     }
 
-    return res.status(200).json(Array.from(calendarMap.values()));
+    // Aggregates: weekly and monthly balances for frequency tasks, presented
+    // alongside the per-day data so the calendar can show one row-level summary
+    // per week and one month-level summary, analogous to the per-day badges.
+    const buildAggregates = (period: 'week' | 'month') => {
+      const periods = getPeriodsInRange(period, startDate, endDate, tz);
+      const relevant = enrichedTasks.filter(
+        (t: any) =>
+          t.taskType === 'frequency' &&
+          t.targetPeriod === period &&
+          (t.targetCount ?? 0) > 0 &&
+          !t.isArchived &&
+          !t.parentTaskId,
+      );
+      return periods.map(({ periodStart, periodEnd }) => {
+        const tasks = relevant.map((task: any) => {
+          const taskCreatedAt = task.createdAt ? new Date(task.createdAt) : new Date(0);
+          const completionsInPeriod = (completionsByTask.get(task.id) ?? []).filter(
+            c => c >= periodStart && c <= periodEnd && c >= taskCreatedAt,
+          );
+          return {
+            id: task.id,
+            title: task.title,
+            target: task.targetCount,
+            completed: completionsInPeriod.length,
+          };
+        });
+        const totalTarget = tasks.reduce((s, t) => s + t.target, 0);
+        const totalCompleted = tasks.reduce((s, t) => s + Math.min(t.target, t.completed), 0);
+        return {
+          periodStart: formatInTimeZone(periodStart, tz, 'yyyy-MM-dd'),
+          periodEnd: formatInTimeZone(periodEnd, tz, 'yyyy-MM-dd'),
+          totalTarget,
+          totalCompleted,
+          tasks,
+        };
+      });
+    };
+
+    const weeks = buildAggregates('week');
+    const monthAggregates = buildAggregates('month');
+    const month = monthAggregates[0] ?? null;
+
+    return res.status(200).json({
+      days: Array.from(calendarMap.values()),
+      weeks,
+      month,
+    });
   } catch (error) {
     console.error('Error fetching enhanced calendar:', error);
     return res.status(500).json({ error: 'Internal server error' });
