@@ -153,14 +153,13 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
       }
     }
 
-    const todayStr = formatInTimeZone(today, tz, 'yyyy-MM-dd');
-
     for (const task of enrichedTasks) {
       if (task.isArchived || task.parentTaskId) continue;
 
       // Frequency-task semantics: only count "missed" once a period has ended
-      // with the target unmet. While the period is in progress, surface as
-      // dueSoon on today (a soft cue, not a penalty).
+      // with the target unmet. While the period is in progress, the task does
+      // not appear in any of the calendar's daily buckets — it's not "due"
+      // on any specific day, and per-period progress is shown elsewhere.
       if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
         const periods = getPeriodsInRange(task.targetPeriod, fetchStart, fetchEnd, tz);
         const taskCompletions = completionsByTask.get(task.id) ?? [];
@@ -175,27 +174,21 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
           const shortfall = task.targetCount - completionsInPeriod.length;
           if (shortfall <= 0) continue;
 
-          const periodEnded = periodEnd < today;
-          if (periodEnded) {
-            const periodEndStr = formatInTimeZone(periodEnd, tz, 'yyyy-MM-dd');
-            const entry = calendarMap.get(periodEndStr);
-            if (entry) {
-              for (let i = 0; i < shortfall; i++) {
-                entry.missed.push({
-                  id: task.id,
-                  title: task.title,
-                  dueDate: periodEnd.toISOString(),
-                });
-              }
-            }
-          } else {
-            // In-progress period: soft cue on today's square (deduped per task)
-            const entry = calendarMap.get(todayStr);
-            if (entry && !entry.dueSoon.some(d => d.id === task.id)) {
-              entry.dueSoon.push({
+          // Only attribute misses for *closed* periods. While a frequency
+          // period is in progress, the task isn't really "due" on any specific
+          // day — surfacing it on today's square as "upcoming" is misleading
+          // and noisy when several frequency tasks are mid-period. Use the
+          // dashboard "Could Do" section for the in-period nudge instead.
+          if (periodEnd >= today) continue;
+
+          const periodEndStr = formatInTimeZone(periodEnd, tz, 'yyyy-MM-dd');
+          const entry = calendarMap.get(periodEndStr);
+          if (entry) {
+            for (let i = 0; i < shortfall; i++) {
+              entry.missed.push({
                 id: task.id,
                 title: task.title,
-                dueDate: task.nextDue,
+                dueDate: periodEnd.toISOString(),
               });
             }
           }
