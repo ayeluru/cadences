@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { supabaseAdmin } from './supabase.js';
 import { db } from './db.js';
 import { userRoles, userActivity } from '../../shared/schema.js';
@@ -10,9 +10,12 @@ export interface AuthUser {
   email?: string;
 }
 
-// Cache the encoded JWT secret across invocations on the same instance.
-const jwtSecret = process.env.SUPABASE_JWT_SECRET;
-const jwtSecretKey = jwtSecret ? new TextEncoder().encode(jwtSecret) : null;
+// Lazy-init the JWKS resolver. jose caches keys internally per resolver,
+// so subsequent verifications on the same instance are local-only.
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const jwks = supabaseUrl
+  ? createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`))
+  : null;
 
 export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
   const authHeader = req.headers.authorization;
@@ -23,13 +26,13 @@ export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
 
   const token = authHeader.split(' ')[1];
 
-  // Fast path: verify the JWT locally with the project's HS256 secret.
-  // Saves ~150ms per request vs. round-tripping to Supabase Auth.
-  if (jwtSecretKey) {
+  // Fast path: verify the JWT locally against Supabase's published JWKS.
+  // Saves ~150ms per request vs. round-tripping to Supabase Auth. The JWKS
+  // is fetched once per cold start and cached; key rotations are picked up
+  // automatically by jose on subsequent fetches.
+  if (jwks) {
     try {
-      const { payload } = await jwtVerify(token, jwtSecretKey, {
-        algorithms: ['HS256'],
-      });
+      const { payload } = await jwtVerify(token, jwks);
       const sub = payload.sub;
       if (typeof sub === 'string' && sub.length > 0) {
         return {
@@ -38,8 +41,8 @@ export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
         };
       }
     } catch {
-      // Fall through to HTTP verification (token may be from a key rotation,
-      // or the secret may be misconfigured)
+      // Fall through to HTTP verification — possible during a key rotation
+      // window or if the JWKS fetch itself failed.
     }
   }
 
