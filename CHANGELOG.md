@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.8
+
+- **Calendar correctness — timezone bucketing**: completions are now bucketed into the user's local YYYY-MM-DD instead of UTC. Evening completions in non-UTC timezones (most users) no longer slip onto the next day's square or fall outside the visible range
+- **Calendar correctness — frequency-task miss accounting**: frequency tasks (X per week / month) are no longer marked "missed" every day they're behind pace. They're only marked missed once a period closes with the target unmet, attributed to the period's last day. While the period is open they show as a soft "due soon" cue on today's square
+- **Documentation refresh**: CLAUDE.md updated to reflect the React Query session-cache convention, optimistic-update pattern, lazy-loaded routes, multi-profile model, no-test/no-ESLint reality, and the GitHub auto-deploy flow
+
 ## 2.4.7
 
 - **DB connection pool bump**: raised the postgres.js `max` on serverless from 3 to 10 to allow more of the dashboard's batched queries to run in parallel. Saves ~150ms on the warm-path dashboard load
