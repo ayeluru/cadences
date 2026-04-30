@@ -20,23 +20,27 @@ npm run db:push      # Directly apply schema (for throwaway/initial setup only)
 
 **Hosting**: Vercel (Hobby plan). **Database/Auth**: Supabase.
 
-### Deploying to Production
-```bash
-vercel --prod     # Build & deploy to production (lifes-cadence.vercel.app)
-```
-`vercel --prod` builds the Vite frontend and bundles the serverless API functions, then deploys everything to the live production URL. Without `--prod`, it creates a temporary preview deployment for testing.
+### How deploys happen
+Vercel's GitHub integration is enabled, so deploys are automatic:
+- **Push a branch** → Vercel builds a Preview deployment with its own URL (e.g. `cadence-<hash>-ayelurus-projects.vercel.app`)
+- **Merge to `main`** → Vercel builds and promotes a Production deployment to `lifes-cadence.vercel.app`
+
+You do not need to run `vercel --prod` manually. (It still works as an escape hatch, but the standard path is push/merge.)
+
+**Preview-deploy gotcha**: Preview deployments use the *dev* Supabase project for auth/DB (different from Production). Logging into a preview URL with prod credentials will not work — the user simply won't appear in the dev project. Test data-dependent changes locally (see Local Development Architecture); reserve the preview URL for UI-only verification.
 
 ### Release Workflow
 Version is tracked in `package.json` and displayed in the app sidebar via Vite's `define` config.
 
-1. Bump version in `package.json` (semver: `MAJOR.MINOR.PATCH`)
+1. Merge feature/fix PRs to `main` first — auto-deploys to prod
+2. On `main`, bump version in `package.json` (semver: `MAJOR.MINOR.PATCH`)
    - **PATCH** (1.0.1): Bug fixes
    - **MINOR** (1.1.0): New features, backward-compatible
    - **MAJOR** (2.0.0): Breaking changes
-2. Commit changes
-3. Tag: `git tag -a vX.Y.Z -m "description of release"`
-4. Push: `git push origin main --tags`
-5. Deploy: `vercel --prod`
+3. Add a CHANGELOG.md entry for the new version
+4. Commit changes
+5. Tag: `git tag -a vX.Y.Z -m "description of release"`
+6. Push: `git push origin main --tags` — auto-deploy picks up the tagged commit
 
 ### Important Vercel Constraints
 - **Hobby plan limit**: Max 12 serverless functions per deployment. All API handlers are consolidated into a single catch-all function (`api/[[...path]].ts`).
@@ -79,7 +83,7 @@ Cadences is a task/habit tracking application with multi-profile support, dynami
 - `api/` - Vercel serverless functions
   - `[[...path]].ts` - **Catch-all router**: single entry point for all API requests, dispatches to handlers via regex pattern matching
   - `_lib/all-handlers.ts` - All API handler functions (named exports)
-  - `_lib/auth.ts` - JWT verification via Supabase
+  - `_lib/auth.ts` - JWT verification (local via JWKS using `jose`, with HTTP fallback to Supabase Auth)
   - `_lib/db.ts` - Drizzle ORM + postgres.js connection
   - `_lib/storage.ts` - `DatabaseStorage` class (all database operations)
   - `_lib/task-utils.ts` - `enrichTask()` urgency/status calculation
@@ -137,6 +141,10 @@ Urgency scores: never_done=1000, overdue=500+days, frequency=200+remaining*50, d
 - `due_soon` - Within threshold
 - `later` - Not due soon
 - `never_done` - Never completed
+- `paused` - Manually paused, or globally paused via vacation mode
+
+### Timezone-aware scheduling
+All due-date and period calculations respect the user's local timezone (stored in `user_settings.timezone`). The server-side `enrichTask`/`enrichTasks` functions in `task-utils.ts` thread the timezone through; the client uses `client/src/lib/tz.ts` helpers. Don't introduce new code that compares dates in UTC — use `toLocal`, `nowLocal`, `formatDateKey` from `tz.ts`.
 
 ## Development Patterns
 
@@ -148,7 +156,7 @@ Urgency scores: never_done=1000, overdue=500+days, frequency=200+remaining*50, d
 5. Create React Query hook in `client/src/hooks/`
 
 ### Auth Pattern (API)
-All API routes verify JWT via `verifyAuth(req)` which extracts the Supabase user from the `Authorization: Bearer` header.
+All API routes verify JWT via `verifyAuth(req)` which extracts the Supabase user from the `Authorization: Bearer` header. The fast path verifies the token locally against Supabase's JWKS (using `jose`) and returns `id` + `email` from the JWT claims. If local verification fails (e.g., during a key rotation window), it falls back to an HTTP round-trip to Supabase Auth. Local verification is stateless — it does not detect deleted users until their JWT expires (~1 hour).
 
 ### Auth Pattern (Client)
 - `queryClient.ts` exports `getAuthHeaders()` and `apiRequest()` which auto-attach Bearer tokens
@@ -160,11 +168,15 @@ All API routes verify JWT via `verifyAuth(req)` which extracts the Supabase user
 - TaskCard displays urgency status, metrics, actions
 - All mutations invalidate relevant query keys for auto-revalidation
 - useToast() for user feedback on success/error
+- Loading states use shadcn `Skeleton` components shaped like the eventual content (not generic spinners) — see Dashboard, Stats, CalendarView for examples
+- Global request feedback comes from `<TopProgressBar />` (mounted in `App.tsx`); per-page skeletons handle the empty-page case
 
 ### Database
 - Tables use snake_case columns
 - All types derive from Drizzle schema with Zod integration
-- Key tables: profiles, tasks, completions, task_metrics, metric_values, task_streaks, task_variations
+- **Core domain tables**: `profiles`, `tasks`, `completions`, `task_metrics`, `metric_values`, `task_streaks`, `task_variations`, `task_assignments` (weekly planner overrides), `categories`, `tags`, `task_tags`
+- **Settings/activity tables**: `user_settings` (timezone, vacation mode), `user_activity` (last-active tracking shown in admin)
+- **Roles & feedback**: `user_roles`, `feedback_submissions`, `feedback_votes`, `feedback_comments`
 - User identity comes from Supabase Auth (userId is varchar UUID from Supabase)
 - **Two separate Supabase projects**: production (`xodqmkmsrsmjrahuegfl`) and development (`lcqjaniziwjbeacpxexg`)
 - Foreign keys use `ON DELETE CASCADE` (or `SET NULL` for optional refs like `categoryId`, `parentTaskId`, `variationId`)

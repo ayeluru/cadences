@@ -10,7 +10,7 @@ const isServerless = !!process.env.VERCEL;
 
 const client = postgres(process.env.DATABASE_URL, {
   prepare: false,
-  max: isServerless ? 3 : 5,
+  max: isServerless ? 10 : 5,
   ssl: 'require',
   connect_timeout: 10,
   idle_timeout: 20,
