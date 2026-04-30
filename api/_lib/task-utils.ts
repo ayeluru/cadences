@@ -49,6 +49,48 @@ export function getPeriodBounds(period: string, timezone: string = 'UTC'): { sta
   return { start: toUTC(localStart, timezone), end: toUTC(localEnd, timezone) };
 }
 
+// Return every period of `period` length that overlaps [viewStart, viewEnd],
+// aligned to the user's local timezone. Used for end-of-period miss accounting.
+export function getPeriodsInRange(
+  period: string,
+  viewStart: Date,
+  viewEnd: Date,
+  timezone: string = 'UTC',
+): Array<{ periodStart: Date; periodEnd: Date }> {
+  const localStart = toLocal(viewStart, timezone);
+  const localEnd = toLocal(viewEnd, timezone);
+
+  const startOfPeriod = (d: Date): Date => {
+    if (period === 'day') return startOfDay(d);
+    if (period === 'week') return startOfWeek(d, { weekStartsOn: 0 });
+    if (period === 'month') return startOfMonth(d);
+    return startOfYear(d);
+  };
+  const endOfPeriod = (d: Date): Date => {
+    if (period === 'day') return endOfDay(d);
+    if (period === 'week') return endOfWeek(d, { weekStartsOn: 0 });
+    if (period === 'month') return endOfMonth(d);
+    return endOfYear(d);
+  };
+  const advance = (d: Date): Date => {
+    if (period === 'day') return addDays(d, 1);
+    if (period === 'week') return addDays(d, 7);
+    if (period === 'month') return addMonths(d, 1);
+    return addYears(d, 1);
+  };
+
+  const periods: Array<{ periodStart: Date; periodEnd: Date }> = [];
+  let cursor = startOfPeriod(localStart);
+  while (cursor <= localEnd) {
+    periods.push({
+      periodStart: toUTC(cursor, timezone),
+      periodEnd: toUTC(endOfPeriod(cursor), timezone),
+    });
+    cursor = advance(cursor);
+  }
+  return periods;
+}
+
 // Calculate cadence duration in days
 export function getCadenceDays(task: any): number {
   if (task.taskType === 'frequency' && task.targetPeriod) {

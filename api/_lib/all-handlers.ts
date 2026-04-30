@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden, touchLastActive } from './auth.js';
-import { storage, enrichTask, enrichTasks } from './task-utils.js';
+import { storage, enrichTask, enrichTasks, getPeriodsInRange } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
 import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz';
+import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
 
 async function getUserSettings(userId: string): Promise<{ timezone: string; settings: any }> {
   try {
@@ -110,11 +110,11 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
     const profileId = profileIdStr ? parseInt(profileIdStr, 10) : undefined;
 
     const { timezone: tz, settings: userSettings } = await getUserSettings(userId);
-    // Pad the DB-side range by 1 day on each side so completions that fall in
-    // the user's local-date range but outside the UTC range still get fetched
-    // (the storage layer buckets them by user's local date afterwards).
-    const fetchStart = subDays(startDate, 1);
-    const fetchEnd = addDays(endDate, 1);
+    // Pad the DB-side range by 7 days on each side: covers timezone offsets
+    // *and* lets weekly frequency periods that straddle the visible range
+    // be counted with all their completions present.
+    const fetchStart = subDays(startDate, 7);
+    const fetchEnd = addDays(endDate, 7);
     const completionsData = await storage.getCompletionsForCalendar(userId, fetchStart, fetchEnd, profileId, excludeDemo, tz);
 
     const allTasks = await storage.getTasks(userId, profileId, excludeDemo);
@@ -129,7 +129,7 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
     }>();
 
     days.forEach(day => {
-      const dateStr = format(day, "yyyy-MM-dd");
+      const dateStr = formatInTimeZone(day, tz, 'yyyy-MM-dd');
       calendarMap.set(dateStr, { date: dateStr, completions: [], missed: [], dueSoon: [] });
     });
 
@@ -142,11 +142,70 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
       }
     });
 
+    // Per-task completion timestamps (used to count completions per period for
+    // frequency-task end-of-period miss accounting).
+    const completionsByTask = new Map<number, Date[]>();
+    for (const dayData of completionsData) {
+      for (const t of dayData.tasks as any[]) {
+        const tid = t.taskId || t.id;
+        if (!completionsByTask.has(tid)) completionsByTask.set(tid, []);
+        completionsByTask.get(tid)!.push(new Date(t.completedAt));
+      }
+    }
+
+    const todayStr = formatInTimeZone(today, tz, 'yyyy-MM-dd');
+
     for (const task of enrichedTasks) {
       if (task.isArchived || task.parentTaskId) continue;
 
+      // Frequency-task semantics: only count "missed" once a period has ended
+      // with the target unmet. While the period is in progress, surface as
+      // dueSoon on today (a soft cue, not a penalty).
+      if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
+        const periods = getPeriodsInRange(task.targetPeriod, fetchStart, fetchEnd, tz);
+        const taskCompletions = completionsByTask.get(task.id) ?? [];
+        const taskCreatedAt = task.createdAt ? new Date(task.createdAt) : new Date(0);
+
+        for (const { periodStart, periodEnd } of periods) {
+          if (periodEnd < taskCreatedAt) continue;
+
+          const completionsInPeriod = taskCompletions.filter(
+            c => c >= periodStart && c <= periodEnd,
+          );
+          const shortfall = task.targetCount - completionsInPeriod.length;
+          if (shortfall <= 0) continue;
+
+          const periodEnded = periodEnd < today;
+          if (periodEnded) {
+            const periodEndStr = formatInTimeZone(periodEnd, tz, 'yyyy-MM-dd');
+            const entry = calendarMap.get(periodEndStr);
+            if (entry) {
+              for (let i = 0; i < shortfall; i++) {
+                entry.missed.push({
+                  id: task.id,
+                  title: task.title,
+                  dueDate: periodEnd.toISOString(),
+                });
+              }
+            }
+          } else {
+            // In-progress period: soft cue on today's square (deduped per task)
+            const entry = calendarMap.get(todayStr);
+            if (entry && !entry.dueSoon.some(d => d.id === task.id)) {
+              entry.dueSoon.push({
+                id: task.id,
+                title: task.title,
+                dueDate: task.nextDue,
+              });
+            }
+          }
+        }
+        continue;
+      }
+
+      // Interval / scheduled tasks: keep the existing nextDue-based logic.
       const nextDueDate = new Date(task.nextDue);
-      const nextDueDateStr = format(nextDueDate, "yyyy-MM-dd");
+      const nextDueDateStr = formatInTimeZone(nextDueDate, tz, 'yyyy-MM-dd');
 
       if (task.status === 'overdue' && isBefore(nextDueDate, today) && !isSameDay(nextDueDate, today)) {
         const entry = calendarMap.get(nextDueDateStr);
