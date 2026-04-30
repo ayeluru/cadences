@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.10
+
+- **Service worker for instant repeat launches**: Cadences is now a real PWA — `vite-plugin-pwa` precaches the app shell so iPhone home-screen launches no longer pay the network roundtrip for HTML/JS/CSS on every cold start. Updates apply on next session via `registerType: autoUpdate`. iOS 16.4+ devices benefit; older fall back to the previous behavior
+- **Persisted React Query cache**: query results now hydrate from `localStorage` on launch, so the dashboard renders with last-known tasks/profiles/categories immediately while the app revalidates silently in the background. iOS aggressively evicts standalone PWAs from memory, so without persistence every cold launch was re-fetching everything despite `staleTime: Infinity`. Cache busts on app version change and is cleared on sign-out so user A's data never shows for user B on the same device
+- **Trimmed Google Fonts**: dropped 23 unused font families from the `index.html` font request; only DM Sans and Outfit (weights 400-700, no italics) are now loaded. Removed the duplicate `@import` in `index.css` that was loading the same fonts a second time
+
 ## 2.4.9
 
 - **Calendar "Upcoming" cleanup**: in-progress frequency tasks no longer show on today's "Upcoming" bucket. The calendar's Upcoming section now only contains tasks with hard due dates (interval and scheduled) — much quieter and more accurate to the label
