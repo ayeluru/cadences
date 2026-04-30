@@ -257,6 +257,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <LogOut className="w-4 h-4 mr-3" />
                 Sign Out
               </Button>
+              <button
+                onClick={() => { setMobileMenuOpen(false); setWhatsNewOpen(true); }}
+                className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-primary transition-colors mx-auto group pt-2"
+              >
+                {hasUnseen && !whatsNewOpen && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                )}
+                <Sparkles className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                v{__APP_VERSION__}
+              </button>
             </div>
           </motion.div>
         )}

@@ -186,7 +186,7 @@ export default function Settings() {
           </p>
         </div>
 
-        <div className="rounded-lg border px-4 py-3 flex items-center justify-between gap-4">
+        <div className="rounded-lg border px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
           <div className="min-w-0">
             <p className="text-sm font-medium">Timezone</p>
             <p className="text-xs text-muted-foreground">
@@ -199,7 +199,7 @@ export default function Settings() {
                 variant="outline"
                 role="combobox"
                 aria-expanded={tzOpen}
-                className="w-[300px] shrink-0 justify-between font-normal"
+                className="w-full md:w-[300px] md:shrink-0 justify-between font-normal"
               >
                 <span className="truncate">
                   {(userSettings?.timezone || "UTC").replace(/_/g, " ")}
