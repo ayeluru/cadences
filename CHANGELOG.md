@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.7
+
+- **DB connection pool bump**: raised the postgres.js `max` on serverless from 3 to 10 to allow more of the dashboard's batched queries to run in parallel. Saves ~150ms on the warm-path dashboard load
+- **CLAUDE.md refresh**: documentation now reflects the GitHub auto-deploy flow, local JWKS auth, paused task state, timezone scheduling, and the full set of DB tables
+
 ## 2.4.6
 
 - **Top-of-page loading bar**: a thin animated bar appears at the very top of the viewport whenever any API request or mutation is in flight, giving constant feedback during page loads, completions, and cache revalidations
