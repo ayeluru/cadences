@@ -20,20 +20,6 @@ interface EnhancedCalendarDay {
   dueSoon: Array<{ id: number; title: string; dueDate: string }>;
 }
 
-interface FrequencyAggregate {
-  periodStart: string;
-  periodEnd: string;
-  totalTarget: number;
-  totalCompleted: number;
-  tasks: Array<{ id: number; title: string; target: number; completed: number }>;
-}
-
-interface EnhancedCalendarResponse {
-  days: EnhancedCalendarDay[];
-  weeks: FrequencyAggregate[];
-  month: FrequencyAggregate | null;
-}
-
 export default function CalendarView() {
   const tz = useTimezone();
   const [currentMonth, setCurrentMonth] = useState(() => nowLocal(tz));
@@ -65,7 +51,7 @@ export default function CalendarView() {
     return params.toString();
   };
 
-  const { data: calendarData, isLoading } = useQuery<EnhancedCalendarResponse>({
+  const { data: calendarData, isLoading } = useQuery<EnhancedCalendarDay[]>({
     queryKey: ["/api/calendar/enhanced", startDate, endDate, isAggregatedView ? "all" : currentProfile?.id],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -76,36 +62,13 @@ export default function CalendarView() {
     },
   });
 
-  const calendarDayMap = new Map(calendarData?.days?.map(d => [d.date, d]) ?? []);
-  const weekAggMap = new Map(calendarData?.weeks?.map(w => [w.periodStart, w]) ?? []);
-  const monthAgg = calendarData?.month ?? null;
-
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   const getDataForDay = (date: Date): EnhancedCalendarDay | undefined => {
     const dateStr = format(date, "yyyy-MM-dd");
-    return calendarDayMap.get(dateStr);
-  };
-
-  const getWeekAggregate = (weekStartDate: Date): FrequencyAggregate | undefined => {
-    const key = format(weekStartDate, "yyyy-MM-dd");
-    return weekAggMap.get(key);
-  };
-
-  // Color helper shared between the row aggregate and the month aggregate.
-  // Mirrors the day-cell heat palette: green if on/above target, mid for
-  // partial progress, red for low or missed periods. Returns Tailwind class
-  // strings for background and ring.
-  const getAggregateColor = (agg: FrequencyAggregate | undefined | null): string => {
-    if (!agg || agg.totalTarget === 0) return "bg-muted/30";
-    const ratio = agg.totalCompleted / agg.totalTarget;
-    if (ratio >= 1) return "bg-green-300/60 dark:bg-green-700/50";
-    if (ratio >= 0.66) return "bg-green-200/60 dark:bg-green-800/40";
-    if (ratio >= 0.33) return "bg-amber-200/60 dark:bg-amber-800/40";
-    if (ratio > 0) return "bg-red-200/60 dark:bg-red-800/40";
-    return "bg-red-300/60 dark:bg-red-700/50";
+    return calendarData?.find(d => d.date === dateStr);
   };
 
   const selectedDayData = selectedDate ? getDataForDay(selectedDate) : null;
@@ -313,25 +276,9 @@ export default function CalendarView() {
         {/* Calendar Grid */}
         <div className="lg:col-span-2 bg-card border rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <h3 className="text-xl font-semibold font-display tracking-tight">
-                {format(currentMonth, "MMMM yyyy")}
-              </h3>
-              {monthAgg && monthAgg.totalTarget > 0 && (
-                <div
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs",
-                    getAggregateColor(monthAgg),
-                  )}
-                  title={monthAgg.tasks
-                    .map(t => `${t.title}: ${Math.min(t.target, t.completed)}/${t.target}`)
-                    .join("\n")}
-                >
-                  <span className="text-muted-foreground">Monthly</span>
-                  <span className="font-semibold">{monthAgg.totalCompleted}/{monthAgg.totalTarget}</span>
-                </div>
-              )}
-            </div>
+            <h3 className="text-xl font-semibold font-display tracking-tight">
+              {format(currentMonth, "MMMM yyyy")}
+            </h3>
             <div className="flex gap-1">
               <Button
                 variant="ghost"
@@ -360,14 +307,13 @@ export default function CalendarView() {
             </div>
           </div>
 
-          <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_minmax(0,0.6fr)] gap-1">
+          <div className="grid grid-cols-7 gap-1">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
               <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
                 {day}
               </div>
             ))}
-            <div className="text-center text-xs font-medium text-muted-foreground py-2">Wk</div>
-            {calendarDays.flatMap((day, idx) => {
+            {calendarDays.map((day, idx) => {
               const dayData = getDataForDay(day);
               const heatValue = getHeatMapValue(dayData);
               const isCurrentMonth = isSameMonth(day, currentMonth);
@@ -387,9 +333,9 @@ export default function CalendarView() {
                 return heatValue > 0 ? heatValue : null;
               };
 
-              const dayCell = (
+              return (
                 <button
-                  key={`d-${idx}`}
+                  key={idx}
                   onClick={() => setSelectedDate(day)}
                   className={cn(
                     "aspect-square p-1 rounded-lg text-sm transition-all relative",
@@ -415,41 +361,6 @@ export default function CalendarView() {
                   )}
                 </button>
               );
-
-              if (idx % 7 !== 6) return [dayCell];
-
-              // End-of-week: append a small weekly aggregate cell.
-              const weekStart = calendarDays[idx - 6];
-              const agg = getWeekAggregate(weekStart);
-              const weekCell = (
-                <div
-                  key={`w-${idx}`}
-                  className={cn(
-                    "aspect-square p-1 rounded-lg flex flex-col items-center justify-center text-[10px] leading-tight",
-                    agg && agg.totalTarget > 0
-                      ? getAggregateColor(agg)
-                      : "bg-muted/20 text-muted-foreground/40",
-                  )}
-                  title={
-                    agg && agg.totalTarget > 0
-                      ? agg.tasks
-                          .map(t => `${t.title}: ${Math.min(t.target, t.completed)}/${t.target}`)
-                          .join("\n")
-                      : "No weekly tasks"
-                  }
-                  data-testid={`week-agg-${format(weekStart, "yyyy-MM-dd")}`}
-                >
-                  {agg && agg.totalTarget > 0 ? (
-                    <>
-                      <span className="font-semibold text-foreground">{agg.totalCompleted}</span>
-                      <span className="text-muted-foreground">/{agg.totalTarget}</span>
-                    </>
-                  ) : (
-                    <span>—</span>
-                  )}
-                </div>
-              );
-              return [dayCell, weekCell];
             })}
           </div>
 
