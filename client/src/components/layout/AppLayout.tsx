@@ -30,6 +30,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     setMobileMenuOpen(false);
   }, [location]);
 
+  // Lock body scroll while the mobile menu overlay is open so touch-scrolls
+  // inside the menu don't bubble through to the page underneath.
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [mobileMenuOpen]);
+
   const cadenceItems = [
     { href: "/tasks/daily", label: "Daily", icon: Clock },
     { href: "/tasks/weekly", label: "Weekly", icon: Clock },
@@ -187,11 +196,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Mobile Menu Overlay */}
       <AnimatePresence>
         {mobileMenuOpen && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-0 top-16 bottom-14 z-30 bg-background/95 backdrop-blur-sm md:hidden p-4 flex flex-col gap-2 overflow-y-auto"
+            className="fixed inset-x-0 top-16 z-30 bg-background/95 backdrop-blur-sm md:hidden p-4 flex flex-col gap-2 overflow-y-auto overscroll-contain"
+            style={{ bottom: 'calc(3.5rem + env(safe-area-inset-bottom, 0px))' }}
           >
             {navItems.map((item, idx) => {
               if (item.type === "divider") {
