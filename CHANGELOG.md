@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.4
+
+- **Fixed admin page timeout (resolved)**: the admin user list now reliably loads on production. Two changes: (1) replaced the `SELECT * FROM public.list_auth_users()` strategy with a direct GoTrue HTTP call, eliminating the connection-pool deadlock from queries leaked via `Promise.race` timeouts; (2) serialized the `Promise.all` that fetched `user_roles` and `user_activity` — pipelined queries through the Supavisor transaction pooler were stalling the single serverless connection indefinitely
+
+## 2.4.3
+
+- **Attempted admin page fix**: introduced a SECURITY DEFINER SQL function (`public.list_auth_users`) and an HTTP fallback for listing auth users. Did not fully resolve the production hang — superseded by 2.4.4
+
 ## 2.4.2
 
 - **Fixed serverless performance**: removed `touchLastActive` DB write from the task loading hot path (now only fires on task completion), deduplicated `getUserSettings` queries, and added connection/query timeouts to prevent 60-second hangs
