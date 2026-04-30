@@ -1450,12 +1450,14 @@ export async function adminUsers(req: VercelRequest, res: VercelResponse) {
       console.warn(`[admin] listUsers (HTTP) failed after ${Date.now() - t0}ms:`, httpErr);
     }
 
-    const t2 = Date.now();
-    const [roles, activity] = await Promise.all([
-      storage.getAllUserRoles(),
-      storage.getAllUserActivity(),
-    ]);
-    console.log(`[admin] roles+activity (DB): ${Date.now() - t2}ms`);
+    // Sequential (max:1 connection pool serializes anyway) for per-query timing
+    const tRoles = Date.now();
+    const roles = await storage.getAllUserRoles();
+    console.log(`[admin] getAllUserRoles: ${Date.now() - tRoles}ms, ${roles.length} rows`);
+
+    const tActivity = Date.now();
+    const activity = await storage.getAllUserActivity();
+    console.log(`[admin] getAllUserActivity: ${Date.now() - tActivity}ms, ${activity.length} rows`);
 
     const roleMap = new Map(roles.map(r => [r.userId, r.role]));
     const activityMap = new Map(activity.map(a => [a.userId, a.lastActiveAt]));
