@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { jwtVerify } from 'jose';
 import { supabaseAdmin } from './supabase.js';
 import { db } from './db.js';
 import { userRoles, userActivity } from '../../shared/schema.js';
@@ -9,6 +10,10 @@ export interface AuthUser {
   email?: string;
 }
 
+// Cache the encoded JWT secret across invocations on the same instance.
+const jwtSecret = process.env.SUPABASE_JWT_SECRET;
+const jwtSecretKey = jwtSecret ? new TextEncoder().encode(jwtSecret) : null;
+
 export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
   const authHeader = req.headers.authorization;
 
@@ -18,6 +23,27 @@ export async function verifyAuth(req: VercelRequest): Promise<AuthUser | null> {
 
   const token = authHeader.split(' ')[1];
 
+  // Fast path: verify the JWT locally with the project's HS256 secret.
+  // Saves ~150ms per request vs. round-tripping to Supabase Auth.
+  if (jwtSecretKey) {
+    try {
+      const { payload } = await jwtVerify(token, jwtSecretKey, {
+        algorithms: ['HS256'],
+      });
+      const sub = payload.sub;
+      if (typeof sub === 'string' && sub.length > 0) {
+        return {
+          id: sub,
+          email: typeof payload.email === 'string' ? payload.email : undefined,
+        };
+      }
+    } catch {
+      // Fall through to HTTP verification (token may be from a key rotation,
+      // or the secret may be misconfigured)
+    }
+  }
+
+  // Fallback: HTTP round-trip to Supabase Auth.
   try {
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
 
