@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.5
+
+- **Faster authenticated requests**: `verifyAuth` now verifies JWTs locally against Supabase's published JWKS instead of round-tripping to Supabase Auth on every request, saving ~150ms per call. Falls back to the HTTP verification path if local verification fails (e.g. during a key rotation window)
+- **Higher serverless DB concurrency**: bumped the postgres.js connection pool from `max: 1` to `max: 3` on Vercel. The single-connection limit was a defensive choice from earlier Supavisor scares; the dashboard's batched queries can now actually run in parallel
+
 ## 2.4.4
 
 - **Fixed admin page timeout (resolved)**: the admin user list now reliably loads on production. Two changes: (1) replaced the `SELECT * FROM public.list_auth_users()` strategy with a direct GoTrue HTTP call, eliminating the connection-pool deadlock from queries leaked via `Promise.race` timeouts; (2) serialized the `Promise.all` that fetched `user_roles` and `user_activity` — pipelined queries through the Supavisor transaction pooler were stalling the single serverless connection indefinitely
