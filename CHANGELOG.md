@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.9
+
+- **Calendar "Upcoming" cleanup**: in-progress frequency tasks no longer show on today's "Upcoming" bucket. The calendar's Upcoming section now only contains tasks with hard due dates (interval and scheduled) — much quieter and more accurate to the label
+
 ## 2.4.8
 
 - **Calendar correctness — timezone bucketing**: completions are now bucketed into the user's local YYYY-MM-DD instead of UTC. Evening completions in non-UTC timezones (most users) no longer slip onto the next day's square or fall outside the visible range
