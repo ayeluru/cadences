@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.6
+
+- **Top-of-page loading bar**: a thin animated bar appears at the very top of the viewport whenever any API request or mutation is in flight, giving constant feedback during page loads, completions, and cache revalidations
+- **Mobile sidebar version + What's New**: the changelog launcher and version label now appear in the mobile menu footer (previously only on desktop). The button is correctly positioned above the bottom nav and clears the iPhone home indicator
+- **Mobile menu scroll lock**: opening the menu now locks the page behind it — touch-scrolls inside the menu no longer bleed through to the page underneath
+- **Settings: Timezone row layout on mobile**: the row now stacks vertically on phone-width viewports so the description text no longer overflows next to the fixed-width timezone picker
+
 ## 2.4.5
 
 - **Faster authenticated requests**: `verifyAuth` now verifies JWTs locally against Supabase's published JWKS instead of round-tripping to Supabase Auth on every request, saving ~150ms per call. Falls back to the HTTP verification path if local verification fails (e.g. during a key rotation window)
