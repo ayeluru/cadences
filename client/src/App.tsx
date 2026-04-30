@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import AuthPage from "@/pages/AuthPage";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { TopProgressBar } from "@/components/TopProgressBar";
 import { useAuth, AuthProvider } from "@/hooks/use-auth";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { NameRequiredModal } from "@/components/NameRequiredModal";
@@ -120,6 +121,7 @@ function App() {
       <AuthProvider>
         <TooltipProvider>
           <Toaster />
+          <TopProgressBar />
           <Router />
         </TooltipProvider>
       </AuthProvider>
