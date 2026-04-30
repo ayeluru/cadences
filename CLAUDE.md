@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to AI agents (Claude Code, Cursor, etc.) when working with code in this repository.
+This file provides guidance to AI agents (Claude Code, Cursor, etc.) when working with code in this repository. See also `AGENTS.md` for Cursor-Cloud-specific notes (env, lint caveats, dev startup).
 
 ## Build & Development Commands
 
@@ -15,6 +15,8 @@ npm run db:migrate   # Apply pending migrations to the database
 npm run db:studio    # Open Drizzle Studio to browse database
 npm run db:push      # Directly apply schema (for throwaway/initial setup only)
 ```
+
+This project has no automated test suite and no dedicated ESLint config — `npm run check` (TypeScript) is the lint step.
 
 ## Deployment & Releases
 
@@ -125,6 +127,9 @@ This ensures the dev database can be a perfect mirror of production (user IDs ma
 
 ## Key Domain Concepts
 
+### Multi-profile model
+Each user has one or more profiles (e.g. "Personal", "Work", "Exercise"). Tasks, categories, and tags belong to a profile (`profileId` FK). The UI supports a special **All Profiles** aggregated view (`isAggregatedView` in `ProfileContext`) that fans out across every non-demo profile the user owns. Profiles flagged `isDemo: true` (created via the demo seed flow) are excluded from the aggregated view and from aggregate stats.
+
 ### Task Types
 1. **Interval-based**: Every X days/weeks/months/years
 2. **Frequency-based**: X times per week/month with optional refractory period
@@ -163,6 +168,10 @@ All API routes verify JWT via `verifyAuth(req)` which extracts the Supabase user
 - Default `queryFn` in React Query automatically adds auth headers
 - Custom `queryFn` implementations must manually get session via `supabase.auth.getSession()`
 
+### Data Fetching Conventions
+- React Query is configured with `staleTime: Infinity` and `refetchOnWindowFocus: false`. Queries cache for the entire session — they do **not** auto-revalidate. Revalidation is invalidate-driven: mutations call `queryClient.invalidateQueries({ queryKey: [...] })` in their `onSuccess`/`onSettled` to mark caches stale.
+- When adding a new mutation that affects existing data, you must explicitly invalidate every query key that displays the affected data, or the UI will show stale state until the user navigates or hard-refreshes.
+
 ### Component Conventions
 - Dialogs use shadcn/ui Dialog + React Hook Form
 - TaskCard displays urgency status, metrics, actions
@@ -170,6 +179,8 @@ All API routes verify JWT via `verifyAuth(req)` which extracts the Supabase user
 - useToast() for user feedback on success/error
 - Loading states use shadcn `Skeleton` components shaped like the eventual content (not generic spinners) — see Dashboard, Stats, CalendarView for examples
 - Global request feedback comes from `<TopProgressBar />` (mounted in `App.tsx`); per-page skeletons handle the empty-page case
+- High-traffic mutations (complete, pause, resume, archive, cascade-delete) use TanStack Query optimistic updates: `onMutate` snapshots + patches the cache via `setQueriesData`, `onError` rolls back, `onSettled` invalidates. Use this pattern when instant visual feedback matters.
+- Routes other than `/` and `/login` are lazy-loaded via `React.lazy()` in `App.tsx`. Wrap new pages in `lazy()` unless they need to ship in the initial bundle.
 
 ### Database
 - Tables use snake_case columns
