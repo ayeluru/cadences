@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.12
+
+- **Fixed demo data leaking into All Profiles**: switching to the "All Profiles" aggregated view now correctly excludes demo-profile data from the tasks, categories, and tags lists. Previously, `useTasks` / `useCategories` / `useTags` sent neither `profileId` nor `excludeDemo=true` when aggregated, so the API returned every record (including those scoped to demo profiles), which contradicted the documented "fans out across every non-demo profile" behavior. The hooks now append `excludeDemo=true` whenever `isAggregatedView` is set, and the `categoriesIndex` / `tagsIndex` handlers thread that flag through to storage. Stats, streaks, and calendar were already correct
+
 ## 2.4.11
 
 - **Fixed WeekView per-day completion display**: completing a task on a new day no longer erases the prior day's "done" indicator. WeekView now reads completion history from `/api/completions/calendar` and looks up "done on day" per-cell, so a daily task completed on Wed and again on Thu correctly shows ✓ on both days. Previously, `isTaskDoneOnDay` short-circuited on `targetPeriod==='day'` frequency tasks (returning the same value for every day in the week) and fell back to `lastCompletedAt` (which only stores the most recent completion) for interval/scheduled tasks — causing earlier completions to vanish from the grid. Past weeks now also surface their full historical completions instead of just the latest one

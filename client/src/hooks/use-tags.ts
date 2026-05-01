@@ -14,6 +14,7 @@ export function useTags() {
     queryFn: async () => {
       const url = new URL(api.tags.list.path, window.location.origin);
       if (profileId) url.searchParams.append("profileId", profileId.toString());
+      if (isAggregatedView) url.searchParams.append("excludeDemo", "true");
       const headers = await getAuthHeaders();
       const res = await fetch(url.toString(), { headers });
       if (!res.ok) throw new Error("Failed to fetch tags");

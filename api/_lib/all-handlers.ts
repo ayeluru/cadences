@@ -309,10 +309,11 @@ export async function categoriesIndex(req: VercelRequest, res: VercelResponse) {
 
 async function categoriesIndexHandleGet(req: VercelRequest, res: VercelResponse, userId: string) {
   try {
-    const { profileId } = req.query;
+    const { profileId, excludeDemo } = req.query;
     const profileIdNum = profileId ? parseInt(profileId as string, 10) : undefined;
+    const excludeDemoFlag = excludeDemo === 'true';
 
-    const categories = await storage.getCategories(userId, profileIdNum);
+    const categories = await storage.getCategories(userId, profileIdNum, excludeDemoFlag);
     return res.status(200).json(categories);
   } catch (error) {
     console.error('Error fetching categories:', error);
@@ -929,10 +930,11 @@ export async function tagsIndex(req: VercelRequest, res: VercelResponse) {
 
 async function tagsIndexHandleGet(req: VercelRequest, res: VercelResponse, userId: string) {
   try {
-    const { profileId } = req.query;
+    const { profileId, excludeDemo } = req.query;
     const profileIdNum = profileId ? parseInt(profileId as string, 10) : undefined;
+    const excludeDemoFlag = excludeDemo === 'true';
 
-    const tags = await storage.getTags(userId, profileIdNum);
+    const tags = await storage.getTags(userId, profileIdNum, excludeDemoFlag);
     return res.status(200).json(tags);
   } catch (error) {
     console.error('Error fetching tags:', error);

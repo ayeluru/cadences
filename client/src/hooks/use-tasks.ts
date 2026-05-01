@@ -23,6 +23,7 @@ export function useTasks(filters?: { search?: string; categoryId?: number; tagId
     queryFn: async () => {
       const url = new URL(api.tasks.list.path, window.location.origin);
       if (profileId) url.searchParams.append("profileId", profileId.toString());
+      if (isAggregatedView) url.searchParams.append("excludeDemo", "true");
       if (filters?.search) url.searchParams.append("search", filters.search);
       if (filters?.categoryId) url.searchParams.append("categoryId", filters.categoryId.toString());
       if (filters?.tagId) url.searchParams.append("tagId", filters.tagId.toString());
