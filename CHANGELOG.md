@@ -3,6 +3,7 @@
 ## 2.4.12
 
 - **Fixed demo data leaking into All Profiles**: switching to the "All Profiles" aggregated view now correctly excludes demo-profile data from the tasks, categories, and tags lists. Previously, `useTasks` / `useCategories` / `useTags` sent neither `profileId` nor `excludeDemo=true` when aggregated, so the API returned every record (including those scoped to demo profiles), which contradicted the documented "fans out across every non-demo profile" behavior. The hooks now append `excludeDemo=true` whenever `isAggregatedView` is set, and the `categoriesIndex` / `tagsIndex` handlers thread that flag through to storage. Stats, streaks, and calendar were already correct
+- **Demo banner button + sparkles icon polish**: the "Exit demo" / "Create a real profile" CTA now uses the same gradient-pill aesthetic as the rest of the redesigned controls (gradient amber background, soft amber shadow, hover lift, active scale-down) instead of the stock outline button. The leading Sparkles icon is now wrapped in a matching gradient avatar tile so the banner reads as one cohesive piece
 
 ## 2.4.11
 
