@@ -195,20 +195,23 @@ export default function Settings() {
           </div>
           <Popover open={tzOpen} onOpenChange={setTzOpen}>
             <PopoverTrigger asChild>
-              <Button
-                variant="outline"
+              <button
+                type="button"
                 role="combobox"
                 aria-expanded={tzOpen}
-                className="w-full md:w-[300px] md:shrink-0 justify-between font-normal"
+                className="group inline-flex h-10 w-full md:w-[320px] md:shrink-0 items-center gap-2.5 rounded-xl border border-border/60 bg-card/50 px-2 pr-3 text-left text-sm backdrop-blur-sm transition-all duration-200 hover:bg-muted hover:shadow-sm"
               >
-                <span className="truncate">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary/80 to-primary/60 text-white shadow-sm shadow-primary/20">
+                  <Globe className="h-3.5 w-3.5" />
+                </div>
+                <span className="flex-1 truncate font-medium">
                   {(userSettings?.timezone || "UTC").replace(/_/g, " ")}
                 </span>
-                <span className="ml-auto pl-2 text-xs text-muted-foreground shrink-0">
+                <span className="shrink-0 rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
                   {timezoneOptions.find(t => t.value === (userSettings?.timezone || "UTC"))?.offset}
                 </span>
-                <ChevronsUpDown className="ml-1.5 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
+                <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-40 transition-opacity group-hover:opacity-70" />
+              </button>
             </PopoverTrigger>
             <PopoverContent className="w-[340px] p-0" align="end">
               <Command>
@@ -223,9 +226,12 @@ export default function Settings() {
                           updateSettingsMutation.mutate({ timezone: timezoneOptions[0].value });
                           setTzOpen(false);
                         }}
+                        className="gap-2 rounded-md"
                       >
                         <span className="truncate">{timezoneOptions[0].label}</span>
-                        <span className="ml-auto text-xs text-muted-foreground">{timezoneOptions[0].offset}</span>
+                        <span className="ml-auto rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+                          {timezoneOptions[0].offset}
+                        </span>
                       </CommandItem>
                     </CommandGroup>
                   )}
@@ -238,9 +244,12 @@ export default function Settings() {
                           updateSettingsMutation.mutate({ timezone: tz.value });
                           setTzOpen(false);
                         }}
+                        className="gap-2 rounded-md"
                       >
                         <span className="truncate">{tz.label}</span>
-                        <span className="ml-auto text-xs text-muted-foreground">{tz.offset}</span>
+                        <span className="ml-auto rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+                          {tz.offset}
+                        </span>
                       </CommandItem>
                     ))}
                   </CommandGroup>

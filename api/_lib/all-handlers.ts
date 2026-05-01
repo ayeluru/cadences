@@ -2,8 +2,18 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden, touchLastActive } from './auth.js';
 import { storage, enrichTask, enrichTasks, getPeriodsInRange } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
-import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays } from 'date-fns';
+import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays, addWeeks, addMonths, addYears, getDate, getDay, lastDayOfMonth } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
+
+function addInterval(date: Date, value: number, unit: string): Date {
+  switch (unit) {
+    case 'days': return addDays(date, value);
+    case 'weeks': return addWeeks(date, value);
+    case 'months': return addMonths(date, value);
+    case 'years': return addYears(date, value);
+    default: return addDays(date, value);
+  }
+}
 
 async function getUserSettings(userId: string): Promise<{ timezone: string; settings: any }> {
   try {
@@ -196,17 +206,75 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
         continue;
       }
 
-      // Interval / scheduled tasks: keep the existing nextDue-based logic.
-      const nextDueDate = new Date(task.nextDue);
-      const nextDueDateStr = formatInTimeZone(nextDueDate, tz, 'yyyy-MM-dd');
+      // Scheduled tasks: each scheduled occurrence in the visible range is a
+      // missed entry if the day has passed without a completion.
+      if (task.taskType === 'scheduled') {
+        if (task.status !== 'paused') {
+          const taskCreatedAt = task.createdAt ? new Date(task.createdAt) : new Date(0);
+          const daysOfWeek = task.scheduledDaysOfWeek
+            ? task.scheduledDaysOfWeek.split(',').map(Number).filter((n: number) => Number.isInteger(n) && n >= 0 && n <= 6)
+            : [];
+          const daysOfMonth = task.scheduledDaysOfMonth
+            ? task.scheduledDaysOfMonth.split(',').map(Number).filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 31)
+            : [];
 
-      if (task.status === 'overdue' && isBefore(nextDueDate, today) && !isSameDay(nextDueDate, today)) {
-        const entry = calendarMap.get(nextDueDateStr);
-        if (entry) {
-          entry.missed.push({ id: task.id, title: task.title, dueDate: task.nextDue });
+          if (daysOfWeek.length > 0 || daysOfMonth.length > 0) {
+            for (const day of days) {
+              if (day < taskCreatedAt) continue;
+              const dayLocal = toZonedTime(day, tz);
+              const dow = getDay(dayLocal);
+              const dom = getDate(dayLocal);
+              const lastDom = getDate(lastDayOfMonth(dayLocal));
+
+              const matchesDow = daysOfWeek.includes(dow);
+              const matchesDom = daysOfMonth.some((d: number) => d === dom || (d > lastDom && dom === lastDom));
+              if (!matchesDow && !matchesDom) continue;
+
+              const dateStr = formatInTimeZone(day, tz, 'yyyy-MM-dd');
+              const entry = calendarMap.get(dateStr);
+              if (!entry) continue;
+
+              const completedThisDay = entry.completions.some(c => c.taskId === task.id);
+              if (completedThisDay) continue;
+
+              if (isBefore(day, today) && !isSameDay(day, today)) {
+                entry.missed.push({ id: task.id, title: task.title, dueDate: day.toISOString() });
+              } else if (task.status !== 'later') {
+                entry.dueSoon.push({ id: task.id, title: task.title, dueDate: day.toISOString() });
+              }
+            }
+          }
+        }
+        continue;
+      }
+
+      // Interval tasks: walk every cycle from lastCompletedAt (or createdAt if
+      // never done) forward to today. Because lastCompletedAt is, by
+      // definition, the latest completion, every cycle whose due-date is in
+      // the past is a miss — we record one entry per missed cycle so the
+      // calendar shows the full history when navigating to past months.
+      if (task.intervalValue && task.intervalUnit && task.status !== 'paused') {
+        const reference = task.lastCompletedAt
+          ? new Date(task.lastCompletedAt)
+          : task.createdAt ? new Date(task.createdAt) : null;
+
+        if (reference) {
+          let cycleDue = addInterval(reference, task.intervalValue, task.intervalUnit);
+          let safety = 0;
+          while (isBefore(cycleDue, today) && !isSameDay(cycleDue, today) && safety++ < 2000) {
+            const cycleStr = formatInTimeZone(cycleDue, tz, 'yyyy-MM-dd');
+            const entry = calendarMap.get(cycleStr);
+            if (entry) {
+              entry.missed.push({ id: task.id, title: task.title, dueDate: cycleDue.toISOString() });
+            }
+            cycleDue = addInterval(cycleDue, task.intervalValue, task.intervalUnit);
+          }
         }
       }
 
+      // dueSoon: forward-looking nextDue placement (unchanged semantics).
+      const nextDueDate = new Date(task.nextDue);
+      const nextDueDateStr = formatInTimeZone(nextDueDate, tz, 'yyyy-MM-dd');
       if ((isAfter(nextDueDate, today) || isSameDay(nextDueDate, today)) && task.status !== 'later') {
         const entry = calendarMap.get(nextDueDateStr);
         if (entry) {
