@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ProfileSwitcher } from "@/components/ProfileSwitcher";
+import { DemoModeBanner } from "@/components/DemoModeBanner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { SubmitFeedbackDialog } from "@/components/SubmitFeedbackDialog";
@@ -284,6 +285,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content Area */}
       <main ref={mainRef} className="flex-1 overflow-y-auto bg-muted/20">
+        <DemoModeBanner />
         <div className="container mx-auto max-w-5xl p-4 md:p-8 lg:p-12 pb-24 md:pb-12">
           {children}
         </div>

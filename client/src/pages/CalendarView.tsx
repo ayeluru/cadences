@@ -5,7 +5,6 @@ import { useTimezone } from "@/hooks/use-user-settings";
 import { nowLocal, formatLocal } from "@/lib/tz";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, CheckCircle2, Loader2, AlertCircle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { useProfileContext } from "@/contexts/ProfileContext";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -226,50 +225,57 @@ export default function CalendarView() {
         </p>
       </div>
 
-      <div className="grid grid-cols-4 gap-1">
-          <Button
-            variant={heatMapSource === "combined" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setHeatMapSource("combined")}
-            className="gap-1.5 w-full"
-            data-testid="heatmap-combined"
-          >
-            <div className="flex items-center gap-0.5">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <div className="w-2 h-2 rounded-full bg-red-500" />
-            </div>
-            Balance
-          </Button>
-          <Button
-            variant={heatMapSource === "completions" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setHeatMapSource("completions")}
-            className="gap-1.5 w-full"
-            data-testid="heatmap-completions"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Completed
-          </Button>
-          <Button
-            variant={heatMapSource === "missed" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setHeatMapSource("missed")}
-            className="gap-1.5 w-full"
-            data-testid="heatmap-missed"
-          >
-            <AlertCircle className="w-3.5 h-3.5" />
-            Missed
-          </Button>
-          <Button
-            variant={heatMapSource === "upcoming" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setHeatMapSource("upcoming")}
-            className="gap-1.5 w-full"
-            data-testid="heatmap-upcoming"
-          >
-            <Clock className="w-3.5 h-3.5" />
-            Upcoming
-          </Button>
+      <div className="grid grid-cols-4 gap-1 rounded-xl border border-border/60 bg-card/50 p-1 backdrop-blur-sm">
+        {([
+          {
+            key: "combined" as const,
+            label: "Balance",
+            testId: "heatmap-combined",
+            icon: (
+              <div className="flex items-center gap-0.5">
+                <div className="h-2 w-2 rounded-full bg-green-500" />
+                <div className="h-2 w-2 rounded-full bg-red-500" />
+              </div>
+            ),
+          },
+          {
+            key: "completions" as const,
+            label: "Completed",
+            testId: "heatmap-completions",
+            icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+          },
+          {
+            key: "missed" as const,
+            label: "Missed",
+            testId: "heatmap-missed",
+            icon: <AlertCircle className="h-3.5 w-3.5" />,
+          },
+          {
+            key: "upcoming" as const,
+            label: "Upcoming",
+            testId: "heatmap-upcoming",
+            icon: <Clock className="h-3.5 w-3.5" />,
+          },
+        ]).map((opt) => {
+          const isActive = heatMapSource === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setHeatMapSource(opt.key)}
+              className={cn(
+                "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+                isActive
+                  ? "bg-gradient-to-br from-primary to-primary/85 text-primary-foreground shadow-sm shadow-primary/25"
+                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+              )}
+              data-testid={opt.testId}
+            >
+              {opt.icon}
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -279,31 +285,35 @@ export default function CalendarView() {
             <h3 className="text-xl font-semibold font-display tracking-tight">
               {format(currentMonth, "MMMM yyyy")}
             </h3>
-            <div className="flex gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
+            <div className="inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-card/50 p-1 backdrop-blur-sm">
+              <button
+                type="button"
                 onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all duration-200 hover:bg-muted/70 hover:text-foreground"
+                aria-label="Previous month"
                 data-testid="button-prev-month"
               >
-                <ChevronLeft className="w-5 h-5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
                 onClick={() => setCurrentMonth(nowLocal(tz))}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-all duration-200 hover:bg-muted/70 hover:text-foreground"
+                aria-label="Jump to today"
                 data-testid="button-today"
               >
-                <CalendarIcon className="w-5 h-5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
+                <CalendarIcon className="h-3.5 w-3.5" />
+                Today
+              </button>
+              <button
+                type="button"
                 onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all duration-200 hover:bg-muted/70 hover:text-foreground"
+                aria-label="Next month"
                 data-testid="button-next-month"
               >
-                <ChevronRight className="w-5 h-5" />
-              </Button>
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
           </div>
 
