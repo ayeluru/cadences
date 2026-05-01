@@ -148,7 +148,7 @@ export default function UserGuide() {
               <div className="flex items-center gap-2.5 py-1.5">
                 <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
                 <div>
-                  <span className="font-medium text-foreground text-xs">Never Done</span>
+                  <span className="font-medium text-foreground text-xs">Not Yet Started</span>
                   <span className="text-xs ml-2">— newly created, not yet completed</span>
                 </div>
               </div>

@@ -129,7 +129,7 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
     { id: 'overdue', label: 'Overdue', count: groupedTasks.overdue.length },
     { id: 'due_soon', label: 'Due Soon', count: groupedTasks.due_soon.length },
     { id: 'later', label: 'Up Next', count: groupedTasks.later.length },
-    { id: 'never_done', label: 'Never Completed', count: groupedTasks.never_done.length },
+    { id: 'never_done', label: 'Not Yet Started', count: groupedTasks.never_done.length },
   ];
 
   const hasTasks = tasks.length > 0;

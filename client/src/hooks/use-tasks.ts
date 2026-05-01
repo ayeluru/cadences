@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useProfileContext } from "@/contexts/ProfileContext";
 import { apiRequest, getAuthHeaders } from "@/lib/queryClient";
 import { toLocal, nowLocal } from "@/lib/tz";
+import type { CalendarCompletionDay } from "@/hooks/use-completions";
 
 export function useTasks(filters?: { search?: string; categoryId?: number; tagId?: number }) {
   const { currentProfile, isAggregatedView } = useProfileContext();
@@ -201,13 +202,41 @@ export function useCompleteTask() {
     },
     onMutate: async ({ id, completedAt }) => {
       await queryClient.cancelQueries({ queryKey: [api.tasks.list.path] });
+      await queryClient.cancelQueries({ queryKey: ["/api/completions/calendar"] });
       const previous = queryClient.getQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] });
+      const previousCalendar = queryClient.getQueriesData<CalendarCompletionDay[]>({ queryKey: ["/api/completions/calendar"] });
       const tz = (queryClient.getQueryData<{ timezone: string }>(["/api/user-settings"]))?.timezone
         ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
       const completionDate = completedAt ? new Date(completedAt) : new Date();
       const completionLocal = toLocal(completionDate, tz);
       const todayLocal = nowLocal(tz);
       const completionDateStr = `${completionLocal.getFullYear()}-${String(completionLocal.getMonth() + 1).padStart(2, '0')}-${String(completionLocal.getDate()).padStart(2, '0')}`;
+
+      const taskTitle = previous
+        .flatMap(([, data]) => Array.isArray(data) ? data : [])
+        .find(t => t.id === id)?.title ?? '';
+      queryClient.getQueryCache()
+        .findAll({ queryKey: ["/api/completions/calendar"] })
+        .forEach(query => {
+          const key = query.queryKey;
+          if (!Array.isArray(key) || key.length < 3) return;
+          const start = key[1];
+          const end = key[2];
+          if (typeof start !== 'string' || typeof end !== 'string') return;
+          if (completionDateStr < start || completionDateStr > end) return;
+          queryClient.setQueryData<CalendarCompletionDay[]>(key, (old) => {
+            if (!Array.isArray(old)) return old;
+            const idx = old.findIndex(d => d.date === completionDateStr);
+            const taskEntry = { id, title: taskTitle, completedAt: completionDate.toISOString() };
+            if (idx >= 0) {
+              const day = old[idx];
+              const next = [...old];
+              next[idx] = { ...day, count: day.count + 1, tasks: [...day.tasks, taskEntry] };
+              return next;
+            }
+            return [...old, { date: completionDateStr, count: 1, tasks: [taskEntry] }];
+          });
+        });
       queryClient.setQueriesData<TaskWithDetails[]>({ queryKey: [api.tasks.list.path] }, (old) =>
         Array.isArray(old) ? old.map((t): TaskWithDetails => {
           if (t.id !== id) return t;
@@ -252,10 +281,11 @@ export function useCompleteTask() {
           };
         }) : old
       );
-      return { previous };
+      return { previous, previousCalendar };
     },
     onError: (err, _vars, context) => {
       context?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      context?.previousCalendar?.forEach(([key, data]) => queryClient.setQueryData(key, data));
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
     onSettled: () => {
@@ -263,6 +293,7 @@ export function useCompleteTask() {
       queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
       queryClient.invalidateQueries({ queryKey: ["/api/streaks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/calendar/enhanced"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/completions/calendar"] });
     },
     onSuccess: () => {
       toast({ title: "Task completed", description: "Good job! Maintenance recorded." });

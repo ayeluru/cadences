@@ -207,7 +207,7 @@ export default function Dashboard() {
     { id: 'overdue', label: 'Overdue', color: 'text-[hsl(var(--urgency-overdue))]', count: groupedTasks.overdue.length },
     { id: 'due_soon', label: 'Due Soon', color: 'text-[hsl(var(--urgency-soon))]', count: groupedTasks.due_soon.length },
     { id: 'later', label: 'Up Next', color: 'text-[hsl(var(--urgency-later))]', count: groupedTasks.later.length },
-    { id: 'never_done', label: 'Never Completed', color: 'text-muted-foreground', count: groupedTasks.never_done.length },
+    { id: 'never_done', label: 'Not Yet Started', color: 'text-muted-foreground', count: groupedTasks.never_done.length },
     { id: 'paused', label: 'Paused', color: 'text-muted-foreground', count: groupedTasks.paused.length },
   ];
 
@@ -616,10 +616,10 @@ function TodayView({
         />
       )}
 
-      {/* 4. Never Done — collapsed by default */}
+      {/* 4. Not Yet Started — collapsed by default */}
       {todayTasks.neverDone.length > 0 && (
         <CollapsibleTaskSection
-          label="Never Done"
+          label="Not Yet Started"
           color="text-muted-foreground"
           tasks={todayTasks.neverDone}
           isOpen={showNeverDone}
