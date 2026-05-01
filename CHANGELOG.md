@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.11
+
+- **Fixed WeekView per-day completion display**: completing a task on a new day no longer erases the prior day's "done" indicator. WeekView now reads completion history from `/api/completions/calendar` and looks up "done on day" per-cell, so a daily task completed on Wed and again on Thu correctly shows ✓ on both days. Previously, `isTaskDoneOnDay` short-circuited on `targetPeriod==='day'` frequency tasks (returning the same value for every day in the week) and fell back to `lastCompletedAt` (which only stores the most recent completion) for interval/scheduled tasks — causing earlier completions to vanish from the grid. Past weeks now also surface their full historical completions instead of just the latest one
+- **Optimistic completion patches WeekView immediately**: `useCompleteTask` now optimistically updates the calendar query cache, so completing a task (including backdated completions from WeekView itself) flips the cell to ✓ instantly without waiting for a network round-trip
+- **Renamed task type tabs**: "Every X Days" → **Interval**, "X Per Week" → **Frequency**, with one-line descriptions added under each tab (Interval, Frequency, and Scheduled) explaining when to pick each — clearer mental model for new tasks
+- **Renamed "Never Done" → "Not Yet Started"**: friendlier label across the Today view, All Tasks view, Tasks-by-Magnitude page, individual TaskCard status, and the User Guide. Internal status enum unchanged
+
 ## 2.4.10
 
 - **Service worker for instant repeat launches**: Cadences is now a real PWA — `vite-plugin-pwa` precaches the app shell so iPhone home-screen launches no longer pay the network roundtrip for HTML/JS/CSS on every cold start. Updates apply on next session via `registerType: autoUpdate`. iOS 16.4+ devices benefit; older fall back to the previous behavior

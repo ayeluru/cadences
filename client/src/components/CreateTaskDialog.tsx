@@ -382,12 +382,15 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
 
           <Tabs value={taskType} onValueChange={(v) => setTaskType(v as 'interval' | 'frequency' | 'scheduled')}>
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="interval" data-testid="tab-interval">Every X Days</TabsTrigger>
-              <TabsTrigger value="frequency" data-testid="tab-frequency">X Per Week</TabsTrigger>
+              <TabsTrigger value="interval" data-testid="tab-interval">Interval</TabsTrigger>
+              <TabsTrigger value="frequency" data-testid="tab-frequency">Frequency</TabsTrigger>
               <TabsTrigger value="scheduled" data-testid="tab-scheduled">Scheduled</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="interval" className="space-y-4 pt-4">
+              <p className="text-xs text-muted-foreground">
+                Repeats on a fixed interval after the previous completion. Pick this for "every X days/weeks/months/years" tasks like watering plants every 3 days.
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="intervalValue">Every</Label>
@@ -418,6 +421,9 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
             </TabsContent>
             
             <TabsContent value="frequency" className="space-y-4 pt-4">
+              <p className="text-xs text-muted-foreground">
+                A target count to hit within each period, with no fixed dates. Pick this for "X times per day/week/month" goals like exercising 4 times a week.
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="targetCount">Times</Label>
@@ -498,6 +504,10 @@ export function CreateTaskDialog({ open, onOpenChange }: CreateTaskDialogProps) 
               {scheduledError && (
                 <p className="text-sm text-destructive font-medium">Select at least one schedule option below.</p>
               )}
+
+              <p className="text-xs text-muted-foreground">
+                Recurs on specific calendar days. Pick this for tasks tied to particular weekdays, days of the month, or one-off dates — like trash day every Tuesday or rent on the 1st.
+              </p>
 
               <div className="rounded-lg border p-3 space-y-3">
                 <Label className="flex items-center gap-2 text-sm font-semibold">

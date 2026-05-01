@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef, useLayoutEffect } fr
 import { TaskWithDetails, TaskAssignment } from "@shared/schema";
 import { useAssignments, useCreateAssignment, useDeleteAssignment, useResetAssignments } from "@/hooks/use-assignments";
 import { useCompleteTask } from "@/hooks/use-tasks";
+import { useCompletionsByDay } from "@/hooks/use-completions";
 import { useTimezone } from "@/hooks/use-user-settings";
 import { formatDateKey, nowLocal, toLocal } from "@/lib/tz";
 import { Progress } from "@/components/ui/progress";
@@ -100,6 +101,7 @@ export function WeekView({ tasks }: WeekViewProps) {
   const endStr = format(weekEnd, "yyyy-MM-dd");
 
   const { data: assignments = [] } = useAssignments(startStr, endStr);
+  const { completionsByTask } = useCompletionsByDay(startStr, endStr);
   const createAssignment = useCreateAssignment();
   const deleteAssignment = useDeleteAssignment();
   const resetAssignments = useResetAssignments();
@@ -294,33 +296,23 @@ export function WeekView({ tasks }: WeekViewProps) {
     return ids;
   }, [effectiveSchedule, assignments]);
 
-  // Tasks completed this week that aren't auto-scheduled — place on calendar at completion date
-  // Frequency tasks use recentCompletionDates to show all completions, not just the latest
+  // Tasks completed in the visible week — place on calendar at every completion date.
+  // Sourced from /api/completions/calendar so per-day truth is preserved across task types.
   const completedUnscheduledMap = useMemo(() => {
     const map = new Map<string, TaskWithDetails[]>();
     const weekDateStrs = new Set(weekDays.map(d => format(d, "yyyy-MM-dd")));
     tasks.forEach(task => {
       if (task.isArchived) return;
-
-      if (task.taskType === 'frequency' && task.recentCompletionDates) {
-        const placed = new Set<string>();
-        for (const dateStr of task.recentCompletionDates) {
-          if (weekDateStrs.has(dateStr) && !placed.has(dateStr)) {
-            placed.add(dateStr);
-            if (!map.has(dateStr)) map.set(dateStr, []);
-            map.get(dateStr)!.push(task);
-          }
-        }
-      } else {
-        if (!task.lastCompletedAt) return;
-        const completedDateStr = formatDateKey(new Date(task.lastCompletedAt), tz);
-        if (!weekDateStrs.has(completedDateStr)) return;
-        if (!map.has(completedDateStr)) map.set(completedDateStr, []);
-        map.get(completedDateStr)!.push(task);
-      }
+      const completedDays = completionsByTask.get(task.id);
+      if (!completedDays) return;
+      completedDays.forEach(dateStr => {
+        if (!weekDateStrs.has(dateStr)) return;
+        if (!map.has(dateStr)) map.set(dateStr, []);
+        map.get(dateStr)!.push(task);
+      });
     });
     return map;
-  }, [tasks, assignedTaskIds, weekDays, tz]);
+  }, [tasks, completionsByTask, weekDays]);
 
   const completedOnCalendarIds = useMemo(() => {
     const ids = new Set<number>();
@@ -424,13 +416,13 @@ export function WeekView({ tasks }: WeekViewProps) {
     dayColumns.forEach(col => {
       col.tasks.forEach(({ task }) => {
         total++;
-        if (isTaskDoneOnDay(task, col.date, tz)) {
+        if (isTaskDoneOnDay(task, col.date, completionsByTask)) {
           done++;
         }
       });
     });
     return { total, done };
-  }, [dayColumns, tz]);
+  }, [dayColumns, completionsByTask]);
 
   const weekProgress = weekStats.total > 0 ? Math.round((weekStats.done / weekStats.total) * 100) : 0;
   const hasManualAssignments = assignments.length > 0;
@@ -653,7 +645,7 @@ export function WeekView({ tasks }: WeekViewProps) {
             <DayColumn
               key={col.dateStr}
               day={col}
-              tz={tz}
+              completionsByTask={completionsByTask}
               isToday={isSameDay(col.date, now)}
               isPast={isBefore(col.date, now) && !isSameDay(col.date, now)}
               showDone={showDone}
@@ -787,7 +779,7 @@ export function WeekView({ tasks }: WeekViewProps) {
 
 function DayColumn({
   day,
-  tz,
+  completionsByTask,
   isToday,
   isPast,
   showDone,
@@ -802,7 +794,7 @@ function DayColumn({
   onMissedClick,
 }: {
   day: DayTasks;
-  tz: string;
+  completionsByTask: Map<number, Set<string>>;
   isToday: boolean;
   isPast: boolean;
   showDone: boolean;
@@ -817,7 +809,7 @@ function DayColumn({
   onMissedClick?: (task: TaskWithDetails, date: Date, isMovable: boolean, sourceDate: string, assignmentId?: number, rootOriginalDate?: string) => void;
 }) {
   const visibleTasks = day.tasks.filter(({ task, isMovable }) => {
-    const isDone = isTaskDoneOnDay(task, day.date, tz);
+    const isDone = isTaskDoneOnDay(task, day.date, completionsByTask);
     if (isDone && !showDone) return false;
     if (!isDone && !isMovable && immovableFilter === 'hide') return false;
     if (!isDone && isMovable && movableFilter === 'hide') return false;
@@ -853,7 +845,7 @@ function DayColumn({
       )}
 
       {visibleTasks.map(({ task, assignmentId, rootOriginalDate, isMovable, isPseudoScheduled }) => {
-        const isDone = isTaskDoneOnDay(task, day.date, tz);
+        const isDone = isTaskDoneOnDay(task, day.date, completionsByTask);
         const cardKey = `${task.id}-${day.dateStr}`;
         const isSelected = selectedTaskId === task.id && selectedSourceDate === day.dateStr;
         return (
@@ -1049,17 +1041,10 @@ function CompactCard({
 
 // --- Helpers ---
 
-function isTaskDoneOnDay(task: TaskWithDetails, day: Date, timezone: string): boolean {
-  if (task.taskType === 'frequency' && task.targetPeriod === 'day' && task.targetCount) {
-    return (task.completionsThisPeriod ?? 0) >= task.targetCount;
-  }
-  const dayStr = format(day, "yyyy-MM-dd");
-  if (task.recentCompletionDates?.includes(dayStr)) return true;
-  const today = nowLocal(timezone);
-  if (isSameDay(day, today) && task.completedToday) return true;
-  if (task.lastCompletedAt) {
-    const completedDate = toLocal(new Date(task.lastCompletedAt), timezone);
-    if (isSameDay(completedDate, day)) return true;
-  }
-  return false;
+function isTaskDoneOnDay(
+  task: TaskWithDetails,
+  day: Date,
+  completionsByTask: Map<number, Set<string>>,
+): boolean {
+  return completionsByTask.get(task.id)?.has(format(day, "yyyy-MM-dd")) ?? false;
 }

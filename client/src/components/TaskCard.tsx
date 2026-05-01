@@ -95,7 +95,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
       return `${done}/${target} this ${task.targetPeriod}`;
     }
 
-    if (task.status === 'never_done') return "Never completed";
+    if (task.status === 'never_done') return "Not yet started";
     if (!task.nextDue) return "No due date";
     
     const dueDate = new Date(task.nextDue);
