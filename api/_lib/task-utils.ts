@@ -1,9 +1,20 @@
-import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO, getDay, getDate, lastDayOfMonth } from 'date-fns';
-import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
+import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, endOfDay, getDay, getDate, lastDayOfMonth } from 'date-fns';
 import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion, CadenceMagnitude, TodayBucket } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
+import {
+  toLocal,
+  toUTC,
+  parseLocalDateKey,
+  formatDateKey,
+  getPeriodBounds,
+  getPeriodsInRange,
+} from './tz.js';
 
 const storage = new DatabaseStorage();
+
+// Re-export period helpers so existing importers keep working. New code
+// should import directly from './tz.js'.
+export { getPeriodBounds, getPeriodsInRange } from './tz.js';
 
 export interface BatchData {
   categories: Category[];
@@ -17,78 +28,6 @@ export interface BatchData {
   assignedTodaySet: Set<number>;
   movedFromTodaySet: Set<number>;
   vacationMode?: boolean;
-}
-
-// Convert a UTC date to the user's local timezone for date-fns operations
-function toLocal(date: Date, timezone: string): Date {
-  return toZonedTime(date, timezone);
-}
-
-// Convert a "local" date (from date-fns ops on a zoned time) back to UTC
-function toUTC(localDate: Date, timezone: string): Date {
-  return fromZonedTime(localDate, timezone);
-}
-
-// Get period boundaries for frequency-based tasks, in UTC, aligned to user's local timezone
-export function getPeriodBounds(period: string, timezone: string = 'UTC'): { start: Date, end: Date } {
-  const nowLocal = toLocal(new Date(), timezone);
-  let localStart: Date, localEnd: Date;
-  if (period === 'day') {
-    localStart = startOfDay(nowLocal);
-    localEnd = endOfDay(nowLocal);
-  } else if (period === 'week') {
-    localStart = startOfWeek(nowLocal, { weekStartsOn: 0 });
-    localEnd = endOfWeek(nowLocal, { weekStartsOn: 0 });
-  } else if (period === 'month') {
-    localStart = startOfMonth(nowLocal);
-    localEnd = endOfMonth(nowLocal);
-  } else {
-    localStart = startOfYear(nowLocal);
-    localEnd = endOfYear(nowLocal);
-  }
-  return { start: toUTC(localStart, timezone), end: toUTC(localEnd, timezone) };
-}
-
-// Return every period of `period` length that overlaps [viewStart, viewEnd],
-// aligned to the user's local timezone. Used for end-of-period miss accounting.
-export function getPeriodsInRange(
-  period: string,
-  viewStart: Date,
-  viewEnd: Date,
-  timezone: string = 'UTC',
-): Array<{ periodStart: Date; periodEnd: Date }> {
-  const localStart = toLocal(viewStart, timezone);
-  const localEnd = toLocal(viewEnd, timezone);
-
-  const startOfPeriod = (d: Date): Date => {
-    if (period === 'day') return startOfDay(d);
-    if (period === 'week') return startOfWeek(d, { weekStartsOn: 0 });
-    if (period === 'month') return startOfMonth(d);
-    return startOfYear(d);
-  };
-  const endOfPeriod = (d: Date): Date => {
-    if (period === 'day') return endOfDay(d);
-    if (period === 'week') return endOfWeek(d, { weekStartsOn: 0 });
-    if (period === 'month') return endOfMonth(d);
-    return endOfYear(d);
-  };
-  const advance = (d: Date): Date => {
-    if (period === 'day') return addDays(d, 1);
-    if (period === 'week') return addDays(d, 7);
-    if (period === 'month') return addMonths(d, 1);
-    return addYears(d, 1);
-  };
-
-  const periods: Array<{ periodStart: Date; periodEnd: Date }> = [];
-  let cursor = startOfPeriod(localStart);
-  while (cursor <= localEnd) {
-    periods.push({
-      periodStart: toUTC(cursor, timezone),
-      periodEnd: toUTC(endOfPeriod(cursor), timezone),
-    });
-    cursor = advance(cursor);
-  }
-  return periods;
 }
 
 // Advance a date by an interval. Shared by enrichTask and calendarEnhanced.
@@ -234,7 +173,7 @@ export function getScheduledOccurrences(
     });
 
     if (matchesDow || matchesDom) {
-      const key = formatInTimeZone(cursor, timezone, 'yyyy-MM-dd');
+      const key = formatDateKey(cursor, timezone);
       if (!seen.has(key)) {
         seen.add(key);
         occurrences.push(new Date(cursor.getTime()));
@@ -244,10 +183,11 @@ export function getScheduledOccurrences(
   }
 
   for (const dateStr of specificDates) {
-    const parsed = new Date(dateStr + 'T00:00:00');
+    // Specific dates are stored as local date keys ("yyyy-MM-dd").
+    const parsed = parseLocalDateKey(dateStr, timezone);
     if (isNaN(parsed.getTime())) continue;
     if (parsed < startDate || parsed > endDate) continue;
-    const key = formatInTimeZone(parsed, timezone, 'yyyy-MM-dd');
+    const key = formatDateKey(parsed, timezone);
     if (!seen.has(key)) {
       seen.add(key);
       occurrences.push(parsed);
@@ -423,10 +363,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
       : await storage.getCompletionsInPeriod(task.id, start, end);
 
     completionsThisPeriod = allCompletions.length;
-    recentCompletionDates = allCompletions.map(c => {
-      const d = toLocal(c.completedAt, timezone);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    });
+    recentCompletionDates = allCompletions.map(c => formatDateKey(c.completedAt, timezone));
     targetProgress = Math.min(100, (completionsThisPeriod / task.targetCount) * 100);
 
     const periodDays = task.targetPeriod === 'day' ? 1 : task.targetPeriod === 'week' ? 7 : 30;
@@ -538,12 +475,13 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
   // Capture pre-assignment nextDue for effectiveDueToday calculation
   const naturalNextDue = new Date(nextDue.getTime());
 
-  // Apply assignments: if active assignments exist, they define the real due date
+  // Apply assignments: if active assignments exist, they define the real due date.
+  // plannedDate is a local date key, so interpret it in the user's timezone.
   const activeAssignments = batch?.assignmentsMap.get(task.id) || [];
   if (activeAssignments.length > 0) {
     const isFrequencyGoalMet = task.taskType === 'frequency' && completionsThisPeriod >= (task.targetCount || 0);
     if (!isFrequencyGoalMet) {
-      nextDue = parseISO(activeAssignments[0].plannedDate);
+      nextDue = parseLocalDateKey(activeAssignments[0].plannedDate, timezone);
     }
   }
 
@@ -748,8 +686,7 @@ export async function enrichTasks(tasks: any[], userId: string, timezone: string
 
   // Build per-task assignment map (sorted by plannedDate from the query)
   const assignmentsMap = new Map<number, { plannedDate: string }[]>();
-  const nowLocalBatch = toLocal(new Date(), timezone);
-  const todayStr = `${nowLocalBatch.getFullYear()}-${String(nowLocalBatch.getMonth() + 1).padStart(2, '0')}-${String(nowLocalBatch.getDate()).padStart(2, '0')}`;
+  const todayStr = formatDateKey(new Date(), timezone);
   const assignedTodaySet = new Set<number>();
   const movedFromTodaySet = new Set<number>();
   for (const a of activeAssignments) {
