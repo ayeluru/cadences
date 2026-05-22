@@ -120,9 +120,16 @@ export default function Dashboard() {
     });
 
     const byUrgency = (a: TaskWithDetails, b: TaskWithDetails) => (b.urgency || 0) - (a.urgency || 0);
+    // Could-do sort: on_pace floats above ahead (slightly more urgent — closer
+    // to slipping); within each pacing tier, fall back to urgency.
+    const pacingPriority = (p: TaskWithDetails['pacing']) => p === 'on_pace' ? 0 : p === 'ahead' ? 1 : 2;
+    const couldDoSort = (a: TaskWithDetails, b: TaskWithDetails) => {
+      const pacingDiff = pacingPriority(a.pacing) - pacingPriority(b.pacing);
+      return pacingDiff !== 0 ? pacingDiff : byUrgency(a, b);
+    };
     overdue.sort(byUrgency);
     dueToday.sort(byUrgency);
-    couldDo.sort(byUrgency);
+    couldDo.sort(couldDoSort);
     dueSoon.sort(byUrgency);
     neverDone.sort(byUrgency);
     completedToday.sort(byUrgency);

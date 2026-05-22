@@ -374,6 +374,11 @@ export type InsertFeedbackComment = z.infer<typeof insertFeedbackCommentSchema>;
 export type CadenceMagnitude = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type TodayBucket = 'overdue' | 'due_today' | 'could_do' | 'due_soon' | 'never_done' | 'completed_today' | 'paused';
 
+// Frequency-task pacing relative to expected progress through the current
+// target period. `null` for non-frequency tasks and frequency tasks already
+// at or above target.
+export type Pacing = 'ahead' | 'on_pace' | 'behind';
+
 export type TaskWithDetails = Task & {
   category?: Category | null;
   parentTask?: Task | null;
@@ -396,4 +401,6 @@ export type TaskWithDetails = Task & {
   cadenceMagnitude?: CadenceMagnitude;
   todayBucket?: TodayBucket | null;
   isSuggestedToday?: boolean;
+  pacing?: Pacing | null;
+  willBeBehindTomorrow?: boolean;
 };
