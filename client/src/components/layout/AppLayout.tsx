@@ -11,6 +11,10 @@ import { DemoModeBanner } from "@/components/DemoModeBanner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
 import { SubmitFeedbackDialog } from "@/components/SubmitFeedbackDialog";
+import { RefreshButton } from "@/components/RefreshButton";
+import { RefreshCw } from "lucide-react";
+import { useHardReload } from "@/hooks/use-hard-reload";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -26,6 +30,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+
+  // Pull-to-refresh on mobile: same hard-reload as the button. Disabled when
+  // the mobile menu is open so the gesture doesn't fight the overlay.
+  const { reload } = useHardReload();
+  const ptr = usePullToRefresh(mainRef, {
+    onRefresh: reload,
+    enabled: !mobileMenuOpen,
+  });
   const unreviewedCount = feedbackStats?.unreviewed ?? 0;
   const isFeedbackRoute = location === '/feedback';
 
@@ -155,6 +167,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
             </Link>
+            <RefreshButton variant="compact" />
             <Button
               variant="ghost"
               size="icon"
@@ -191,6 +204,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex items-center gap-2">
           <ProfileSwitcher />
+          <RefreshButton />
           <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} data-testid="button-mobile-menu">
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </Button>
@@ -285,6 +299,37 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Pull-to-refresh indicator (mobile only). Driven by usePullToRefresh
+          state; lives outside <main> so it renders relative to the viewport. */}
+      {!mobileMenuOpen && (ptr.pullDistance > 0 || ptr.isRefreshing) && (
+        <div
+          className="md:hidden fixed left-1/2 z-50 pointer-events-none transition-opacity"
+          style={{
+            top: 0,
+            transform: `translate(-50%, ${Math.max(0, ptr.pullDistance - 40)}px)`,
+            opacity: Math.min(1, ptr.pullDistance / 50),
+          }}
+          aria-hidden="true"
+        >
+          <div className="bg-background/95 backdrop-blur-sm border border-border rounded-full shadow-lg p-2.5 mt-2">
+            <RefreshCw
+              className={`w-4 h-4 transition-colors ${
+                ptr.isRefreshing
+                  ? "animate-spin text-primary"
+                  : ptr.reachedThreshold
+                  ? "text-primary"
+                  : "text-muted-foreground"
+              }`}
+              style={
+                !ptr.isRefreshing && !ptr.reachedThreshold
+                  ? { transform: `rotate(${Math.min(360, ptr.pullDistance * 4)}deg)` }
+                  : undefined
+              }
+            />
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main ref={mainRef} className="flex-1 overflow-y-auto bg-muted/20">
