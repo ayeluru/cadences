@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth, getDisplayName, getInitials } from "@/hooks/use-auth";
 import { useFeedbackStats } from "@/hooks/use-feedback";
-import { WhatsNewDialog, useHasUnseenNotes } from "@/components/WhatsNewDialog";
+import { WhatsNewDialog, useHasUnseenNotes, hasUnseenNotes } from "@/components/WhatsNewDialog";
 import { LayoutDashboard, PieChart, Settings, LogOut, Menu, X, Clock, CalendarDays, HelpCircle, Activity, ChevronDown, ChevronRight, Timer, Plus, MoreHorizontal, MessageSquarePlus, Shield, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useRef, useEffect } from "react";
@@ -17,7 +17,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, isAdmin } = useAuth();
   const { data: feedbackStats } = useFeedbackStats(isAdmin);
   const hasUnseen = useHasUnseenNotes();
-  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  // Auto-open the dialog once per version bump. The lazy initializer reads
+  // localStorage at mount time so the popup appears immediately on a fresh
+  // load after a deploy.
+  const [whatsNewOpen, setWhatsNewOpen] = useState(() => hasUnseenNotes());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [cadencesOpen, setCadencesOpen] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -172,7 +175,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <Sparkles className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
             v{__APP_VERSION__}
           </button>
-          <WhatsNewDialog externalOpen={whatsNewOpen} onOpenChange={setWhatsNewOpen} />
+          <WhatsNewDialog open={whatsNewOpen} onOpenChange={setWhatsNewOpen} />
         </div>
       </aside>
 
