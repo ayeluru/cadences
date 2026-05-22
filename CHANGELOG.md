@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.16
+
+- **Hard-reload button in the sidebar and mobile header**. iOS standalone PWAs have no native pull-to-refresh and the persisted React Query cache can leave the UI on stale state with no obvious way out. A new refresh icon is now visible at all times — between the avatar and logout in the desktop sidebar, between the profile switcher and the menu in the mobile header. One tap clears the in-memory query cache, removes the persisted cache from localStorage, signals any waiting service worker to activate, and reloads the page. Brief spinner state on tap so you can see it's working
+- **Pull-to-refresh on mobile**. Pulling down from the top of any page now triggers the same hard reload, with an iOS-style spinner indicator that follows the drag, dampens past the threshold, and shifts to the primary color once you've crossed it. The gesture is direction-locked at the first meaningful touch movement so WeekView's horizontal swipes never trigger a fake refresh, and it's disabled while the mobile menu overlay is open
+
 ## 2.4.15
 
 - **What's New popup now actually opens on a version bump**. Previously a pulsing dot appeared next to the sidebar version number, but the dialog itself never auto-opened — the auto-open logic was dead code because `false ?? autoOpen` always short-circuits to `false`. The open state now lives in `AppLayout` as the single source of truth, lazy-initialized from `hasUnseenNotes()`, so the dialog appears on first render after each new deploy
