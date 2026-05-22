@@ -148,14 +148,26 @@ const cases: Case[] = [
     expected: 'completed_today',
   },
   {
-    name: 'weekly-freq behind pace (status=overdue) → could_do, not overdue',
+    name: 'weekly-freq pacing=behind → overdue (frequency-specific hard miss)',
     input: {
       effectivelyPaused: false, status: 'overdue', taskType: 'frequency',
       targetPeriod: 'week', targetCount: 3, completionsThisPeriod: 0,
       completedToday: false, effectiveDueToday: false,
       targetProgress: 0, daysUntilDue: 0,
+      pacing: 'behind', willBeBehindTomorrow: false,
     },
-    expected: 'could_do',
+    expected: 'overdue',
+  },
+  {
+    name: 'monthly-freq pacing=behind → overdue',
+    input: {
+      effectivelyPaused: false, status: 'later', taskType: 'frequency',
+      targetPeriod: 'month', targetCount: 10, completionsThisPeriod: 2,
+      completedToday: false, effectiveDueToday: false,
+      targetProgress: 20, daysUntilDue: 5,
+      pacing: 'behind', willBeBehindTomorrow: false,
+    },
+    expected: 'overdue',
   },
 
   // --- Due today (not completed, not overdue) ---
@@ -179,24 +191,58 @@ const cases: Case[] = [
     expectedSuggested: true,
   },
 
-  // --- Could-do bucket (≤ 7 days out OR weekly/monthly freq with room) ---
+  // --- Will-be-behind-tomorrow (soft due-today nudge for frequency) ---
   {
-    name: 'interval status later, 5d out → could_do',
-    input: {
-      effectivelyPaused: false, status: 'later', taskType: 'interval',
-      completedToday: false, effectiveDueToday: false, daysUntilDue: 5,
-    },
-    expected: 'could_do',
-  },
-  {
-    name: 'weekly-freq goal not met, no due-today → could_do',
+    name: 'weekly-freq on_pace today + behind tomorrow → due_today (suggested)',
     input: {
       effectivelyPaused: false, status: 'later', taskType: 'frequency',
       targetPeriod: 'week', targetCount: 3, completionsThisPeriod: 1,
       completedToday: false, effectiveDueToday: false,
       targetProgress: 33, daysUntilDue: 2,
+      pacing: 'on_pace', willBeBehindTomorrow: true,
+    },
+    expected: 'due_today',
+    expectedSuggested: true,
+  },
+
+  // --- Could-do bucket (frequency only, on_pace/ahead, not slipping tomorrow) ---
+  {
+    name: 'weekly-freq on_pace, not behind tomorrow → could_do',
+    input: {
+      effectivelyPaused: false, status: 'later', taskType: 'frequency',
+      targetPeriod: 'week', targetCount: 3, completionsThisPeriod: 1,
+      completedToday: false, effectiveDueToday: false,
+      targetProgress: 33, daysUntilDue: 2,
+      pacing: 'on_pace', willBeBehindTomorrow: false,
     },
     expected: 'could_do',
+  },
+  {
+    name: 'weekly-freq ahead → could_do (optional reps)',
+    input: {
+      effectivelyPaused: false, status: 'later', taskType: 'frequency',
+      targetPeriod: 'week', targetCount: 3, completionsThisPeriod: 2,
+      completedToday: false, effectiveDueToday: false,
+      targetProgress: 66, daysUntilDue: 4,
+      pacing: 'ahead', willBeBehindTomorrow: false,
+    },
+    expected: 'could_do',
+  },
+  {
+    name: 'interval status later, 5d out → null (intervals no longer in could_do)',
+    input: {
+      effectivelyPaused: false, status: 'later', taskType: 'interval',
+      completedToday: false, effectiveDueToday: false, daysUntilDue: 5,
+    },
+    expected: null,
+  },
+  {
+    name: 'monthly interval, 7d out → null (no soft could-do for intervals)',
+    input: {
+      effectivelyPaused: false, status: 'later', taskType: 'interval',
+      completedToday: false, effectiveDueToday: false, daysUntilDue: 7,
+    },
+    expected: null,
   },
 
   // --- Due-soon bucket ---

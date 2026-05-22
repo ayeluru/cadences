@@ -2,7 +2,7 @@ import { TaskWithDetails, TaskMetric } from "@shared/schema";
 import { formatDistanceToNow, addDays, isPast } from "date-fns";
 import { useTimezone } from "@/hooks/use-user-settings";
 import { formatLocal } from "@/lib/tz";
-import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History, Archive, XCircle, Folder, Tag as TagIcon, Pause, Play } from "lucide-react";
+import { CheckCircle2, AlertCircle, Clock, Calendar, MoreVertical, Edit2, Trash2, CalendarCheck, Target, ChevronDown, ChevronUp, BarChart2, Flame, Trophy, History, Archive, XCircle, Folder, Tag as TagIcon, Pause, Play, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -161,6 +161,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
             {getStatusIcon(task.status)}
             <span className="font-medium text-sm flex-1 truncate">{task.title}</span>
             {suggested && <Badge variant="outline" className="text-[10px] px-1.5 h-5 shrink-0 border-dashed text-muted-foreground">Suggested</Badge>}
+            <PacingChip task={task} />
             <span className="text-xs text-muted-foreground shrink-0">{getStatusText()}</span>
             {task.streak && task.streak.currentStreak > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 h-5 shrink-0">
@@ -270,6 +271,7 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
               {isFrequencyTask && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 h-5">Goal</Badge>
               )}
+              <PacingChip task={task} />
               {hasMetrics && (
                 <Badge variant="outline" className="text-[10px] px-1.5 h-5">
                   <BarChart2 className="w-3 h-3 mr-1" /> Tracked
@@ -497,5 +499,39 @@ export function TaskCard({ task, showVariations = true, condensed = false, expan
         taskTitle={task.title}
       />}
     </>
+  );
+}
+
+// Pacing chip for frequency tasks. Shown only when target is unmet and the
+// task has a computed pacing — server emits null for non-frequency tasks
+// and frequency tasks already at goal.
+function PacingChip({ task }: { task: TaskWithDetails }) {
+  if (task.taskType !== 'frequency') return null;
+  if (!task.pacing) return null;
+  if (task.targetCount && (task.completionsThisPeriod ?? 0) >= task.targetCount) return null;
+
+  if (task.pacing === 'behind') {
+    return (
+      <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300/60">
+        <TrendingDown className="w-3 h-3" />
+        Behind
+      </Badge>
+    );
+  }
+  if (task.pacing === 'ahead') {
+    return (
+      <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-300/60">
+        <TrendingUp className="w-3 h-3" />
+        Ahead
+      </Badge>
+    );
+  }
+  // on_pace — subtle, no color shift, kept around so users can see the system
+  // is tracking their pace even when nothing is urgent.
+  return (
+    <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 text-muted-foreground">
+      <Activity className="w-3 h-3" />
+      On pace
+    </Badge>
   );
 }

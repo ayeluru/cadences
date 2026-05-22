@@ -215,13 +215,15 @@ export function getCadenceMagnitude(task: any): CadenceMagnitude {
 }
 
 // Place an enriched task into one of the Dashboard "Today" buckets.
-// Operates on already-enriched fields (status, effectiveDueToday, completedToday,
-// targetProgress, completionsThisPeriod, daysUntilDue). Returns null when the
-// task should not appear in the Today view at all.
+// Operates on already-enriched fields. Returns null when the task should
+// not appear in the Today view at all.
+//
+// Order of checks matters; each rule is documented in place.
 export function getTodayBucket(enriched: any): {
   bucket: TodayBucket | null;
   isSuggested: boolean;
 } {
+  // 1. Pause / never_done are terminal.
   if (enriched.effectivelyPaused || enriched.status === 'paused') {
     return { bucket: 'paused', isSuggested: false };
   }
@@ -229,56 +231,68 @@ export function getTodayBucket(enriched: any): {
     return { bucket: 'never_done', isSuggested: false };
   }
 
-  const isDailyFreqUnmet = enriched.taskType === 'frequency'
+  const isFrequency = enriched.taskType === 'frequency';
+  const isDailyFreqUnmet = isFrequency
     && enriched.targetPeriod === 'day'
     && !!enriched.targetCount
     && (enriched.completionsThisPeriod ?? 0) < enriched.targetCount;
 
-  // Anything completed today goes into completed_today — the user took
-  // action today and deserves to see it acknowledged on the dashboard
-  // regardless of how far out the *next* occurrence sits. Exception: a
-  // daily-frequency task with an unmet target falls through to due_today
-  // so the user is reminded about the remaining reps.
+  // 2. Completed today wins — the user took action and deserves to see it.
+  //    Exception: a daily-frequency task with unmet target falls through to
+  //    due_today so the user is nudged about the remaining reps.
   if (enriched.completedToday && !isDailyFreqUnmet) {
     return { bucket: 'completed_today', isSuggested: false };
   }
 
-  // Overdue gets its own bucket so users distinguish "behind" from "on
-  // schedule today." Only interval and scheduled tasks have a hard miss —
-  // a frequency task that's "overdue" is just behind its pace target,
-  // which is better expressed as could_do or due_today (via isDailyFreqUnmet).
-  if (enriched.status === 'overdue' && enriched.taskType !== 'frequency') {
+  // 3. Overdue — a hard miss.
+  //    - Interval / scheduled: status === 'overdue' means past due date.
+  //    - Frequency: pacing === 'behind' means the user is more than 10 pts
+  //      below the expected progress through the current period. This is
+  //      the cue to act now, not later.
+  if (enriched.status === 'overdue' && !isFrequency) {
+    return { bucket: 'overdue', isSuggested: false };
+  }
+  if (isFrequency && enriched.pacing === 'behind') {
     return { bucket: 'overdue', isSuggested: false };
   }
 
-  const wouldBeDueToday = isDailyFreqUnmet || (enriched.effectiveDueToday ?? false);
-  const frequencyGoalMet = enriched.taskType === 'frequency'
-    && (enriched.targetProgress ?? 0) >= 100;
-
-  const wouldBeCouldDo = !wouldBeDueToday && (
-    (enriched.taskType === 'frequency'
-      && enriched.targetPeriod !== 'day'
-      && (enriched.targetProgress ?? 0) < 100)
-    || (!frequencyGoalMet
-      && enriched.status === 'later'
-      && enriched.daysUntilDue !== undefined
-      && enriched.daysUntilDue > 0
-      && enriched.daysUntilDue <= 7)
-  );
-
-  const wouldBeDueSoon = !wouldBeDueToday && !wouldBeCouldDo
-    && enriched.status === 'due_soon'
-    && enriched.daysUntilDue !== undefined
-    && enriched.daysUntilDue > 0;
+  // 4. Due today — action required today to stay on track.
+  //    - daily-freq with unmet target (today is the day)
+  //    - interval / scheduled task whose next due lands on today
+  //    - frequency task on-pace today that will fall behind tomorrow if no
+  //      action is taken (the soft nudge)
+  const willFallBehindTomorrow = isFrequency && (enriched.willBeBehindTomorrow ?? false);
+  const wouldBeDueToday = isDailyFreqUnmet
+    || (enriched.effectiveDueToday ?? false)
+    || willFallBehindTomorrow;
 
   if (wouldBeDueToday) {
-    const isSuggested = enriched.taskType === 'frequency'
-      && enriched.targetPeriod !== 'day'
-      && !isDailyFreqUnmet;
+    // "Suggested" tasks are soft due-today (frequency pacing or weekly/monthly
+    // unmet target), not hard interval/scheduled due dates. Used by the UI to
+    // dim or label these slightly differently.
+    const isSuggested = isFrequency && (
+      willFallBehindTomorrow
+      || (enriched.targetPeriod !== 'day' && !isDailyFreqUnmet)
+    );
     return { bucket: 'due_today', isSuggested };
   }
+
+  // 5. Could do — optional reps for frequency tasks with target unmet.
+  //    Interval / scheduled tasks deliberately don't appear here: their hard
+  //    due dates already place them in overdue / due_today / due_soon. A
+  //    "later" interval task is just not actionable today, period.
+  const wouldBeCouldDo = isFrequency
+    && enriched.targetPeriod !== 'day'  // daily-freq lives in due_today via isDailyFreqUnmet
+    && (enriched.targetProgress ?? 0) < 100;
+
   if (wouldBeCouldDo) return { bucket: 'could_do', isSuggested: false };
-  if (wouldBeDueSoon) return { bucket: 'due_soon', isSuggested: false };
+
+  // 6. Due soon — interval / scheduled task approaching its due date.
+  if (enriched.status === 'due_soon'
+    && enriched.daysUntilDue !== undefined
+    && enriched.daysUntilDue > 0) {
+    return { bucket: 'due_soon', isSuggested: false };
+  }
 
   return { bucket: null, isSuggested: false };
 }
@@ -342,6 +356,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
       cadenceMagnitude: getCadenceMagnitude(task),
       todayBucket: 'paused' as const,
       isSuggestedToday: false,
+      pacing: null,
+      willBeBehindTomorrow: false,
       streak: rawStreak ? {
         currentStreak: rawStreak.currentStreak,
         longestStreak: rawStreak.longestStreak,
@@ -358,6 +374,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
   let completionsThisPeriod = 0;
   let targetProgress = 0;
   let recentCompletionDates: string[] = [];
+  let pacing: 'ahead' | 'on_pace' | 'behind' | null = null;
+  let willBeBehindTomorrow = false;
 
   // Handle frequency-based tasks differently
   if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
@@ -369,6 +387,33 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     completionsThisPeriod = allCompletions.length;
     recentCompletionDates = allCompletions.map(c => formatDateKey(c.completedAt, timezone));
     targetProgress = Math.min(100, (completionsThisPeriod / task.targetCount) * 100);
+
+    // Pacing: compare actual progress against how much of the period has
+    // elapsed. Computed only while target is unmet; once met, the task is
+    // hidden from Today regardless.
+    if (completionsThisPeriod < task.targetCount) {
+      const totalMs = end.getTime() - start.getTime();
+      const elapsedFrac = totalMs > 0
+        ? Math.max(0, Math.min(1, (now.getTime() - start.getTime()) / totalMs))
+        : 0;
+      const expectedPct = elapsedFrac * 100;
+      const delta = targetProgress - expectedPct;
+      if (delta >= 10) pacing = 'ahead';
+      else if (delta <= -10) pacing = 'behind';
+      else pacing = 'on_pace';
+
+      // willBeBehindTomorrow: would the user be behind by tomorrow if they
+      // do nothing today? Only meaningful for weekly/monthly — daily-period
+      // tasks reset every day and use isDailyFreqUnmet for the same nudge.
+      if (task.targetPeriod !== 'day' && pacing !== 'behind') {
+        const periodDays = task.targetPeriod === 'week' ? 7 : 30;
+        const elapsedTomorrow = Math.min(1, elapsedFrac + 1 / periodDays);
+        const expectedTomorrowPct = elapsedTomorrow * 100;
+        if (targetProgress - expectedTomorrowPct <= -10) {
+          willBeBehindTomorrow = true;
+        }
+      }
+    }
 
     const periodDays = task.targetPeriod === 'day' ? 1 : task.targetPeriod === 'week' ? 7 : 30;
     const spacing = periodDays / task.targetCount;
@@ -609,6 +654,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     completionsThisPeriod,
     targetProgress,
     daysUntilDue,
+    pacing,
+    willBeBehindTomorrow,
   });
 
   return {
@@ -632,6 +679,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     cadenceMagnitude: getCadenceMagnitude(task),
     todayBucket,
     isSuggestedToday,
+    pacing,
+    willBeBehindTomorrow,
     streak: streak ? {
       currentStreak: streak.currentStreak,
       longestStreak: streak.longestStreak,
