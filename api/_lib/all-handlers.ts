@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden, touchLastActive } from './auth.js';
-import { storage, enrichTask, enrichTasks, getPeriodsInRange, addInterval, getMaxGapDays, getScheduledOccurrences } from './task-utils.js';
+import { storage, enrichTask, enrichTasks, getPeriodsInRange, getPeriodBounds, addInterval, getMaxGapDays, getScheduledOccurrences } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
 import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
@@ -259,6 +259,138 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
     return res.status(200).json(Array.from(calendarMap.values()));
   } catch (error) {
     console.error('Error fetching enhanced calendar:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// planner-range
+// Natural per-day task occurrences across a date range. Replaces the
+// client-side scheduling math previously in WeekView. Assignments and
+// completions remain on their own endpoints; the client composes them.
+// ---------------------------------------------------------------------------
+
+type PlannerOccurrence = {
+  taskId: number;
+  source: 'scheduled' | 'interval' | 'frequency' | 'overdue';
+  isPseudoScheduled?: boolean;
+};
+
+type PlannerDay = {
+  date: string;
+  occurrences: PlannerOccurrence[];
+};
+
+export async function plannerRange(req: VercelRequest, res: VercelResponse) {
+  const user = await verifyAuth(req);
+  if (!user) return unauthorized(res);
+
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const startStr = req.query.start as string;
+    const endStr = req.query.end as string;
+    const profileIdStr = req.query.profileId as string | undefined;
+    const excludeDemo = req.query.excludeDemo === 'true';
+
+    if (!startStr || !endStr) {
+      return res.status(400).json({ error: 'Start and end dates required' });
+    }
+
+    const startDate = parseISO(startStr);
+    const endDate = parseISO(endStr);
+    const profileId = profileIdStr ? parseInt(profileIdStr, 10) : undefined;
+    const { timezone: tz, settings: userSettings } = await getUserSettings(user.id);
+
+    const allTasks = await storage.getTasks(user.id, profileId, excludeDemo);
+    const enrichedTasks = await enrichTasks(allTasks, user.id, tz, userSettings);
+
+    const days: PlannerDay[] = eachDayOfInterval({ start: startDate, end: endDate }).map(d => ({
+      date: formatInTimeZone(d, tz, 'yyyy-MM-dd'),
+      occurrences: [],
+    }));
+    const dayMap = new Map(days.map(d => [d.date, d]));
+
+    const nowLocal = toZonedTime(new Date(), tz);
+    const todayStart = startOfDay(nowLocal);
+    const todayStr = formatInTimeZone(todayStart, tz, 'yyyy-MM-dd');
+
+    for (const task of enrichedTasks) {
+      if (task.isArchived || task.parentTaskId) continue;
+      if (task.status === 'paused') continue;
+
+      let placedSomewhere = false;
+
+      if (task.taskType === 'scheduled') {
+        const occurrences = getScheduledOccurrences(task, startDate, endDate, tz);
+        for (const occ of occurrences) {
+          const dateStr = formatInTimeZone(occ, tz, 'yyyy-MM-dd');
+          const day = dayMap.get(dateStr);
+          if (day) {
+            day.occurrences.push({ taskId: task.id, source: 'scheduled' });
+            placedSomewhere = true;
+          }
+        }
+      } else if (task.taskType === 'interval' && task.intervalValue && task.intervalUnit) {
+        // Daily-interval tasks land on every visible day.
+        if (task.intervalUnit === 'days' && task.intervalValue === 1) {
+          for (const day of days) {
+            day.occurrences.push({ taskId: task.id, source: 'interval' });
+          }
+          placedSomewhere = true;
+        } else if (task.nextDue) {
+          let cursor = new Date(task.nextDue);
+          // Safety bound: never-completed tasks can have nextDue at epoch.
+          let safety = 0;
+          while (cursor <= endDate && safety++ < 1000) {
+            const dateStr = formatInTimeZone(cursor, tz, 'yyyy-MM-dd');
+            const day = dayMap.get(dateStr);
+            if (day) {
+              day.occurrences.push({ taskId: task.id, source: 'interval' });
+              placedSomewhere = true;
+            }
+            cursor = addInterval(cursor, task.intervalValue, task.intervalUnit);
+          }
+        }
+      } else if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
+        if (task.targetPeriod === 'day') {
+          for (const day of days) {
+            day.occurrences.push({ taskId: task.id, source: 'frequency' });
+          }
+          placedSomewhere = true;
+        } else if (task.targetPeriod === 'week' || task.targetPeriod === 'month') {
+          // Pseudo-schedule the remaining reps evenly across the current period.
+          const { start: periodStart } = getPeriodBounds(task.targetPeriod, tz);
+          const periodDays = task.targetPeriod === 'week' ? 7 : 30;
+          const spacing = periodDays / task.targetCount;
+          const done = task.completionsThisPeriod ?? 0;
+          for (let i = done; i < task.targetCount; i++) {
+            const pseudoDate = addDays(periodStart, (i + 0.5) * spacing);
+            const dateStr = formatInTimeZone(pseudoDate, tz, 'yyyy-MM-dd');
+            const day = dayMap.get(dateStr);
+            if (day) {
+              day.occurrences.push({ taskId: task.id, source: 'frequency', isPseudoScheduled: true });
+              placedSomewhere = true;
+            }
+          }
+        }
+      }
+
+      // Overdue fallback: place on today if today is in range and the task
+      // didn't naturally land anywhere this range.
+      if (!placedSomewhere && task.status === 'overdue') {
+        const today = dayMap.get(todayStr);
+        if (today) {
+          today.occurrences.push({ taskId: task.id, source: 'overdue' });
+        }
+      }
+    }
+
+    return res.status(200).json({ days });
+  } catch (error) {
+    console.error('Error building planner range:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
