@@ -15,7 +15,7 @@ export type User = { id: string; email?: string };
 import { db } from "./db.js";
 import { eq, desc, asc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount, isNotNull } from "drizzle-orm";
 import { startOfDay, differenceInDays } from "date-fns";
-import { toZonedTime, formatInTimeZone } from "date-fns-tz";
+import { toLocal, formatDateKey } from "./tz.js";
 import { getMaxGapDays } from "./task-utils.js";
 
 export interface IStorage {
@@ -1489,7 +1489,7 @@ export class DatabaseStorage implements IStorage {
     // for any user whose timezone differs from UTC.
     const groupedByDate = new Map<string, {id: number, title: string, completedAt: string}[]>();
     for (const row of result) {
-      const dateStr = formatInTimeZone(row.completion.completedAt, timezone, 'yyyy-MM-dd');
+      const dateStr = formatDateKey(row.completion.completedAt, timezone);
       if (!groupedByDate.has(dateStr)) {
         groupedByDate.set(dateStr, []);
       }
@@ -1616,10 +1616,10 @@ export class DatabaseStorage implements IStorage {
     let currentStreak = 1;
     let longestStreak = 1;
     let streakStartDate = allCompletions[0].completedAt;
-    let lastDay = startOfDay(toZonedTime(allCompletions[0].completedAt, timezone));
+    let lastDay = startOfDay(toLocal(allCompletions[0].completedAt, timezone));
 
     for (let i = 1; i < allCompletions.length; i++) {
-      const day = startOfDay(toZonedTime(allCompletions[i].completedAt, timezone));
+      const day = startOfDay(toLocal(allCompletions[i].completedAt, timezone));
       const gap = differenceInDays(day, lastDay);
 
       if (gap === 0) continue; // same calendar day
@@ -1785,8 +1785,8 @@ export class DatabaseStorage implements IStorage {
       ? new Date(task.resumedAt)
       : lastCompletion;
 
-    const completedDay = startOfDay(toZonedTime(completedAt, timezone));
-    const lastCompletionDay = effectiveBase ? startOfDay(toZonedTime(effectiveBase, timezone)) : null;
+    const completedDay = startOfDay(toLocal(completedAt, timezone));
+    const lastCompletionDay = effectiveBase ? startOfDay(toLocal(effectiveBase, timezone)) : null;
     const calendarDaysDiff = lastCompletionDay
       ? differenceInDays(completedDay, lastCompletionDay)
       : Infinity;

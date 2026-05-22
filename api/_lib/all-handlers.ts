@@ -1,9 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden, touchLastActive } from './auth.js';
-import { storage, enrichTask, enrichTasks, getPeriodsInRange, getPeriodBounds, addInterval, getMaxGapDays, getScheduledOccurrences } from './task-utils.js';
+import { storage, enrichTask, enrichTasks, addInterval, getMaxGapDays, getScheduledOccurrences } from './task-utils.js';
+import {
+  parseLocalDateKey,
+  endOfLocalDateKey,
+  formatDateKey,
+  localDaysInRange,
+  nowLocal as nowInTz,
+  toLocal,
+  getPeriodBounds,
+  getPeriodsInRange,
+} from './tz.js';
 import { supabaseAdmin } from './supabase.js';
-import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays } from 'date-fns';
-import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
+import { format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays } from 'date-fns';
 
 async function getUserSettings(userId: string): Promise<{ timezone: string; settings: any }> {
   try {
@@ -104,23 +113,26 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
       return res.status(400).json({ message: "Start and end dates required" });
     }
 
-    const startDate = parseISO(startStr);
-    const endDate = parseISO(endStr);
     const today = new Date();
     const profileId = profileIdStr ? parseInt(profileIdStr, 10) : undefined;
 
     const { timezone: tz, settings: userSettings } = await getUserSettings(userId);
+
+    // Range query params are local date keys in the user's tz. Materialize
+    // proper UTC instants for the day boundaries before any further math.
+    const rangeStart = parseLocalDateKey(startStr, tz);
+    const rangeEnd = endOfLocalDateKey(endStr, tz);
+
     // Pad the DB-side range by 7 days on each side: covers timezone offsets
     // *and* lets weekly frequency periods that straddle the visible range
     // be counted with all their completions present.
-    const fetchStart = subDays(startDate, 7);
-    const fetchEnd = addDays(endDate, 7);
+    const fetchStart = subDays(rangeStart, 7);
+    const fetchEnd = addDays(rangeEnd, 7);
     const completionsData = await storage.getCompletionsForCalendar(userId, fetchStart, fetchEnd, profileId, excludeDemo, tz);
 
     const allTasks = await storage.getTasks(userId, profileId, excludeDemo);
     const enrichedTasks = await enrichTasks(allTasks, userId, tz, userSettings);
 
-    const days = eachDayOfInterval({ start: startDate, end: endDate });
     const calendarMap = new Map<string, {
       date: string;
       completions: Array<{ id: number; title: string; completedAt: string; taskId: number }>;
@@ -128,10 +140,9 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
       dueSoon: Array<{ id: number; title: string; dueDate: string }>;
     }>();
 
-    days.forEach(day => {
-      const dateStr = formatInTimeZone(day, tz, 'yyyy-MM-dd');
-      calendarMap.set(dateStr, { date: dateStr, completions: [], missed: [], dueSoon: [] });
-    });
+    for (const date of localDaysInRange(startStr, endStr)) {
+      calendarMap.set(date, { date, completions: [], missed: [], dueSoon: [] });
+    }
 
     completionsData.forEach((dayData: any) => {
       const existing = calendarMap.get(dayData.date);
@@ -181,7 +192,7 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
           // dashboard "Could Do" section for the in-period nudge instead.
           if (periodEnd >= today) continue;
 
-          const periodEndStr = formatInTimeZone(periodEnd, tz, 'yyyy-MM-dd');
+          const periodEndStr = formatDateKey(periodEnd, tz);
           const entry = calendarMap.get(periodEndStr);
           if (entry) {
             for (let i = 0; i < shortfall; i++) {
@@ -201,10 +212,10 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
       if (task.taskType === 'scheduled') {
         if (task.status !== 'paused') {
           const taskCreatedAt = task.createdAt ? new Date(task.createdAt) : new Date(0);
-          const occurrences = getScheduledOccurrences(task, startDate, endDate, tz);
+          const occurrences = getScheduledOccurrences(task, rangeStart, rangeEnd, tz);
           for (const day of occurrences) {
             if (day < taskCreatedAt) continue;
-            const dateStr = formatInTimeZone(day, tz, 'yyyy-MM-dd');
+            const dateStr = formatDateKey(day, tz);
             const entry = calendarMap.get(dateStr);
             if (!entry) continue;
 
@@ -235,7 +246,7 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
           let cycleDue = addInterval(reference, task.intervalValue, task.intervalUnit);
           let safety = 0;
           while (isBefore(cycleDue, today) && !isSameDay(cycleDue, today) && safety++ < 2000) {
-            const cycleStr = formatInTimeZone(cycleDue, tz, 'yyyy-MM-dd');
+            const cycleStr = formatDateKey(cycleDue, tz);
             const entry = calendarMap.get(cycleStr);
             if (entry) {
               entry.missed.push({ id: task.id, title: task.title, dueDate: cycleDue.toISOString() });
@@ -247,7 +258,7 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
 
       // dueSoon: forward-looking nextDue placement (unchanged semantics).
       const nextDueDate = new Date(task.nextDue);
-      const nextDueDateStr = formatInTimeZone(nextDueDate, tz, 'yyyy-MM-dd');
+      const nextDueDateStr = formatDateKey(nextDueDate, tz);
       if ((isAfter(nextDueDate, today) || isSameDay(nextDueDate, today)) && task.status !== 'later') {
         const entry = calendarMap.get(nextDueDateStr);
         if (entry) {
@@ -299,23 +310,24 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Start and end dates required' });
     }
 
-    const startDate = parseISO(startStr);
-    const endDate = parseISO(endStr);
     const profileId = profileIdStr ? parseInt(profileIdStr, 10) : undefined;
     const { timezone: tz, settings: userSettings } = await getUserSettings(user.id);
+
+    // Range query params are local date keys in the user's tz. Cross the
+    // boundary explicitly so the underlying UTC instants are correct.
+    const rangeStart = parseLocalDateKey(startStr, tz);
+    const rangeEnd = endOfLocalDateKey(endStr, tz);
 
     const allTasks = await storage.getTasks(user.id, profileId, excludeDemo);
     const enrichedTasks = await enrichTasks(allTasks, user.id, tz, userSettings);
 
-    const days: PlannerDay[] = eachDayOfInterval({ start: startDate, end: endDate }).map(d => ({
-      date: formatInTimeZone(d, tz, 'yyyy-MM-dd'),
+    const days: PlannerDay[] = localDaysInRange(startStr, endStr).map(date => ({
+      date,
       occurrences: [],
     }));
     const dayMap = new Map(days.map(d => [d.date, d]));
 
-    const nowLocal = toZonedTime(new Date(), tz);
-    const todayStart = startOfDay(nowLocal);
-    const todayStr = formatInTimeZone(todayStart, tz, 'yyyy-MM-dd');
+    const todayStr = formatDateKey(new Date(), tz);
 
     for (const task of enrichedTasks) {
       if (task.isArchived || task.parentTaskId) continue;
@@ -324,9 +336,9 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
       let placedSomewhere = false;
 
       if (task.taskType === 'scheduled') {
-        const occurrences = getScheduledOccurrences(task, startDate, endDate, tz);
+        const occurrences = getScheduledOccurrences(task, rangeStart, rangeEnd, tz);
         for (const occ of occurrences) {
-          const dateStr = formatInTimeZone(occ, tz, 'yyyy-MM-dd');
+          const dateStr = formatDateKey(occ, tz);
           const day = dayMap.get(dateStr);
           if (day) {
             day.occurrences.push({ taskId: task.id, source: 'scheduled' });
@@ -344,8 +356,8 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
           let cursor = new Date(task.nextDue);
           // Safety bound: never-completed tasks can have nextDue at epoch.
           let safety = 0;
-          while (cursor <= endDate && safety++ < 1000) {
-            const dateStr = formatInTimeZone(cursor, tz, 'yyyy-MM-dd');
+          while (cursor <= rangeEnd && safety++ < 1000) {
+            const dateStr = formatDateKey(cursor, tz);
             const day = dayMap.get(dateStr);
             if (day) {
               day.occurrences.push({ taskId: task.id, source: 'interval' });
@@ -368,7 +380,7 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
           const done = task.completionsThisPeriod ?? 0;
           for (let i = done; i < task.targetCount; i++) {
             const pseudoDate = addDays(periodStart, (i + 0.5) * spacing);
-            const dateStr = formatInTimeZone(pseudoDate, tz, 'yyyy-MM-dd');
+            const dateStr = formatDateKey(pseudoDate, tz);
             const day = dayMap.get(dateStr);
             if (day) {
               day.occurrences.push({ taskId: task.id, source: 'frequency', isPseudoScheduled: true });
@@ -550,13 +562,14 @@ export async function completionsCalendar(req: VercelRequest, res: VercelRespons
       return res.status(400).json({ message: 'Start and end dates required' });
     }
 
-    const startDate = parseISO(startStr);
-    const endDate = parseISO(endStr);
     const { timezone: tz } = await getUserSettings(user.id);
-    // Pad the range by 1 day on each side to cover timezone offsets — the
-    // storage layer buckets by user's local date.
-    const fetchStart = subDays(startDate, 1);
-    const fetchEnd = addDays(endDate, 1);
+    // Range query params are local date keys. Cross the tz boundary first,
+    // then pad ±1 day so the storage layer (which buckets by local date) has
+    // enough headroom for completions on edge days.
+    const rangeStart = parseLocalDateKey(startStr, tz);
+    const rangeEnd = endOfLocalDateKey(endStr, tz);
+    const fetchStart = subDays(rangeStart, 1);
+    const fetchEnd = addDays(rangeEnd, 1);
     const calendarData = await storage.getCompletionsForCalendar(user.id, fetchStart, fetchEnd, undefined, false, tz);
     return res.status(200).json(calendarData);
   } catch (error) {
@@ -984,7 +997,7 @@ async function streaksIndexHandleGet(req: VercelRequest, res: VercelResponse, us
     const taskMap = await storage.getTasksBatch(streakTaskIds);
 
     const tz = await getUserTimezone(userId);
-    const nowLocal = startOfDay(toZonedTime(new Date(), tz));
+    const todayLocal = startOfDay(nowInTz(tz));
     const enrichedStreaks = allStreaks.map(streak => {
       const task = taskMap.get(streak.taskId);
       let effectiveCurrentStreak = streak.currentStreak;
@@ -995,8 +1008,8 @@ async function streaksIndexHandleGet(req: VercelRequest, res: VercelResponse, us
         const effectiveBase = task.resumedAt && new Date(task.resumedAt) > streak.lastCompletedAt
           ? new Date(task.resumedAt)
           : streak.lastCompletedAt;
-        const lastLocal = startOfDay(toZonedTime(effectiveBase, tz));
-        const daysSince = differenceInDays(nowLocal, lastLocal);
+        const lastLocal = startOfDay(toLocal(effectiveBase, tz));
+        const daysSince = differenceInDays(todayLocal, lastLocal);
         if (daysSince > graceWindow) {
           effectiveCurrentStreak = 0;
         }
