@@ -1,19 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuth, verifyAdmin, isAdmin, unauthorized, forbidden, touchLastActive } from './auth.js';
-import { storage, enrichTask, enrichTasks, getPeriodsInRange } from './task-utils.js';
+import { storage, enrichTask, enrichTasks, getPeriodsInRange, addInterval, getMaxGapDays, getScheduledOccurrences } from './task-utils.js';
 import { supabaseAdmin } from './supabase.js';
-import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays, addWeeks, addMonths, addYears, getDate, getDay, lastDayOfMonth } from 'date-fns';
+import { parseISO, eachDayOfInterval, format, isBefore, isAfter, isSameDay, startOfDay, differenceInDays, subDays, addDays } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
-
-function addInterval(date: Date, value: number, unit: string): Date {
-  switch (unit) {
-    case 'days': return addDays(date, value);
-    case 'weeks': return addWeeks(date, value);
-    case 'months': return addMonths(date, value);
-    case 'years': return addYears(date, value);
-    default: return addDays(date, value);
-  }
-}
 
 async function getUserSettings(userId: string): Promise<{ timezone: string; settings: any }> {
   try {
@@ -211,37 +201,20 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
       if (task.taskType === 'scheduled') {
         if (task.status !== 'paused') {
           const taskCreatedAt = task.createdAt ? new Date(task.createdAt) : new Date(0);
-          const daysOfWeek = task.scheduledDaysOfWeek
-            ? task.scheduledDaysOfWeek.split(',').map(Number).filter((n: number) => Number.isInteger(n) && n >= 0 && n <= 6)
-            : [];
-          const daysOfMonth = task.scheduledDaysOfMonth
-            ? task.scheduledDaysOfMonth.split(',').map(Number).filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 31)
-            : [];
+          const occurrences = getScheduledOccurrences(task, startDate, endDate, tz);
+          for (const day of occurrences) {
+            if (day < taskCreatedAt) continue;
+            const dateStr = formatInTimeZone(day, tz, 'yyyy-MM-dd');
+            const entry = calendarMap.get(dateStr);
+            if (!entry) continue;
 
-          if (daysOfWeek.length > 0 || daysOfMonth.length > 0) {
-            for (const day of days) {
-              if (day < taskCreatedAt) continue;
-              const dayLocal = toZonedTime(day, tz);
-              const dow = getDay(dayLocal);
-              const dom = getDate(dayLocal);
-              const lastDom = getDate(lastDayOfMonth(dayLocal));
+            const completedThisDay = entry.completions.some(c => c.taskId === task.id);
+            if (completedThisDay) continue;
 
-              const matchesDow = daysOfWeek.includes(dow);
-              const matchesDom = daysOfMonth.some((d: number) => d === dom || (d > lastDom && dom === lastDom));
-              if (!matchesDow && !matchesDom) continue;
-
-              const dateStr = formatInTimeZone(day, tz, 'yyyy-MM-dd');
-              const entry = calendarMap.get(dateStr);
-              if (!entry) continue;
-
-              const completedThisDay = entry.completions.some(c => c.taskId === task.id);
-              if (completedThisDay) continue;
-
-              if (isBefore(day, today) && !isSameDay(day, today)) {
-                entry.missed.push({ id: task.id, title: task.title, dueDate: day.toISOString() });
-              } else if (task.status !== 'later') {
-                entry.dueSoon.push({ id: task.id, title: task.title, dueDate: day.toISOString() });
-              }
+            if (isBefore(day, today) && !isSameDay(day, today)) {
+              entry.missed.push({ id: task.id, title: task.title, dueDate: day.toISOString() });
+            } else if (task.status !== 'later') {
+              entry.dueSoon.push({ id: task.id, title: task.title, dueDate: day.toISOString() });
             }
           }
         }
@@ -885,7 +858,7 @@ async function streaksIndexHandleGet(req: VercelRequest, res: VercelResponse, us
       let effectiveCurrentStreak = streak.currentStreak;
 
       if (task && streak.currentStreak > 0 && streak.lastCompletedAt) {
-        const intervalDays = storage.getIntervalInDays(task);
+        const intervalDays = getMaxGapDays(task);
         const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
         const effectiveBase = task.resumedAt && new Date(task.resumedAt) > streak.lastCompletedAt
           ? new Date(task.resumedAt)
