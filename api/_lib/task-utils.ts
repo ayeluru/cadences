@@ -234,7 +234,12 @@ export function getTodayBucket(enriched: any): {
     && !!enriched.targetCount
     && (enriched.completionsThisPeriod ?? 0) < enriched.targetCount;
 
-  if (enriched.completedToday && enriched.taskType === 'frequency' && !isDailyFreqUnmet) {
+  // Anything completed today goes into completed_today — the user took
+  // action today and deserves to see it acknowledged on the dashboard
+  // regardless of how far out the *next* occurrence sits. Exception: a
+  // daily-frequency task with an unmet target falls through to due_today
+  // so the user is reminded about the remaining reps.
+  if (enriched.completedToday && !isDailyFreqUnmet) {
     return { bucket: 'completed_today', isSuggested: false };
   }
 
@@ -257,15 +262,6 @@ export function getTodayBucket(enriched: any): {
     && enriched.status === 'due_soon'
     && enriched.daysUntilDue !== undefined
     && enriched.daysUntilDue > 0;
-
-  const isRelevantToToday = wouldBeDueToday || wouldBeCouldDo || wouldBeDueSoon;
-
-  if (enriched.completedToday && isRelevantToToday && !isDailyFreqUnmet) {
-    return { bucket: 'completed_today', isSuggested: false };
-  }
-  if (enriched.completedToday && !isDailyFreqUnmet) {
-    return { bucket: null, isSuggested: false };
-  }
 
   if (wouldBeDueToday) {
     const isSuggested = enriched.taskType === 'frequency'
