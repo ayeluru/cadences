@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.15
+
+- **What's New popup now actually opens on a version bump**. Previously a pulsing dot appeared next to the sidebar version number, but the dialog itself never auto-opened — the auto-open logic was dead code because `false ?? autoOpen` always short-circuits to `false`. The open state now lives in `AppLayout` as the single source of truth, lazy-initialized from `hasUnseenNotes()`, so the dialog appears on first render after each new deploy
+- **Release notes dialog leads with the current version**. The dialog now shows the latest version's changes prominently and tucks previous versions behind a "Show older versions (N)" collapsible. Clicking the sidebar version button still opens the same dialog any time, and the older-versions section gives you the full history one click away
+
 ## 2.4.14
 
 - **Fixed: WeekView Saturday column was always empty on production**. The new `/api/planner/range` endpoint shipped in 2.4.13 silently dropped the last day of the visible range whenever the server's timezone differed from the user's (i.e. always on Vercel, where the server runs in UTC). The root cause was ad-hoc composition of `parseISO("yyyy-MM-dd")` + `eachDayOfInterval` + `formatInTimeZone` across several handlers — each individually correct, but their composition was timezone-poisoned. The bug never reproduced locally because the dev API server runs in the user's own timezone
