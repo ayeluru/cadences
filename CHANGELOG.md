@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.14
+
+- **Fixed: WeekView Saturday column was always empty on production**. The new `/api/planner/range` endpoint shipped in 2.4.13 silently dropped the last day of the visible range whenever the server's timezone differed from the user's (i.e. always on Vercel, where the server runs in UTC). The root cause was ad-hoc composition of `parseISO("yyyy-MM-dd")` + `eachDayOfInterval` + `formatInTimeZone` across several handlers — each individually correct, but their composition was timezone-poisoned. The bug never reproduced locally because the dev API server runs in the user's own timezone
+- **Isolated server-side timezone primitives in a new `api/_lib/tz.ts` boundary module**. Two value types are now explicit: UTC instants and local date keys ("yyyy-MM-dd" anchored to the user's tz). Helpers (`parseLocalDateKey`, `endOfLocalDateKey`, `formatDateKey`, `localDaysInRange`, `toLocal` / `toUTC`, `nowLocal`, `startOfLocalDay` / `endOfLocalDay`) are the only legal way to cross between them. Every handler that previously stitched these together inline — `plannerRange`, `calendarEnhanced`, the assignments-range endpoint, streaks grace-window math in `streaksIndex`, completion bucketing and streak gap math in `storage.ts`, and the assignment-driven `nextDue` override in `enrichTask` — now goes through the module
+- **Lint guard prevents the pattern from coming back**: `scripts/check-tz-boundary.sh` bans `parseISO` / `eachDayOfInterval` / `formatInTimeZone` / `toZonedTime` / `fromZonedTime` outside `api/_lib/tz.ts`. Wired into `npm run check`, so future handlers can't reintroduce ad-hoc timezone handling
+
 ## 2.4.13
 
 - **Centralized task scheduling logic**: all the math behind how interval, frequency, and scheduled tasks decide what's due when now lives in one place (`api/_lib/task-utils.ts`). Previously the same concepts were re-implemented across the server enricher, the storage layer, the calendar handler, the weekly planner, and the Daily/Weekly/Monthly/Yearly pages — with subtle disagreements between them. The refactor lands as four commits and ships several behavior fixes that fall out of unifying the implementations
