@@ -16,6 +16,7 @@ import { db } from "./db.js";
 import { eq, desc, asc, sql, and, gte, lte, inArray, notInArray, or, count as drizzleCount, isNotNull } from "drizzle-orm";
 import { startOfDay, differenceInDays } from "date-fns";
 import { toZonedTime, formatInTimeZone } from "date-fns-tz";
+import { getMaxGapDays } from "./task-utils.js";
 
 export interface IStorage {
   // Users
@@ -1609,7 +1610,7 @@ export class DatabaseStorage implements IStorage {
       return;
     }
 
-    const intervalDays = this.getIntervalInDays(task);
+    const intervalDays = getMaxGapDays(task);
     const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
 
     let currentStreak = 1;
@@ -1761,8 +1762,8 @@ export class DatabaseStorage implements IStorage {
 
   async updateTaskStreak(taskId: number, userId: string, task: Task, completedAt: Date, timezone: string = 'UTC'): Promise<TaskStreak> {
     let streak = await this.getTaskStreak(taskId, userId);
-    
-    const intervalDays = this.getIntervalInDays(task);
+
+    const intervalDays = getMaxGapDays(task);
     
     if (!streak) {
       const [newStreak] = await db.insert(taskStreaks).values({
@@ -1833,78 +1834,6 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return updatedStreak;
-  }
-
-  getIntervalInDays(task: Task): number {
-    if (task.taskType === 'frequency') {
-      // Per-completion interval: e.g. 3x/week → 7/3 ≈ 2.3 days between completions
-      const periodDays = task.targetPeriod === 'week' ? 7 : task.targetPeriod === 'month' ? 30 : 365;
-      return periodDays / (task.targetCount || 1);
-    }
-
-    if (task.taskType === 'scheduled') {
-      return this.getScheduledIntervalDays(task);
-    }
-
-    // Interval-based tasks
-    const value = task.intervalValue || 1;
-    const unit = task.intervalUnit || 'days';
-
-    switch (unit) {
-      case 'days': return value;
-      case 'weeks': return value * 7;
-      case 'months': return value * 30;
-      case 'years': return value * 365;
-      default: return value;
-    }
-  }
-
-  // Calculate the max gap between consecutive scheduled occurrences,
-  // so the grace window accommodates the natural schedule rhythm.
-  private getScheduledIntervalDays(task: Task): number {
-    if (task.scheduledDaysOfWeek) {
-      const days = task.scheduledDaysOfWeek.split(',')
-        .map(Number)
-        .filter(d => d >= 0 && d <= 6)
-        .sort((a, b) => a - b);
-      if (days.length === 0) return 1;
-      if (days.length === 1) return 7;
-
-      let maxGap = 0;
-      for (let i = 1; i < days.length; i++) {
-        maxGap = Math.max(maxGap, days[i] - days[i - 1]);
-      }
-      // Wrap-around gap (e.g., Fri→Mon = 7 - 5 + 1 = 3)
-      maxGap = Math.max(maxGap, 7 - days[days.length - 1] + days[0]);
-      return maxGap;
-    }
-
-    if (task.scheduledDaysOfMonth) {
-      const rawDays = task.scheduledDaysOfMonth.split(',')
-        .map(d => parseInt(d.trim()))
-        .filter(d => !isNaN(d));
-      // Resolve negative days relative to a 30-day month for gap estimation
-      const days = rawDays
-        .map(d => d < 0 ? 31 + d : d)
-        .filter(d => d >= 1 && d <= 31)
-        .sort((a, b) => a - b);
-      if (days.length === 0) return 1;
-      if (days.length === 1) return 30;
-
-      let maxGap = 0;
-      for (let i = 1; i < days.length; i++) {
-        maxGap = Math.max(maxGap, days[i] - days[i - 1]);
-      }
-      maxGap = Math.max(maxGap, 30 - days[days.length - 1] + days[0]);
-      return maxGap;
-    }
-
-    if (task.scheduledDates) {
-      // One-off specific dates — no recurring interval for streaks
-      return 365;
-    }
-
-    return 1;
   }
 
   // Task Migration methods

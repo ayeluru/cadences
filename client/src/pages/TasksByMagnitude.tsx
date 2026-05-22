@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, SlidersHorizontal, Calendar, LayoutGrid, List, Tag as TagIcon, X, Folder } from "lucide-react";
 import { useState, useMemo } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
-import { TaskWithDetails } from "@shared/schema";
+import { TaskWithDetails, CadenceMagnitude } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
@@ -18,7 +18,7 @@ import {
 import { useCategories } from "@/hooks/use-categories";
 import { useTags } from "@/hooks/use-tags";
 import { motion } from "framer-motion";
-import { filterTasksByCadence, getCadenceLabel, getCadenceDescription, type CadenceMagnitude } from "@/lib/task-utils";
+import { getCadenceLabel, getCadenceDescription } from "@/lib/task-utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const UNCATEGORIZED_FILTER = -1;
@@ -69,7 +69,7 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
   // All tasks scoped to this magnitude (before org filters)
   const magnitudeTasks = useMemo(() => {
     if (!allTasks) return [];
-    return filterTasksByCadence(allTasks, magnitude);
+    return allTasks.filter(t => t.cadenceMagnitude === magnitude);
   }, [allTasks, magnitude]);
 
   // Tasks in this magnitude filtered by tags only (for category overlap counts)
@@ -87,7 +87,7 @@ export function TasksByMagnitude({ magnitude }: TasksByMagnitudeProps) {
     return magnitudeTasks.filter(t => t.categoryId === filterCategory);
   }, [magnitudeTasks, filterCategory]);
 
-  const tasks = filteredByOrg ? filterTasksByCadence(filteredByOrg, magnitude) : [];
+  const tasks = filteredByOrg ? filteredByOrg.filter(t => t.cadenceMagnitude === magnitude) : [];
 
   if (tasksLoading) {
     return (

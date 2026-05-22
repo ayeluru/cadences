@@ -1,6 +1,6 @@
-import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO } from 'date-fns';
-import { toZonedTime, fromZonedTime } from 'date-fns-tz';
-import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion } from '../../shared/schema.js';
+import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO, getDay, getDate, lastDayOfMonth } from 'date-fns';
+import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
+import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion, CadenceMagnitude, TodayBucket } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
 
 const storage = new DatabaseStorage();
@@ -91,27 +91,252 @@ export function getPeriodsInRange(
   return periods;
 }
 
-// Calculate cadence duration in days
+// Advance a date by an interval. Shared by enrichTask and calendarEnhanced.
+export function addInterval(date: Date, value: number, unit: string): Date {
+  switch (unit) {
+    case 'days': return addDays(date, value);
+    case 'weeks': return addWeeks(date, value);
+    case 'months': return addMonths(date, value);
+    case 'years': return addYears(date, value);
+    default: return addDays(date, value);
+  }
+}
+
+function periodToDays(period: string | null | undefined): number {
+  switch (period) {
+    case 'day': return 1;
+    case 'week': return 7;
+    case 'month': return 30;
+    case 'year': return 365;
+    default: return 1;
+  }
+}
+
+function intervalUnitToDays(unit: string | null | undefined, value: number): number {
+  switch (unit) {
+    case 'days': return value;
+    case 'weeks': return value * 7;
+    case 'months': return value * 30;
+    case 'years': return value * 365;
+    default: return value;
+  }
+}
+
+// Average days between occurrences. Used for "due soon" thresholds.
 export function getCadenceDays(task: any): number {
   if (task.taskType === 'frequency' && task.targetPeriod) {
-    const periodDays = task.targetPeriod === 'day' ? 1 : task.targetPeriod === 'week' ? 7 : task.targetPeriod === 'month' ? 30 : 365;
-    return periodDays / (task.targetCount || 1);
-  } else if (task.intervalValue && task.intervalUnit) {
-    switch (task.intervalUnit) {
-      case 'days': return task.intervalValue;
-      case 'weeks': return task.intervalValue * 7;
-      case 'months': return task.intervalValue * 30;
-      case 'years': return task.intervalValue * 365;
-      default: return task.intervalValue;
+    return periodToDays(task.targetPeriod) / (task.targetCount || 1);
+  }
+  if (task.taskType === 'scheduled') {
+    if (task.scheduledDaysOfWeek) {
+      const days = task.scheduledDaysOfWeek.split(',').filter(Boolean).length;
+      return days > 0 ? 7 / days : 7;
     }
+    if (task.scheduledDaysOfMonth) {
+      const days = task.scheduledDaysOfMonth.split(',').filter(Boolean).length;
+      return days > 0 ? 30 / days : 30;
+    }
+    if (task.scheduledDates) return 365;
+    return 1;
+  }
+  if (task.intervalValue && task.intervalUnit) {
+    return intervalUnitToDays(task.intervalUnit, task.intervalValue);
   }
   return 1;
+}
+
+// Max gap between consecutive occurrences. Used for streak grace windows.
+// For interval/frequency this equals the cadence; for scheduled tasks the
+// max gap can exceed the average (e.g. M/W/F: avg 2.3, max gap 3).
+export function getMaxGapDays(task: any): number {
+  if (task.taskType === 'frequency' && task.targetPeriod) {
+    return periodToDays(task.targetPeriod) / (task.targetCount || 1);
+  }
+  if (task.taskType === 'scheduled') {
+    if (task.scheduledDaysOfWeek) {
+      const days = task.scheduledDaysOfWeek.split(',')
+        .map(Number)
+        .filter((d: number) => d >= 0 && d <= 6)
+        .sort((a: number, b: number) => a - b);
+      if (days.length === 0) return 1;
+      if (days.length === 1) return 7;
+      let maxGap = 0;
+      for (let i = 1; i < days.length; i++) {
+        maxGap = Math.max(maxGap, days[i] - days[i - 1]);
+      }
+      return Math.max(maxGap, 7 - days[days.length - 1] + days[0]);
+    }
+    if (task.scheduledDaysOfMonth) {
+      // Negative day-of-month values are resolved against a nominal 30-day
+      // month for gap estimation — exact month length doesn't matter for the
+      // grace window heuristic.
+      const days = task.scheduledDaysOfMonth.split(',')
+        .map((d: string) => parseInt(d.trim()))
+        .filter((d: number) => !isNaN(d))
+        .map((d: number) => d < 0 ? 31 + d : d)
+        .filter((d: number) => d >= 1 && d <= 31)
+        .sort((a: number, b: number) => a - b);
+      if (days.length === 0) return 1;
+      if (days.length === 1) return 30;
+      let maxGap = 0;
+      for (let i = 1; i < days.length; i++) {
+        maxGap = Math.max(maxGap, days[i] - days[i - 1]);
+      }
+      return Math.max(maxGap, 30 - days[days.length - 1] + days[0]);
+    }
+    if (task.scheduledDates) return 365;
+    return 1;
+  }
+  if (task.intervalValue && task.intervalUnit) {
+    return intervalUnitToDays(task.intervalUnit, task.intervalValue);
+  }
+  return 1;
+}
+
+// Enumerate scheduled occurrences in [startDate, endDate] in the user's
+// local timezone. Handles scheduledDaysOfWeek, scheduledDaysOfMonth, and
+// scheduledDates. scheduledDaysOfMonth supports both negative indices
+// (-1 = last day of month) and clamping out-of-range positives to the
+// last day (e.g. "31" matches Feb 28).
+export function getScheduledOccurrences(
+  task: any,
+  startDate: Date,
+  endDate: Date,
+  timezone: string = 'UTC',
+): Date[] {
+  if (task.taskType !== 'scheduled') return [];
+
+  const daysOfWeek: number[] = task.scheduledDaysOfWeek
+    ? task.scheduledDaysOfWeek.split(',').map(Number).filter((n: number) => Number.isInteger(n) && n >= 0 && n <= 6)
+    : [];
+  const rawDaysOfMonth: number[] = task.scheduledDaysOfMonth
+    ? task.scheduledDaysOfMonth.split(',').map(Number).filter((n: number) => Number.isInteger(n) && ((n >= 1 && n <= 31) || (n >= -31 && n <= -1)))
+    : [];
+  const specificDates: string[] = task.scheduledDates
+    ? task.scheduledDates.split(',').map((d: string) => d.trim()).filter(Boolean)
+    : [];
+
+  const occurrences: Date[] = [];
+  const seen = new Set<string>();
+
+  const cursor = new Date(startDate.getTime());
+  while (cursor <= endDate) {
+    const dayLocal = toLocal(cursor, timezone);
+    const dow = getDay(dayLocal);
+    const dom = getDate(dayLocal);
+    const lastDom = getDate(lastDayOfMonth(dayLocal));
+
+    const matchesDow = daysOfWeek.length > 0 && daysOfWeek.includes(dow);
+    const matchesDom = rawDaysOfMonth.length > 0 && rawDaysOfMonth.some((d: number) => {
+      if (d < 0) return lastDom + 1 + d === dom;
+      // Positive values clamp to last day when the month is shorter
+      return d === dom || (d > lastDom && dom === lastDom);
+    });
+
+    if (matchesDow || matchesDom) {
+      const key = formatInTimeZone(cursor, timezone, 'yyyy-MM-dd');
+      if (!seen.has(key)) {
+        seen.add(key);
+        occurrences.push(new Date(cursor.getTime()));
+      }
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  for (const dateStr of specificDates) {
+    const parsed = new Date(dateStr + 'T00:00:00');
+    if (isNaN(parsed.getTime())) continue;
+    if (parsed < startDate || parsed > endDate) continue;
+    const key = formatInTimeZone(parsed, timezone, 'yyyy-MM-dd');
+    if (!seen.has(key)) {
+      seen.add(key);
+      occurrences.push(parsed);
+    }
+  }
+
+  occurrences.sort((a, b) => a.getTime() - b.getTime());
+  return occurrences;
 }
 
 // Calculate "due soon" threshold as 20% of cadence, clamped between 1 and 14 days
 export function getDueSoonThreshold(cadenceDays: number): number {
   const threshold = cadenceDays * 0.2;
   return Math.max(1, Math.min(14, Math.ceil(threshold)));
+}
+
+// Bucket a task by its average cadence so UI pages (Daily/Weekly/Monthly/Yearly)
+// can group consistently across all three task types.
+export function getCadenceMagnitude(task: any): CadenceMagnitude {
+  const cadence = getCadenceDays(task);
+  if (cadence <= 6) return 'daily';
+  if (cadence <= 13) return 'weekly';
+  if (cadence <= 89) return 'monthly';
+  return 'yearly';
+}
+
+// Place an enriched task into one of the Dashboard "Today" buckets.
+// Operates on already-enriched fields (status, effectiveDueToday, completedToday,
+// targetProgress, completionsThisPeriod, daysUntilDue). Returns null when the
+// task should not appear in the Today view at all.
+export function getTodayBucket(enriched: any): {
+  bucket: TodayBucket | null;
+  isSuggested: boolean;
+} {
+  if (enriched.effectivelyPaused || enriched.status === 'paused') {
+    return { bucket: 'paused', isSuggested: false };
+  }
+  if (enriched.status === 'never_done') {
+    return { bucket: 'never_done', isSuggested: false };
+  }
+
+  const isDailyFreqUnmet = enriched.taskType === 'frequency'
+    && enriched.targetPeriod === 'day'
+    && !!enriched.targetCount
+    && (enriched.completionsThisPeriod ?? 0) < enriched.targetCount;
+
+  if (enriched.completedToday && enriched.taskType === 'frequency' && !isDailyFreqUnmet) {
+    return { bucket: 'completed_today', isSuggested: false };
+  }
+
+  const wouldBeDueToday = isDailyFreqUnmet || (enriched.effectiveDueToday ?? false);
+  const frequencyGoalMet = enriched.taskType === 'frequency'
+    && (enriched.targetProgress ?? 0) >= 100;
+
+  const wouldBeCouldDo = !wouldBeDueToday && (
+    (enriched.taskType === 'frequency'
+      && enriched.targetPeriod !== 'day'
+      && (enriched.targetProgress ?? 0) < 100)
+    || (!frequencyGoalMet
+      && enriched.status === 'later'
+      && enriched.daysUntilDue !== undefined
+      && enriched.daysUntilDue > 0
+      && enriched.daysUntilDue <= 7)
+  );
+
+  const wouldBeDueSoon = !wouldBeDueToday && !wouldBeCouldDo
+    && enriched.status === 'due_soon'
+    && enriched.daysUntilDue !== undefined
+    && enriched.daysUntilDue > 0;
+
+  const isRelevantToToday = wouldBeDueToday || wouldBeCouldDo || wouldBeDueSoon;
+
+  if (enriched.completedToday && isRelevantToToday && !isDailyFreqUnmet) {
+    return { bucket: 'completed_today', isSuggested: false };
+  }
+  if (enriched.completedToday && !isDailyFreqUnmet) {
+    return { bucket: null, isSuggested: false };
+  }
+
+  if (wouldBeDueToday) {
+    const isSuggested = enriched.taskType === 'frequency'
+      && enriched.targetPeriod !== 'day'
+      && !isDailyFreqUnmet;
+    return { bucket: 'due_today', isSuggested };
+  }
+  if (wouldBeCouldDo) return { bucket: 'could_do', isSuggested: false };
+  if (wouldBeDueSoon) return { bucket: 'due_soon', isSuggested: false };
+
+  return { bucket: null, isSuggested: false };
 }
 
 // Filter completions respecting refractory period
@@ -170,6 +395,9 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
       effectiveDueToday: false,
       effectivelyPaused: true,
       pausedUntilDate,
+      cadenceMagnitude: getCadenceMagnitude(task),
+      todayBucket: 'paused' as const,
+      isSuggestedToday: false,
       streak: rawStreak ? {
         currentStreak: rawStreak.currentStreak,
         longestStreak: rawStreak.longestStreak,
@@ -298,22 +526,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
   } else if (task.intervalValue && task.intervalUnit) {
     if (taskForCalc.lastCompletedAt) {
       const lastCompleted = new Date(taskForCalc.lastCompletedAt);
-      switch (task.intervalUnit) {
-        case 'days':
-          nextDue = addDays(lastCompleted, task.intervalValue);
-          break;
-        case 'weeks':
-          nextDue = addWeeks(lastCompleted, task.intervalValue);
-          break;
-        case 'months':
-          nextDue = addMonths(lastCompleted, task.intervalValue);
-          break;
-        case 'years':
-          nextDue = addYears(lastCompleted, task.intervalValue);
-          break;
-        default:
-          nextDue = addDays(lastCompleted, task.intervalValue);
-      }
+      nextDue = addInterval(lastCompleted, task.intervalValue, task.intervalUnit);
       // Snap to end-of-day in user's timezone so tasks stay "due today" until the day ends
       const nextDueLocal = toLocal(nextDue, timezone);
       nextDue = toUTC(endOfDay(nextDueLocal), timezone);
@@ -395,7 +608,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
   const rawStreak = batch ? batch.streaksMap.get(task.id) : await storage.getTaskStreak(task.id, userId);
   let streak = rawStreak;
   if (streak && streak.currentStreak > 0 && streak.lastCompletedAt) {
-    const intervalDays = storage.getIntervalInDays(task);
+    const intervalDays = getMaxGapDays(task);
     const graceWindow = Math.max(Math.ceil(intervalDays * 1.5), Math.ceil(intervalDays) + 1);
     const nowLocalForStreak = toLocal(now, timezone);
     const effectiveStreakBase = task.resumedAt && new Date(task.resumedAt) > streak.lastCompletedAt
@@ -443,6 +656,19 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     (task.taskType === 'scheduled' && task.scheduledDaysOfWeek?.split(',').map(Number).includes(today.getDay()));
   const effectiveDueToday = isAssignedToday || (!isMovedFromToday && naturallyDueToday);
 
+  const { bucket: todayBucket, isSuggested: isSuggestedToday } = getTodayBucket({
+    taskType: task.taskType,
+    targetPeriod: task.targetPeriod,
+    targetCount: task.targetCount,
+    status,
+    effectivelyPaused: false,
+    effectiveDueToday,
+    completedToday,
+    completionsThisPeriod,
+    targetProgress,
+    daysUntilDue,
+  });
+
   return {
     ...task,
     category,
@@ -461,6 +687,9 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     effectivelyPaused: false,
     pausedUntilDate: null,
     recentCompletionDates: recentCompletionDates.length > 0 ? recentCompletionDates : undefined,
+    cadenceMagnitude: getCadenceMagnitude(task),
+    todayBucket,
+    isSuggestedToday,
     streak: streak ? {
       currentStreak: streak.currentStreak,
       longestStreak: streak.longestStreak,

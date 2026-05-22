@@ -99,7 +99,8 @@ export default function Dashboard() {
     setFilterTagIds([]);
   };
 
-  // Today view: 5 sections — uses server-computed effectiveDueToday
+  // Today view: bucketing is computed server-side as task.todayBucket.
+  // This pass just groups by that field and sorts each bucket by urgency.
   const todayTasks = useMemo(() => {
     const dueToday: TaskWithDetails[] = [];
     const couldDo: TaskWithDetails[] = [];
@@ -110,57 +111,14 @@ export default function Dashboard() {
     const suggestedIds = new Set<number>();
 
     filteredTasks.forEach(task => {
-      if (task.effectivelyPaused || task.status === 'paused') {
-        paused.push(task);
-        return;
-      }
-
-      if (task.status === 'never_done') {
-        neverDone.push(task);
-        return;
-      }
-
-      const isDailyFreqUnmet = task.taskType === 'frequency' && task.targetPeriod === 'day'
-        && task.targetCount && (task.completionsThisPeriod ?? 0) < task.targetCount;
-
-      if (task.completedToday && task.taskType === 'frequency' && !isDailyFreqUnmet) {
-        completedToday.push(task);
-        return;
-      }
-
-      const wouldBeDueToday = isDailyFreqUnmet || (task.effectiveDueToday ?? false);
-
-      const frequencyGoalMet = task.taskType === 'frequency' && (task.targetProgress ?? 0) >= 100;
-
-      const wouldBeCouldDo =
-        !wouldBeDueToday && (
-          (task.taskType === 'frequency' && task.targetPeriod !== 'day' && (task.targetProgress ?? 0) < 100) ||
-          (!frequencyGoalMet && task.status === 'later' && task.daysUntilDue !== undefined && task.daysUntilDue <= 7 && task.daysUntilDue > 0)
-        );
-
-      const wouldBeDueSoon =
-        !wouldBeDueToday && !wouldBeCouldDo && (
-          task.status === 'due_soon' && task.daysUntilDue !== undefined && task.daysUntilDue > 0
-        );
-
-      const isRelevantToToday = wouldBeDueToday || wouldBeCouldDo || wouldBeDueSoon;
-
-      if (task.completedToday && isRelevantToToday && !isDailyFreqUnmet) {
-        completedToday.push(task);
-        return;
-      }
-
-      if (task.completedToday && !isDailyFreqUnmet) return;
-
-      if (wouldBeDueToday) {
-        if (task.taskType === 'frequency' && task.targetPeriod !== 'day' && !isDailyFreqUnmet) {
-          suggestedIds.add(task.id);
-        }
-        dueToday.push(task);
-      } else if (wouldBeCouldDo) {
-        couldDo.push(task);
-      } else if (wouldBeDueSoon) {
-        dueSoon.push(task);
+      if (task.isSuggestedToday) suggestedIds.add(task.id);
+      switch (task.todayBucket) {
+        case 'due_today': dueToday.push(task); break;
+        case 'could_do': couldDo.push(task); break;
+        case 'due_soon': dueSoon.push(task); break;
+        case 'never_done': neverDone.push(task); break;
+        case 'completed_today': completedToday.push(task); break;
+        case 'paused': paused.push(task); break;
       }
     });
 

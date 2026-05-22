@@ -3,13 +3,14 @@ import { TaskWithDetails, TaskAssignment } from "@shared/schema";
 import { useAssignments, useCreateAssignment, useDeleteAssignment, useResetAssignments } from "@/hooks/use-assignments";
 import { useCompleteTask } from "@/hooks/use-tasks";
 import { useCompletionsByDay } from "@/hooks/use-completions";
+import { usePlannerRange } from "@/hooks/use-planner";
 import { useTimezone } from "@/hooks/use-user-settings";
-import { formatDateKey, nowLocal, toLocal } from "@/lib/tz";
+import { nowLocal } from "@/lib/tz";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, X, ChevronLeft, ChevronRight, Eye, EyeOff, Sparkles, Calendar, MoveHorizontal, RotateCcw, Undo2, Lock } from "lucide-react";
-import { format, startOfWeek, endOfWeek, startOfMonth, addDays, addWeeks, isSameDay, isAfter, isBefore, parseISO } from "date-fns";
+import { format, startOfWeek, endOfWeek, addDays, addWeeks, isSameDay, isAfter, isBefore, parseISO } from "date-fns";
 import {
   Tooltip,
   TooltipContent,
@@ -102,6 +103,7 @@ export function WeekView({ tasks }: WeekViewProps) {
 
   const { data: assignments = [] } = useAssignments(startStr, endStr);
   const { completionsByTask } = useCompletionsByDay(startStr, endStr);
+  const { scheduleByDate, pseudoScheduledTaskIds } = usePlannerRange(startStr, endStr);
   const createAssignment = useCreateAssignment();
   const deleteAssignment = useDeleteAssignment();
   const resetAssignments = useResetAssignments();
@@ -148,103 +150,27 @@ export function WeekView({ tasks }: WeekViewProps) {
     return map;
   }, [tasks]);
 
-  // Build auto-schedule, then apply override suppressions
-  const { effectiveSchedule, overrideEntries, pseudoScheduledTaskIds } = useMemo(() => {
-    const schedule = new Map<string, Set<number>>();
+  // Layer assignment overrides on top of the server's natural schedule.
+  // Assignments with originalDate suppress that day and add to plannedDate.
+  const { effectiveSchedule, overrideEntries } = useMemo(() => {
     const fmtDay = (d: Date) => format(d, "yyyy-MM-dd");
-    weekDays.forEach(d => schedule.set(fmtDay(d), new Set()));
-    const pseudoScheduledIds = new Set<number>();
-
-    tasks.forEach(task => {
-      if (task.isArchived) return;
-
-      if (task.taskType === 'scheduled' && task.scheduledDaysOfWeek) {
-        const scheduledDays = task.scheduledDaysOfWeek.split(',').map(Number);
-        weekDays.forEach(d => {
-          if (scheduledDays.includes(d.getDay())) {
-            schedule.get(fmtDay(d))!.add(task.id);
-          }
-        });
-      } else if (task.taskType === 'interval' && task.intervalValue && task.intervalUnit) {
-        if (task.intervalUnit === 'days' && task.intervalValue === 1) {
-          weekDays.forEach(d => {
-            schedule.get(fmtDay(d))!.add(task.id);
-          });
-        } else if (task.nextDue) {
-          const nextDue = toLocal(new Date(task.nextDue), tz);
-          const intervalDays = task.intervalUnit === 'days' ? task.intervalValue
-            : task.intervalUnit === 'weeks' ? task.intervalValue * 7
-            : task.intervalUnit === 'months' ? task.intervalValue * 30
-            : task.intervalValue;
-          const weekEnd = weekDays[weekDays.length - 1];
-          let occurrence = nextDue;
-          while (!isAfter(occurrence, weekEnd)) {
-            const key = fmtDay(occurrence);
-            if (schedule.has(key)) {
-              schedule.get(key)!.add(task.id);
-            }
-            occurrence = addDays(occurrence, intervalDays);
-          }
-        }
-      } else if (task.taskType === 'scheduled' && task.scheduledDates) {
-        const dates = task.scheduledDates.split(',').map(s => s.trim());
-        dates.forEach(dateStr => {
-          try {
-            const d = parseISO(dateStr);
-            const key = formatDateKey(d, tz);
-            if (schedule.has(key)) {
-              schedule.get(key)!.add(task.id);
-            }
-          } catch {}
-        });
-      } else if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
-        if (task.targetPeriod === 'day') {
-          weekDays.forEach(d => {
-            schedule.get(fmtDay(d))!.add(task.id);
-          });
-        } else {
-          const nowTz = nowLocal(tz);
-          const periodStart = task.targetPeriod === 'week'
-            ? startOfWeek(nowTz, { weekStartsOn: 0 })
-            : startOfMonth(nowTz);
-          const periodDays = task.targetPeriod === 'week' ? 7 : 30;
-          const spacing = periodDays / task.targetCount;
-          const done = task.completionsThisPeriod ?? 0;
-
-          for (let i = done; i < task.targetCount; i++) {
-            const pseudoDate = addDays(periodStart, (i + 0.5) * spacing);
-            weekDays.forEach(d => {
-              if (isSameDay(d, pseudoDate)) {
-                schedule.get(fmtDay(d))!.add(task.id);
-                pseudoScheduledIds.add(task.id);
-              }
-            });
-          }
-        }
-      }
-
-      // Overdue tasks whose due date fell before this week: place on today
-      if (task.status === 'overdue' && !weekDays.some(d => schedule.get(fmtDay(d))!.has(task.id))) {
-        const todayKey = format(nowLocal(tz), "yyyy-MM-dd");
-        if (schedule.has(todayKey)) {
-          schedule.get(todayKey)!.add(task.id);
-        }
-      }
+    const schedule = new Map<string, Set<number>>();
+    weekDays.forEach(d => {
+      const key = fmtDay(d);
+      schedule.set(key, new Set(scheduleByDate.get(key) ?? []));
     });
 
     const overrides: TaskAssignment[] = [];
     for (const a of assignments) {
       if (a.originalDate) {
         overrides.push(a);
-        const origSet = schedule.get(a.originalDate);
-        if (origSet) origSet.delete(a.taskId);
-        const plannedSet = schedule.get(a.plannedDate);
-        if (plannedSet) plannedSet.add(a.taskId);
+        schedule.get(a.originalDate)?.delete(a.taskId);
+        schedule.get(a.plannedDate)?.add(a.taskId);
       }
     }
 
-    return { effectiveSchedule: schedule, overrideEntries: overrides, pseudoScheduledTaskIds: pseudoScheduledIds };
-  }, [tasks, weekDays, assignments, tz]);
+    return { effectiveSchedule: schedule, overrideEntries: overrides };
+  }, [weekDays, scheduleByDate, assignments]);
 
   // Reverse map: taskId -> set of dateStrs where it appears (across schedule + manual)
   const taskDaysMap = useMemo(() => {
