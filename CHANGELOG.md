@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.17
+
+- **Fixed: pull-to-refresh fired from any scroll position on mobile**. The mobile layout root has no explicit height constraint, so the document itself scrolls instead of `<main>` — meaning `<main>.scrollTop` stayed at `0` even when visually scrolled, and any downward pull triggered a hard reload. The "at the top" check now consults `document.scrollingElement.scrollTop` alongside the element's own `scrollTop`, and re-checks mid-gesture so a brief upward scroll before pulling down can't accidentally trigger a refresh. Pull-to-refresh now behaves like iOS native — only triggers when you're already at the top of the page
+
 ## 2.4.16
 
 - **Hard-reload button in the sidebar and mobile header**. iOS standalone PWAs have no native pull-to-refresh and the persisted React Query cache can leave the UI on stale state with no obvious way out. A new refresh icon is now visible at all times — between the avatar and logout in the desktop sidebar, between the profile switcher and the menu in the mobile header. One tap clears the in-memory query cache, removes the persisted cache from localStorage, signals any waiting service worker to activate, and reloads the page. Brief spinner state on tap so you can see it's working
