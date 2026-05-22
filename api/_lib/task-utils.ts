@@ -1,6 +1,6 @@
 import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO, getDay, getDate, lastDayOfMonth } from 'date-fns';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
-import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion } from '../../shared/schema.js';
+import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion, CadenceMagnitude } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
 
 const storage = new DatabaseStorage();
@@ -264,6 +264,16 @@ export function getDueSoonThreshold(cadenceDays: number): number {
   return Math.max(1, Math.min(14, Math.ceil(threshold)));
 }
 
+// Bucket a task by its average cadence so UI pages (Daily/Weekly/Monthly/Yearly)
+// can group consistently across all three task types.
+export function getCadenceMagnitude(task: any): CadenceMagnitude {
+  const cadence = getCadenceDays(task);
+  if (cadence <= 6) return 'daily';
+  if (cadence <= 13) return 'weekly';
+  if (cadence <= 89) return 'monthly';
+  return 'yearly';
+}
+
 // Filter completions respecting refractory period
 export function filterCompletionsWithRefractory(completions: any[], refractoryMinutes: number | null): any[] {
   if (!refractoryMinutes || refractoryMinutes <= 0) return completions;
@@ -320,6 +330,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
       effectiveDueToday: false,
       effectivelyPaused: true,
       pausedUntilDate,
+      cadenceMagnitude: getCadenceMagnitude(task),
       streak: rawStreak ? {
         currentStreak: rawStreak.currentStreak,
         longestStreak: rawStreak.longestStreak,
@@ -596,6 +607,7 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     effectivelyPaused: false,
     pausedUntilDate: null,
     recentCompletionDates: recentCompletionDates.length > 0 ? recentCompletionDates : undefined,
+    cadenceMagnitude: getCadenceMagnitude(task),
     streak: streak ? {
       currentStreak: streak.currentStreak,
       longestStreak: streak.longestStreak,

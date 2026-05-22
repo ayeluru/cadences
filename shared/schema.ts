@@ -371,6 +371,8 @@ export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type InsertFeedbackComment = z.infer<typeof insertFeedbackCommentSchema>;
 
 // Custom Types for API
+export type CadenceMagnitude = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
 export type TaskWithDetails = Task & {
   category?: Category | null;
   parentTask?: Task | null;
@@ -390,4 +392,5 @@ export type TaskWithDetails = Task & {
   recentCompletionDates?: string[];
   effectivelyPaused?: boolean;
   pausedUntilDate?: string | null;
+  cadenceMagnitude?: CadenceMagnitude;
 };
