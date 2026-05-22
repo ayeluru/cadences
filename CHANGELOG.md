@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.18
+
+- **Today view redesigned with underline tabs**. The six stacked collapsibles are gone — replaced with a single underline tab strip at the top. Action buckets (Overdue, Due today, Could do, Due soon) are always visible with live counts. Not started, Done today, and Paused appear only when they have items, so a clean day doesn't carry empty rows. Default tab is Due today on every load. The tab strip scrolls horizontally on narrow screens
+- **Overdue is its own bucket**. Interval and scheduled tasks past their due date now route to a dedicated Overdue tab instead of mixing with on-schedule due-today tasks — the visual distinction between "behind" and "on track" is finally clean. Frequency tasks behind pace stay in Could do, since "overdue" for a soft pace target is misleading. Completing an overdue task today still shows it in Done today (completion always wins the bucket race)
+- **Fixed: long-interval tasks completed today no longer disappear from the dashboard**. A 2-week (or longer) interval task completed today would vanish from Today view because the bucketing logic required the task to also be "relevant to today" (next due ≤ 7 days) to land in the Done today bucket. Frequency tasks dodged this via a short-circuit; interval and scheduled tasks didn't. Now any task completed today shows up in Done today regardless of how far out the next occurrence sits — except a daily-frequency task with unmet target, which still nags for the remaining reps
+- **Table-driven regression test for Today view bucketing**. `scripts/verify-today-bucket.ts` runs 21 representative task shapes through `getTodayBucket` on every `npm run check`. The asymmetry that caused this PR's bug fix is now permanently captured as a passing test case — future bucket-logic changes get caught at type-check time, not after a user reports a vanishing task
+
 ## 2.4.17
 
 - **Fixed: pull-to-refresh fired from any scroll position on mobile**. The mobile layout root has no explicit height constraint, so the document itself scrolls instead of `<main>` — meaning `<main>.scrollTop` stayed at `0` even when visually scrolled, and any downward pull triggered a hard reload. The "at the top" check now consults `document.scrollingElement.scrollTop` alongside the element's own `scrollTop`, and re-checks mid-gesture so a brief upward scroll before pulling down can't accidentally trigger a refresh. Pull-to-refresh now behaves like iOS native — only triggers when you're already at the top of the page
