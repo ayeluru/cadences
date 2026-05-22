@@ -43,10 +43,24 @@ export function usePullToRefresh(
     const el = scrollRef.current;
     if (!el || !enabled) return;
 
+    // On mobile the layout doesn't constrain <main>'s height, so the document
+    // scrolls instead of <main> itself. Check both so "at the top" is true
+    // only when nothing is scrolled — neither the element nor the page.
+    const isAtScrollTop = (): boolean => {
+      const elTop = el.scrollTop;
+      const docTop =
+        document.scrollingElement?.scrollTop ??
+        document.documentElement.scrollTop ??
+        window.scrollY ??
+        0;
+      return elTop <= 0 && docTop <= 0;
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
-      // Only consider single-finger pulls and only when already at the top.
+      // Only consider single-finger pulls and only when already at the top
+      // (of whichever element is actually scrolling).
       if (e.touches.length !== 1) return;
-      if (el.scrollTop > 0) return;
+      if (!isAtScrollTop()) return;
       trackingRef.current = true;
       startYRef.current = e.touches[0].clientY;
       startXRef.current = e.touches[0].clientX;
@@ -65,6 +79,15 @@ export function usePullToRefresh(
         directionLockedRef.current = Math.abs(deltaY) > Math.abs(deltaX) ? "vertical" : "horizontal";
       }
       if (directionLockedRef.current === "horizontal") return;
+
+      // If the page scrolled away from the top mid-gesture (e.g. user briefly
+      // dragged up before pulling down), bail so we don't trigger a refresh
+      // from a scrolled state.
+      if (!isAtScrollTop()) {
+        trackingRef.current = false;
+        setState({ pullDistance: 0, isRefreshing: false, reachedThreshold: false });
+        return;
+      }
 
       // Ignore upward drags entirely.
       if (deltaY <= 0) {
