@@ -1,10 +1,10 @@
 import { useTasks } from "@/hooks/use-tasks";
 import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
-import { Plus, SlidersHorizontal, LayoutGrid, List, X, Folder, Tag as TagIcon, Check, ChevronDown, ChevronRight, Palmtree, Pause } from "lucide-react";
+import { Plus, SlidersHorizontal, LayoutGrid, List, X, Folder, Tag as TagIcon, Check, Palmtree } from "lucide-react";
 import { useState, useMemo } from "react";
 import { CreateTaskDialog } from "@/components/CreateTaskDialog";
-import { TaskWithDetails } from "@shared/schema";
+import { TaskWithDetails, TodayBucket } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
@@ -45,12 +45,7 @@ export default function Dashboard() {
   const [condensedView, setCondensedView] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>("today");
-  const [showDueToday, setShowDueToday] = useState(true);
-  const [showCouldDo, setShowCouldDo] = useState(false);
-  const [showDueSoon, setShowDueSoon] = useState(false);
-  const [showNeverDone, setShowNeverDone] = useState(false);
-  const [showCompletedToday, setShowCompletedToday] = useState(false);
-  const [showPaused, setShowPaused] = useState(false);
+  const [activeTodayBucket, setActiveTodayBucket] = useState<TodayBucket>("due_today");
 
   const hasActiveFilters = filterCategory !== undefined || filterTagIds.length > 0;
 
@@ -102,6 +97,7 @@ export default function Dashboard() {
   // Today view: bucketing is computed server-side as task.todayBucket.
   // This pass just groups by that field and sorts each bucket by urgency.
   const todayTasks = useMemo(() => {
+    const overdue: TaskWithDetails[] = [];
     const dueToday: TaskWithDetails[] = [];
     const couldDo: TaskWithDetails[] = [];
     const dueSoon: TaskWithDetails[] = [];
@@ -113,6 +109,7 @@ export default function Dashboard() {
     filteredTasks.forEach(task => {
       if (task.isSuggestedToday) suggestedIds.add(task.id);
       switch (task.todayBucket) {
+        case 'overdue': overdue.push(task); break;
         case 'due_today': dueToday.push(task); break;
         case 'could_do': couldDo.push(task); break;
         case 'due_soon': dueSoon.push(task); break;
@@ -123,13 +120,14 @@ export default function Dashboard() {
     });
 
     const byUrgency = (a: TaskWithDetails, b: TaskWithDetails) => (b.urgency || 0) - (a.urgency || 0);
+    overdue.sort(byUrgency);
     dueToday.sort(byUrgency);
     couldDo.sort(byUrgency);
     dueSoon.sort(byUrgency);
     neverDone.sort(byUrgency);
     completedToday.sort(byUrgency);
 
-    return { dueToday, couldDo, dueSoon, neverDone, completedToday, paused, suggestedIds };
+    return { overdue, dueToday, couldDo, dueSoon, neverDone, completedToday, paused, suggestedIds };
   }, [filteredTasks]);
 
   const todayTotal = todayTasks.dueToday.length + todayTasks.completedToday.length;
@@ -407,18 +405,8 @@ export default function Dashboard() {
           todayTasks={todayTasks}
           todayTotal={todayTotal}
           todayProgress={todayProgress}
-          showDueToday={showDueToday}
-          onToggleShowDueToday={() => setShowDueToday(!showDueToday)}
-          showCouldDo={showCouldDo}
-          onToggleShowCouldDo={() => setShowCouldDo(!showCouldDo)}
-          showDueSoon={showDueSoon}
-          onToggleShowDueSoon={() => setShowDueSoon(!showDueSoon)}
-          showNeverDone={showNeverDone}
-          onToggleShowNeverDone={() => setShowNeverDone(!showNeverDone)}
-          showCompleted={showCompletedToday}
-          onToggleShowCompleted={() => setShowCompletedToday(!showCompletedToday)}
-          showPaused={showPaused}
-          onToggleShowPaused={() => setShowPaused(!showPaused)}
+          activeBucket={activeTodayBucket}
+          onChangeBucket={setActiveTodayBucket}
           condensedView={condensedView}
           expandedTaskId={expandedTaskId}
           onToggleExpand={(id) => setExpandedTaskId(expandedTaskId === id ? null : id)}
@@ -451,48 +439,64 @@ export default function Dashboard() {
 
 // --- Today View ---
 
+interface TodayBucketTab {
+  id: TodayBucket;
+  label: string;
+  tasks: TaskWithDetails[];
+  alwaysShow: boolean;
+  emptyMessage: string;
+  dimmed?: boolean;
+  suggestedTaskIds?: Set<number>;
+}
+
 function TodayView({
   todayTasks,
   todayTotal,
   todayProgress,
-  showDueToday,
-  onToggleShowDueToday,
-  showCouldDo,
-  onToggleShowCouldDo,
-  showDueSoon,
-  onToggleShowDueSoon,
-  showNeverDone,
-  onToggleShowNeverDone,
-  showCompleted,
-  onToggleShowCompleted,
-  showPaused,
-  onToggleShowPaused,
+  activeBucket,
+  onChangeBucket,
   condensedView,
   expandedTaskId,
   onToggleExpand,
   onCreateOpen,
 }: {
-  todayTasks: { dueToday: TaskWithDetails[]; couldDo: TaskWithDetails[]; dueSoon: TaskWithDetails[]; neverDone: TaskWithDetails[]; completedToday: TaskWithDetails[]; paused: TaskWithDetails[]; suggestedIds: Set<number> };
+  todayTasks: { overdue: TaskWithDetails[]; dueToday: TaskWithDetails[]; couldDo: TaskWithDetails[]; dueSoon: TaskWithDetails[]; neverDone: TaskWithDetails[]; completedToday: TaskWithDetails[]; paused: TaskWithDetails[]; suggestedIds: Set<number> };
   todayTotal: number;
   todayProgress: number;
-  showDueToday: boolean;
-  onToggleShowDueToday: () => void;
-  showCouldDo: boolean;
-  onToggleShowCouldDo: () => void;
-  showDueSoon: boolean;
-  onToggleShowDueSoon: () => void;
-  showNeverDone: boolean;
-  onToggleShowNeverDone: () => void;
-  showCompleted: boolean;
-  onToggleShowCompleted: () => void;
-  showPaused: boolean;
-  onToggleShowPaused: () => void;
+  activeBucket: TodayBucket;
+  onChangeBucket: (bucket: TodayBucket) => void;
   condensedView: boolean;
   expandedTaskId: number | null;
   onToggleExpand: (id: number) => void;
   onCreateOpen: () => void;
 }) {
-  const hasAnything = todayTasks.dueToday.length + todayTasks.couldDo.length + todayTasks.dueSoon.length + todayTasks.neverDone.length + todayTasks.completedToday.length + todayTasks.paused.length > 0;
+  // Action buckets are always shown in the tab row (predictable layout).
+  // Secondary buckets only appear when they have items (less visual noise).
+  const allTabs: TodayBucketTab[] = [
+    { id: 'overdue', label: 'Overdue', tasks: todayTasks.overdue, alwaysShow: true,
+      emptyMessage: "Nothing overdue — you're caught up." },
+    { id: 'due_today', label: 'Due today', tasks: todayTasks.dueToday, alwaysShow: true,
+      emptyMessage: 'Nothing due today.', suggestedTaskIds: todayTasks.suggestedIds },
+    { id: 'could_do', label: 'Could do', tasks: todayTasks.couldDo, alwaysShow: true,
+      emptyMessage: 'Nothing on deck.' },
+    { id: 'due_soon', label: 'Due soon', tasks: todayTasks.dueSoon, alwaysShow: true,
+      emptyMessage: 'Nothing approaching.' },
+    { id: 'never_done', label: 'Not started', tasks: todayTasks.neverDone, alwaysShow: false,
+      emptyMessage: '' },
+    { id: 'completed_today', label: 'Done today', tasks: todayTasks.completedToday, alwaysShow: false,
+      emptyMessage: '', dimmed: true },
+    { id: 'paused', label: 'Paused', tasks: todayTasks.paused, alwaysShow: false,
+      emptyMessage: '', dimmed: true },
+  ];
+
+  const visibleTabs = allTabs.filter(t => t.alwaysShow || t.tasks.length > 0);
+
+  // If the currently-active bucket isn't in the visible set (e.g. it was a
+  // conditional bucket that just emptied), fall back to due_today.
+  const safeActive = visibleTabs.some(t => t.id === activeBucket) ? activeBucket : 'due_today';
+  const activeTab = visibleTabs.find(t => t.id === safeActive) ?? visibleTabs[0];
+
+  const hasAnything = visibleTabs.some(t => t.tasks.length > 0);
 
   if (!hasAnything) {
     return (
@@ -507,7 +511,9 @@ function TodayView({
     );
   }
 
-  const allDone = todayTasks.dueToday.length === 0 && todayTasks.completedToday.length > 0;
+  const allDone = todayTasks.dueToday.length === 0
+    && todayTasks.overdue.length === 0
+    && todayTasks.completedToday.length > 0;
 
   return (
     <div className="space-y-6">
@@ -531,224 +537,64 @@ function TodayView({
         </div>
       )}
 
-      {/* 1. Due Today — collapsible, open by default */}
-      {todayTasks.dueToday.length > 0 && (
-        <CollapsibleTaskSection
-          label="Due Today"
-          color="text-foreground"
-          tasks={todayTasks.dueToday}
-          isOpen={showDueToday}
-          onToggle={onToggleShowDueToday}
-          condensedView={condensedView}
-          expandedTaskId={expandedTaskId}
-          onToggleExpand={onToggleExpand}
-          suggestedTaskIds={todayTasks.suggestedIds}
-        />
-      )}
+      {/* Bucket tabs — underline style, scrolls horizontally on narrow screens */}
+      <div className="border-b overflow-x-auto -mx-2 px-2" style={{ scrollbarWidth: 'none' }}>
+        <div className="flex gap-1 min-w-max">
+          {visibleTabs.map(tab => {
+            const isActive = tab.id === activeTab.id;
+            const colorClass = tab.id === 'overdue'
+              ? (isActive ? 'border-[hsl(var(--urgency-overdue))] text-[hsl(var(--urgency-overdue))]' : 'border-transparent text-[hsl(var(--urgency-overdue))]/70 hover:text-[hsl(var(--urgency-overdue))]')
+              : (isActive ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground');
+            return (
+              <button
+                key={tab.id}
+                onClick={() => onChangeBucket(tab.id)}
+                className={`px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${colorClass}`}
+              >
+                {tab.label}
+                {tab.tasks.length > 0 && (
+                  <span className={`ml-1.5 inline-flex items-center justify-center h-5 min-w-[1.25rem] px-1.5 rounded-full text-[10px] font-semibold tabular-nums ${
+                    isActive ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {tab.tasks.length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-      {/* 2. Could Do — collapsed by default */}
-      {todayTasks.couldDo.length > 0 && (
-        <CollapsibleTaskSection
-          label="Could Do"
-          color="text-[hsl(var(--urgency-later))]"
-          tasks={todayTasks.couldDo}
-          isOpen={showCouldDo}
-          onToggle={onToggleShowCouldDo}
-          condensedView={condensedView}
-          expandedTaskId={expandedTaskId}
-          onToggleExpand={onToggleExpand}
-        />
-      )}
-
-      {/* 3. Due Soon — collapsed by default */}
-      {todayTasks.dueSoon.length > 0 && (
-        <CollapsibleTaskSection
-          label="Due Soon"
-          color="text-[hsl(var(--urgency-soon))]"
-          tasks={todayTasks.dueSoon}
-          isOpen={showDueSoon}
-          onToggle={onToggleShowDueSoon}
-          condensedView={condensedView}
-          expandedTaskId={expandedTaskId}
-          onToggleExpand={onToggleExpand}
-        />
-      )}
-
-      {/* 4. Not Yet Started — collapsed by default */}
-      {todayTasks.neverDone.length > 0 && (
-        <CollapsibleTaskSection
-          label="Not Yet Started"
-          color="text-muted-foreground"
-          tasks={todayTasks.neverDone}
-          isOpen={showNeverDone}
-          onToggle={onToggleShowNeverDone}
-          condensedView={condensedView}
-          expandedTaskId={expandedTaskId}
-          onToggleExpand={onToggleExpand}
-        />
-      )}
-
-      {/* 5. Completed Today — collapsed by default */}
-      {todayTasks.completedToday.length > 0 && (
-        <CollapsibleTaskSection
-          label="Completed Today"
-          color="text-green-500"
-          icon={<Check className="w-4 h-4 text-green-500" />}
-          tasks={todayTasks.completedToday}
-          isOpen={showCompleted}
-          onToggle={onToggleShowCompleted}
-          condensedView={condensedView}
-          expandedTaskId={expandedTaskId}
-          onToggleExpand={onToggleExpand}
-          dimmed
-        />
-      )}
-
-      {/* 6. Paused — collapsed by default */}
-      {todayTasks.paused.length > 0 && (
-        <CollapsibleTaskSection
-          label="Paused"
-          color="text-muted-foreground"
-          icon={<Pause className="w-4 h-4 text-muted-foreground" />}
-          tasks={todayTasks.paused}
-          isOpen={showPaused}
-          onToggle={onToggleShowPaused}
-          condensedView={condensedView}
-          expandedTaskId={expandedTaskId}
-          onToggleExpand={onToggleExpand}
-          dimmed
-        />
-      )}
-    </div>
-  );
-}
-
-// --- Reusable section components ---
-
-function TaskSection({
-  label,
-  color,
-  tasks,
-  condensedView,
-  expandedTaskId,
-  onToggleExpand,
-}: {
-  label: string;
-  color: string;
-  tasks: TaskWithDetails[];
-  condensedView: boolean;
-  expandedTaskId: number | null;
-  onToggleExpand: (id: number) => void;
-}) {
-  return (
-    <motion.section
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-4"
-    >
-      <h3 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 ${color}`}>
-        {label}
-        <span className="bg-muted px-2 py-0.5 rounded-full text-xs text-foreground font-normal">
-          {tasks.length}
-        </span>
-      </h3>
-      <div className={condensedView ? "space-y-1" : "space-y-4"}>
-        <AnimatePresence mode="popLayout">
-          {tasks.map(task => (
-            <motion.div
-              key={task.id}
-              layout
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-            >
+      {/* Active bucket content */}
+      <motion.div
+        key={activeTab.id}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18 }}
+      >
+        {activeTab.tasks.length === 0 ? (
+          <div className="text-center py-12 text-sm text-muted-foreground">
+            {activeTab.emptyMessage}
+          </div>
+        ) : (
+          <div className={`${condensedView ? 'space-y-1' : 'space-y-4'} ${activeTab.dimmed ? 'opacity-70' : ''}`}>
+            {activeTab.tasks.map(task => (
               <TaskCard
+                key={task.id}
                 task={task}
                 condensed={condensedView}
                 expanded={expandedTaskId === task.id}
                 onToggleExpand={() => onToggleExpand(task.id)}
+                suggested={activeTab.suggestedTaskIds?.has(task.id)}
               />
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-    </motion.section>
-  );
-}
-
-function CollapsibleTaskSection({
-  label,
-  color,
-  icon,
-  tasks,
-  isOpen,
-  onToggle,
-  condensedView,
-  expandedTaskId,
-  onToggleExpand,
-  dimmed,
-  suggestedTaskIds,
-}: {
-  label: string;
-  color: string;
-  icon?: React.ReactNode;
-  tasks: TaskWithDetails[];
-  isOpen: boolean;
-  onToggle: () => void;
-  condensedView: boolean;
-  expandedTaskId: number | null;
-  onToggleExpand: (id: number) => void;
-  dimmed?: boolean;
-  suggestedTaskIds?: Set<number>;
-}) {
-  return (
-    <motion.section
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-3"
-    >
-      <button
-        onClick={onToggle}
-        className={`flex items-center gap-2 text-sm font-bold uppercase tracking-wider hover:text-foreground transition-colors ${color}`}
-      >
-        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        {icon}
-        {label}
-        <span className="bg-muted px-2 py-0.5 rounded-full text-xs text-foreground font-normal">
-          {tasks.length}
-        </span>
-      </button>
-
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className={`${condensedView ? "space-y-1" : "space-y-4"} ${dimmed ? "opacity-55" : ""}`}>
-              {tasks.map(task => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  condensed={condensedView}
-                  expanded={expandedTaskId === task.id}
-                  onToggleExpand={() => onToggleExpand(task.id)}
-                  suggested={suggestedTaskIds?.has(task.id)}
-                />
-              ))}
-            </div>
-          </motion.div>
+            ))}
+          </div>
         )}
-      </AnimatePresence>
-    </motion.section>
+      </motion.div>
+    </div>
   );
 }
+
 
 // --- All Tasks View ---
 

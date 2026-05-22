@@ -234,8 +234,21 @@ export function getTodayBucket(enriched: any): {
     && !!enriched.targetCount
     && (enriched.completionsThisPeriod ?? 0) < enriched.targetCount;
 
-  if (enriched.completedToday && enriched.taskType === 'frequency' && !isDailyFreqUnmet) {
+  // Anything completed today goes into completed_today — the user took
+  // action today and deserves to see it acknowledged on the dashboard
+  // regardless of how far out the *next* occurrence sits. Exception: a
+  // daily-frequency task with an unmet target falls through to due_today
+  // so the user is reminded about the remaining reps.
+  if (enriched.completedToday && !isDailyFreqUnmet) {
     return { bucket: 'completed_today', isSuggested: false };
+  }
+
+  // Overdue gets its own bucket so users distinguish "behind" from "on
+  // schedule today." Only interval and scheduled tasks have a hard miss —
+  // a frequency task that's "overdue" is just behind its pace target,
+  // which is better expressed as could_do or due_today (via isDailyFreqUnmet).
+  if (enriched.status === 'overdue' && enriched.taskType !== 'frequency') {
+    return { bucket: 'overdue', isSuggested: false };
   }
 
   const wouldBeDueToday = isDailyFreqUnmet || (enriched.effectiveDueToday ?? false);
@@ -257,15 +270,6 @@ export function getTodayBucket(enriched: any): {
     && enriched.status === 'due_soon'
     && enriched.daysUntilDue !== undefined
     && enriched.daysUntilDue > 0;
-
-  const isRelevantToToday = wouldBeDueToday || wouldBeCouldDo || wouldBeDueSoon;
-
-  if (enriched.completedToday && isRelevantToToday && !isDailyFreqUnmet) {
-    return { bucket: 'completed_today', isSuggested: false };
-  }
-  if (enriched.completedToday && !isDailyFreqUnmet) {
-    return { bucket: null, isSuggested: false };
-  }
 
   if (wouldBeDueToday) {
     const isSuggested = enriched.taskType === 'frequency'

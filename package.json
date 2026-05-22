@@ -8,7 +8,7 @@
     "dev:api": "node --import tsx/esm scripts/dev-api.ts",
     "dev:frontend": "vite",
     "build": "vite build",
-    "check": "tsc && bash scripts/check-tz-boundary.sh",
+    "check": "tsc && bash scripts/check-tz-boundary.sh && node --import tsx/esm scripts/verify-today-bucket.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
