@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.19
+
+- **Frequency tasks now show pacing**. A new "Behind / On pace / Ahead" chip appears next to the title of every frequency task that hasn't yet hit its target this period. The chip is computed server-side from how far along you are in the period (e.g. 5/7 of the week) versus how much of the target you've completed. Color-coded — amber for Behind, neutral for On pace, emerald for Ahead — so the signal reads at a glance
+- **Pacing now drives the Today bucket**. A frequency task that's fallen behind goes to **Overdue** — same urgency tier as a missed interval task. A frequency task that's on pace today but will fall behind tomorrow if you don't act gets promoted to **Due today** as a soft nudge ("act today to stay on track"). Ahead-of-pace and on-pace-and-fine tasks stay in **Could do** as optional reps. The bucket is the action signal; the chip is the explanation
+- **Could do is now frequency-only**. Interval and scheduled tasks no longer appear in Could do regardless of cadence. Previously a 3-day-interval task completed yesterday would land in Could do (2 days out, within the old 7-day window) and clutter Today view despite already being handled. Now interval and scheduled tasks only appear in Today when they're genuinely actionable: Overdue, Due today, or Due soon (within their cadence-aware threshold)
+- **Could do sort: on-pace floats above ahead**. Within the Could do bucket, on-pace tasks come first since they're closer to slipping — ahead-of-pace tasks are optional bonus work and sit lower
+- **9 new regression test cases** in the bucket verifier (25 total) covering every pacing transition — Behind → Overdue, will-be-behind-tomorrow → Due today, on-pace + ahead staying in Could do, intervals correctly excluded from Could do
+
 ## 2.4.18
 
 - **Today view redesigned with underline tabs**. The six stacked collapsibles are gone — replaced with a single underline tab strip at the top. Action buckets (Overdue, Due today, Could do, Due soon) are always visible with live counts. Not started, Done today, and Paused appear only when they have items, so a clean day doesn't carry empty rows. Default tab is Due today on every load. The tab strip scrolls horizontally on narrow screens
