@@ -1,6 +1,6 @@
 import { addDays, addWeeks, addMonths, addYears, differenceInDays, differenceInMinutes, isBefore, isAfter, isSameDay, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO, getDay, getDate, lastDayOfMonth } from 'date-fns';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
-import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion, CadenceMagnitude } from '../../shared/schema.js';
+import type { Task, Category, Tag, TaskMetric, TaskVariation, TaskStreak, Completion, CadenceMagnitude, TodayBucket } from '../../shared/schema.js';
 import { DatabaseStorage } from './storage.js';
 
 const storage = new DatabaseStorage();
@@ -274,6 +274,71 @@ export function getCadenceMagnitude(task: any): CadenceMagnitude {
   return 'yearly';
 }
 
+// Place an enriched task into one of the Dashboard "Today" buckets.
+// Operates on already-enriched fields (status, effectiveDueToday, completedToday,
+// targetProgress, completionsThisPeriod, daysUntilDue). Returns null when the
+// task should not appear in the Today view at all.
+export function getTodayBucket(enriched: any): {
+  bucket: TodayBucket | null;
+  isSuggested: boolean;
+} {
+  if (enriched.effectivelyPaused || enriched.status === 'paused') {
+    return { bucket: 'paused', isSuggested: false };
+  }
+  if (enriched.status === 'never_done') {
+    return { bucket: 'never_done', isSuggested: false };
+  }
+
+  const isDailyFreqUnmet = enriched.taskType === 'frequency'
+    && enriched.targetPeriod === 'day'
+    && !!enriched.targetCount
+    && (enriched.completionsThisPeriod ?? 0) < enriched.targetCount;
+
+  if (enriched.completedToday && enriched.taskType === 'frequency' && !isDailyFreqUnmet) {
+    return { bucket: 'completed_today', isSuggested: false };
+  }
+
+  const wouldBeDueToday = isDailyFreqUnmet || (enriched.effectiveDueToday ?? false);
+  const frequencyGoalMet = enriched.taskType === 'frequency'
+    && (enriched.targetProgress ?? 0) >= 100;
+
+  const wouldBeCouldDo = !wouldBeDueToday && (
+    (enriched.taskType === 'frequency'
+      && enriched.targetPeriod !== 'day'
+      && (enriched.targetProgress ?? 0) < 100)
+    || (!frequencyGoalMet
+      && enriched.status === 'later'
+      && enriched.daysUntilDue !== undefined
+      && enriched.daysUntilDue > 0
+      && enriched.daysUntilDue <= 7)
+  );
+
+  const wouldBeDueSoon = !wouldBeDueToday && !wouldBeCouldDo
+    && enriched.status === 'due_soon'
+    && enriched.daysUntilDue !== undefined
+    && enriched.daysUntilDue > 0;
+
+  const isRelevantToToday = wouldBeDueToday || wouldBeCouldDo || wouldBeDueSoon;
+
+  if (enriched.completedToday && isRelevantToToday && !isDailyFreqUnmet) {
+    return { bucket: 'completed_today', isSuggested: false };
+  }
+  if (enriched.completedToday && !isDailyFreqUnmet) {
+    return { bucket: null, isSuggested: false };
+  }
+
+  if (wouldBeDueToday) {
+    const isSuggested = enriched.taskType === 'frequency'
+      && enriched.targetPeriod !== 'day'
+      && !isDailyFreqUnmet;
+    return { bucket: 'due_today', isSuggested };
+  }
+  if (wouldBeCouldDo) return { bucket: 'could_do', isSuggested: false };
+  if (wouldBeDueSoon) return { bucket: 'due_soon', isSuggested: false };
+
+  return { bucket: null, isSuggested: false };
+}
+
 // Filter completions respecting refractory period
 export function filterCompletionsWithRefractory(completions: any[], refractoryMinutes: number | null): any[] {
   if (!refractoryMinutes || refractoryMinutes <= 0) return completions;
@@ -331,6 +396,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
       effectivelyPaused: true,
       pausedUntilDate,
       cadenceMagnitude: getCadenceMagnitude(task),
+      todayBucket: 'paused' as const,
+      isSuggestedToday: false,
       streak: rawStreak ? {
         currentStreak: rawStreak.currentStreak,
         longestStreak: rawStreak.longestStreak,
@@ -589,6 +656,19 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     (task.taskType === 'scheduled' && task.scheduledDaysOfWeek?.split(',').map(Number).includes(today.getDay()));
   const effectiveDueToday = isAssignedToday || (!isMovedFromToday && naturallyDueToday);
 
+  const { bucket: todayBucket, isSuggested: isSuggestedToday } = getTodayBucket({
+    taskType: task.taskType,
+    targetPeriod: task.targetPeriod,
+    targetCount: task.targetCount,
+    status,
+    effectivelyPaused: false,
+    effectiveDueToday,
+    completedToday,
+    completionsThisPeriod,
+    targetProgress,
+    daysUntilDue,
+  });
+
   return {
     ...task,
     category,
@@ -608,6 +688,8 @@ export async function enrichTask(task: any, userId: string, batch?: BatchData, t
     pausedUntilDate: null,
     recentCompletionDates: recentCompletionDates.length > 0 ? recentCompletionDates : undefined,
     cadenceMagnitude: getCadenceMagnitude(task),
+    todayBucket,
+    isSuggestedToday,
     streak: streak ? {
       currentStreak: streak.currentStreak,
       longestStreak: streak.longestStreak,
