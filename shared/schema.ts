@@ -372,7 +372,7 @@ export type InsertFeedbackComment = z.infer<typeof insertFeedbackCommentSchema>;
 
 // Custom Types for API
 export type CadenceMagnitude = 'daily' | 'weekly' | 'monthly' | 'yearly';
-export type TodayBucket = 'due_today' | 'could_do' | 'due_soon' | 'never_done' | 'completed_today' | 'paused';
+export type TodayBucket = 'overdue' | 'due_today' | 'could_do' | 'due_soon' | 'never_done' | 'completed_today' | 'paused';
 
 export type TaskWithDetails = Task & {
   category?: Category | null;

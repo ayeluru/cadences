@@ -243,6 +243,14 @@ export function getTodayBucket(enriched: any): {
     return { bucket: 'completed_today', isSuggested: false };
   }
 
+  // Overdue gets its own bucket so users distinguish "behind" from "on
+  // schedule today." Only interval and scheduled tasks have a hard miss —
+  // a frequency task that's "overdue" is just behind its pace target,
+  // which is better expressed as could_do or due_today (via isDailyFreqUnmet).
+  if (enriched.status === 'overdue' && enriched.taskType !== 'frequency') {
+    return { bucket: 'overdue', isSuggested: false };
+  }
+
   const wouldBeDueToday = isDailyFreqUnmet || (enriched.effectiveDueToday ?? false);
   const frequencyGoalMet = enriched.taskType === 'frequency'
     && (enriched.targetProgress ?? 0) >= 100;

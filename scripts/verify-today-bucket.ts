@@ -122,11 +122,47 @@ const cases: Case[] = [
     expected: 'completed_today',
   },
 
-  // --- Due today (not completed) ---
+  // --- Overdue (separate bucket for interval/scheduled hard misses) ---
   {
-    name: 'interval due today → due_today',
+    name: 'interval overdue, not completed → overdue',
     input: {
       effectivelyPaused: false, status: 'overdue', taskType: 'interval',
+      completedToday: false, effectiveDueToday: true, daysUntilDue: -3,
+    },
+    expected: 'overdue',
+  },
+  {
+    name: 'scheduled overdue, not completed → overdue',
+    input: {
+      effectivelyPaused: false, status: 'overdue', taskType: 'scheduled',
+      completedToday: false, effectiveDueToday: true, daysUntilDue: -1,
+    },
+    expected: 'overdue',
+  },
+  {
+    name: 'overdue + completed today → completed_today (completed wins)',
+    input: {
+      effectivelyPaused: false, status: 'overdue', taskType: 'interval',
+      completedToday: true, effectiveDueToday: false, daysUntilDue: 14,
+    },
+    expected: 'completed_today',
+  },
+  {
+    name: 'weekly-freq behind pace (status=overdue) → could_do, not overdue',
+    input: {
+      effectivelyPaused: false, status: 'overdue', taskType: 'frequency',
+      targetPeriod: 'week', targetCount: 3, completionsThisPeriod: 0,
+      completedToday: false, effectiveDueToday: false,
+      targetProgress: 0, daysUntilDue: 0,
+    },
+    expected: 'could_do',
+  },
+
+  // --- Due today (not completed, not overdue) ---
+  {
+    name: 'interval due today (effective only, status not overdue) → due_today',
+    input: {
+      effectivelyPaused: false, status: 'due_soon', taskType: 'interval',
       completedToday: false, effectiveDueToday: true, daysUntilDue: 0,
     },
     expected: 'due_today',
