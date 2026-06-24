@@ -211,11 +211,13 @@ async function calendarEnhancedHandleGet(req: VercelRequest, res: VercelResponse
       // missed entry if the day has passed without a completion.
       if (task.taskType === 'scheduled') {
         if (task.status !== 'paused') {
-          const taskCreatedAt = task.createdAt ? new Date(task.createdAt) : new Date(0);
+          const createdAtKey = task.createdAt
+            ? formatDateKey(new Date(task.createdAt), tz)
+            : null;
           const occurrences = getScheduledOccurrences(task, rangeStart, rangeEnd, tz);
           for (const day of occurrences) {
-            if (day < taskCreatedAt) continue;
             const dateStr = formatDateKey(day, tz);
+            if (createdAtKey !== null && dateStr < createdAtKey) continue;
             const entry = calendarMap.get(dateStr);
             if (!entry) continue;
 
@@ -333,12 +335,19 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
       if (task.isArchived || task.parentTaskId) continue;
       if (task.status === 'paused') continue;
 
+      const createdAtKey = task.createdAt
+        ? formatDateKey(new Date(task.createdAt), tz)
+        : null;
+      const isBeforeCreation = (dateStr: string) =>
+        createdAtKey !== null && dateStr < createdAtKey;
+
       let placedSomewhere = false;
 
       if (task.taskType === 'scheduled') {
         const occurrences = getScheduledOccurrences(task, rangeStart, rangeEnd, tz);
         for (const occ of occurrences) {
           const dateStr = formatDateKey(occ, tz);
+          if (isBeforeCreation(dateStr)) continue;
           const day = dayMap.get(dateStr);
           if (day) {
             day.occurrences.push({ taskId: task.id, source: 'scheduled' });
@@ -349,19 +358,22 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
         // Daily-interval tasks land on every visible day.
         if (task.intervalUnit === 'days' && task.intervalValue === 1) {
           for (const day of days) {
+            if (isBeforeCreation(day.date)) continue;
             day.occurrences.push({ taskId: task.id, source: 'interval' });
+            placedSomewhere = true;
           }
-          placedSomewhere = true;
         } else if (task.nextDue) {
           let cursor = new Date(task.nextDue);
           // Safety bound: never-completed tasks can have nextDue at epoch.
           let safety = 0;
           while (cursor <= rangeEnd && safety++ < 1000) {
             const dateStr = formatDateKey(cursor, tz);
-            const day = dayMap.get(dateStr);
-            if (day) {
-              day.occurrences.push({ taskId: task.id, source: 'interval' });
-              placedSomewhere = true;
+            if (!isBeforeCreation(dateStr)) {
+              const day = dayMap.get(dateStr);
+              if (day) {
+                day.occurrences.push({ taskId: task.id, source: 'interval' });
+                placedSomewhere = true;
+              }
             }
             cursor = addInterval(cursor, task.intervalValue, task.intervalUnit);
           }
@@ -369,9 +381,10 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
       } else if (task.taskType === 'frequency' && task.targetCount && task.targetPeriod) {
         if (task.targetPeriod === 'day') {
           for (const day of days) {
+            if (isBeforeCreation(day.date)) continue;
             day.occurrences.push({ taskId: task.id, source: 'frequency' });
+            placedSomewhere = true;
           }
-          placedSomewhere = true;
         } else if (task.targetPeriod === 'week' || task.targetPeriod === 'month') {
           // Pseudo-schedule the remaining reps evenly across the current period.
           const { start: periodStart } = getPeriodBounds(task.targetPeriod, tz);
@@ -381,6 +394,7 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
           for (let i = done; i < task.targetCount; i++) {
             const pseudoDate = addDays(periodStart, (i + 0.5) * spacing);
             const dateStr = formatDateKey(pseudoDate, tz);
+            if (isBeforeCreation(dateStr)) continue;
             const day = dayMap.get(dateStr);
             if (day) {
               day.occurrences.push({ taskId: task.id, source: 'frequency', isPseudoScheduled: true });
@@ -394,7 +408,7 @@ export async function plannerRange(req: VercelRequest, res: VercelResponse) {
       // didn't naturally land anywhere this range.
       if (!placedSomewhere && task.status === 'overdue') {
         const today = dayMap.get(todayStr);
-        if (today) {
+        if (today && !isBeforeCreation(todayStr)) {
           today.occurrences.push({ taskId: task.id, source: 'overdue' });
         }
       }
