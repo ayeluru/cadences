@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.20
+
+- **Fixed: new tasks no longer appear on week/month days before they were created**. The week-view planner placed daily-interval, daily-frequency, weekly/monthly frequency pseudo-schedules, scheduled days, and the overdue fallback on every matching day in the visible range, ignoring `task.createdAt` — so a task created mid-week showed up (and could be flagged "missed") on earlier days of the same week. The calendar (month) view had the same issue on its scheduled branch, where a UTC-instant comparison also filtered the task out of its own creation day for users west of UTC. Both views now compare local date-keys against the task's creation date-key, so a brand-new task appears only from its creation day forward
+
 ## 2.4.19
 
 - **Frequency tasks now show pacing**. A new "Behind / On pace / Ahead" chip appears next to the title of every frequency task that hasn't yet hit its target this period. The chip is computed server-side from how far along you are in the period (e.g. 5/7 of the week) versus how much of the target you've completed. Color-coded — amber for Behind, neutral for On pace, emerald for Ahead — so the signal reads at a glance
